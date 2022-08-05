@@ -1,0 +1,2483 @@
+<schema oradaz_version="1.0.08.11" schema_version="1.0.08.11">
+    <service>
+        <name>graphAPI</name>
+        <description>Microsoft Graph (through custom app)</description>
+        <base_url>https://graph.microsoft.com/</base_url>
+        <uri_scheme>[VERSION]/[URI][PARAMS]</uri_scheme>
+        <api_version>v1.0</api_version>
+        <error_code>error/code</error_code>
+        <error_message>error/message</error_message>
+        <next_link>@odata.nextLink</next_link>
+        <requests>
+            <request>
+                <name>graph_activityBasedTimeoutPolicies</name>
+                <uri>policies/activityBasedTimeoutPolicies</uri>
+            </request>
+            <request>
+                <name>graph_accessReviewsDefinitions</name>
+                <uri>identityGovernance/accessReviews/definitions</uri>
+                <relationships>
+                    <relationship name="graph_accessReviewsDefinitions_instances" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_accessReviewsPolicy</name>
+                <uri>identityGovernance/accessReviews/policy</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_adminConsentRequestPolicy</name>
+                <uri>policies/adminConsentRequestPolicy</uri>
+            </request>
+            <request>
+                <name>graph_administrativeUnits</name>
+                <uri>directory/administrativeUnits</uri>
+                <relationships>
+                    <relationship name="graph_administrativeUnits_members" />
+                    <relationship name="graph_administrativeUnits_scopedRoleMembers" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_alerts</name>
+                <uri>security/alerts</uri>
+            </request>
+            <request>
+                <name>graph_appConsentRequests</name>
+                <uri>identityGovernance/appConsent/appConsentRequests</uri>
+                <relationships>
+                    <relationship name="graph_appConsentRequests_userConsentRequests" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_applications</name>
+                <uri>applications</uri>
+                <relationships>
+                    <relationship name="graph_applications_extensionProperties" />
+                    <relationship name="graph_applications_owners" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_applicationTemplates</name>
+                <uri>applicationTemplates</uri>
+            </request>
+            <request>
+                <name>graph_appManagementPolicies</name>
+                <uri>policies/appManagementPolicies</uri>
+                <api_version>beta</api_version>
+                <relationships>
+                    <relationship name="graph_appManagementPolicies_appliesTo" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_apiConnectors</name>
+                <uri>identity/apiConnectors</uri>
+            </request>
+            <request>
+                <name>graph_authenticationFlowsPolicy</name>
+                <uri>policies/authenticationFlowsPolicy</uri>
+            </request>
+            <request>
+                <name>graph_authenticationMethodsPolicy</name>
+                <uri>policies/authenticationmethodspolicy</uri>
+            </request>
+            <request>
+                <name>graph_authenticationMethodsEmailPolicy</name>
+                <uri>policies/authenticationmethodspolicy/authenticationMethodConfigurations/email</uri>
+            </request>
+            <request>
+                <name>graph_authenticationMethodsFIDO2Policy</name>
+                <uri>policies/authenticationmethodspolicy/authenticationMethodConfigurations/fido2</uri>
+            </request>
+            <request>
+                <name>graph_authenticationMethodsMicrosoftAuthenticatorPolicy</name>
+                <uri>policies/authenticationmethodspolicy/authenticationMethodConfigurations/microsoftAuthenticator</uri>
+            </request>
+            <request>
+                <name>graph_authenticationMethodsSms</name>
+                <uri>policies/authenticationmethodspolicy/authenticationMethodConfigurations/sms</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_authenticationMethodsTemporaryAccessPass</name>
+                <uri>policies/authenticationmethodspolicy/authenticationMethodConfigurations/TemporaryAccessPass</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_authenticationMethodsX509Certificate</name>
+                <uri>policies/authenticationmethodspolicy/authenticationMethodConfigurations/x509Certificate</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_authorizationPolicy</name>
+                <uri>policies/authorizationPolicy</uri>
+            </request>
+            <request>
+                <name>graph_availableProviderTypes</name>
+                <uri>identity/identityProviders/availableProviderTypes</uri>
+            </request>
+            <request>
+                <name>graph_b2cAuthenticationMethodsPolicy</name>
+                <uri>policies/b2cAuthenticationMethodsPolicy</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_b2cUserFlows</name>
+                <uri>identity/b2cUserFlows</uri>
+                <api_version>beta</api_version>
+                <relationships>
+                    <relationship name="graph_b2cUserFlows_apiConnectorConfiguration" />
+                    <relationship name="graph_b2cUserFlows_userAttributeAssignments" />
+                    <relationship name="graph_b2cUserFlows_userflowIdentityProviders" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_b2xUserFlows</name>
+                <uri>identity/b2xUserFlows</uri>
+                <api_version>beta</api_version>
+                <relationships>
+                    <relationship name="graph_b2xUserFlows_apiConnectorConfiguration" />
+                    <relationship name="graph_b2xUserFlows_userAttributeAssignments" />
+                    <relationship name="graph_b2xUserFlows_userflowIdentityProviders" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_claimsMappingPolicies</name>
+                <uri>policies/claimsMappingPolicies</uri>
+                <relationships>
+                    <relationship name="graph_claimsMappingPolicy_appliesTo" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_conditionalAccessPolicies</name>
+                <uri>identity/conditionalAccess/policies</uri>
+            </request>
+            <request>
+                <name>graph_conditionalAccess_authenticationContextClassReferences</name>
+                <uri>identity/conditionalAccess/authenticationContextClassReferences</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_contacts</name>
+                <uri>contacts</uri>
+                <relationships>
+                    <relationship name="graph_contacts_memberOf" />
+                    <relationship name="graph_contacts_directReports" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_continuousAccessEvaluationPolicy</name>
+                <uri>identity/continuousAccessEvaluationPolicy</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_contracts</name>
+                <uri>contracts</uri>
+            </request>
+            <request>
+                <name>graph_credentialUserRegistrationCount</name>
+                <uri>reports/getCredentialUserRegistrationCount</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_credentialUserRegistrationDetails</name>
+                <uri>reports/credentialUserRegistrationDetails</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_crossTenantAccessPolicy</name>
+                <uri>policies/crossTenantAccessPolicy</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_crossTenantAccessPolicyDefault</name>
+                <uri>policies/crossTenantAccessPolicy/default</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_crossTenantAccessPolicyPartners</name>
+                <uri>policies/crossTenantAccessPolicy/partners</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_defaultAppManagementPolicy</name>
+                <uri>policies/defaultAppManagementPolicy</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_deleteditems_administrativeUnits</name>
+                <uri>directory/deleteditems/microsoft.graph.administrativeUnit</uri>
+            </request>
+            <request>
+                <name>graph_deleteditems_applications</name>
+                <uri>directory/deleteditems/microsoft.graph.application</uri>
+            </request>
+            <request>
+                <name>graph_deleteditems_devices</name>
+                <uri>directory/deletedItems/microsoft.graph.device</uri>
+            </request>
+            <request>
+                <name>graph_deleteditems_directoryRoles</name>
+                <uri>directory/deletedItems/microsoft.graph.directoryRole</uri>
+            </request>
+            <request>
+                <name>graph_deleteditems_directoryRoleTemplates</name>
+                <uri>directory/deletedItems/microsoft.graph.directoryRoleTemplate</uri>
+            </request>
+            <request>
+                <name>graph_deleteditems_groups</name>
+                <uri>directory/deletedItems/microsoft.graph.group</uri>
+                <select>
+                    <attribute name="assignedLabels" />
+                    <attribute name="assignedLicenses" />
+                    <attribute name="classification" />
+                    <attribute name="createdByAppId" />
+                    <attribute name="createdDateTime" />
+                    <attribute name="deletedDateTime" />
+                    <attribute name="description" />
+                    <attribute name="displayName" />
+                    <attribute name="expirationDateTime" />
+                    <attribute name="groupTypes" />
+                    <attribute name="id" />
+                    <attribute name="infoCatalogs" />
+                    <attribute name="isAssignableToRole" />
+                    <attribute name="licenseProcessingState" />
+                    <attribute name="mail" />
+                    <attribute name="mailEnabled" />
+                    <attribute name="mailNickname" />
+                    <attribute name="membershipRule" />
+                    <attribute name="membershipRuleProcessingState" />
+                    <attribute name="membershipRuleProcessingStatus" />
+                    <attribute name="onPremisesDomainName" />
+                    <attribute name="onPremisesLastSyncDateTime" />
+                    <attribute name="onPremisesNetBiosName" />
+                    <attribute name="onPremisesProvisioningErrors" />
+                    <attribute name="onPremisesSamAccountName" />
+                    <attribute name="onPremisesSecurityIdentifier" />
+                    <attribute name="onPremisesSyncEnabled" />
+                    <attribute name="preferredDataLocation" />
+                    <attribute name="preferredLanguage" />
+                    <attribute name="proxyAddresses" />
+                    <attribute name="renewedDateTime" />
+                    <attribute name="resourceBehaviorOptions" />
+                    <attribute name="resourceProvisioningOptions" />
+                    <attribute name="securityEnabled" />
+                    <attribute name="securityIdentifier" />
+                    <attribute name="theme" />
+                    <attribute name="unseenConversationsCount" />
+                    <attribute name="unseenMessagesCount" />
+                    <attribute name="visibility" />
+                </select>
+            </request>
+            <request>
+                <name>graph_deleteditems_servicePrincipals</name>
+                <uri>directory/deleteditems/microsoft.graph.servicePrincipal</uri>
+            </request>
+            <request>
+                <name>graph_deleteditems_users</name>
+                <uri>directory/deletedItems/microsoft.graph.user</uri>
+                <select>
+                    <attribute name="accountEnabled" />
+                    <attribute name="ageGroup" />
+                    <attribute name="assignedLicenses" />
+                    <attribute name="assignedPlans" />
+                    <attribute name="businessPhones" />
+                    <attribute name="city" />
+                    <attribute name="companyName" />
+                    <attribute name="consentProvidedForMinor" />
+                    <attribute name="country" />
+                    <attribute name="createdDateTime" />
+                    <attribute name="creationType" />
+                    <attribute name="deletedDateTime" />
+                    <attribute name="department" />
+                    <attribute name="displayName" />
+                    <attribute name="employeeHireDate" />
+                    <attribute name="employeeId" />
+                    <attribute name="employeeOrgData" />
+                    <attribute name="employeeType" />
+                    <attribute name="externalUserState" />
+                    <attribute name="externalUserStateChangeDateTime" />
+                    <attribute name="faxNumber" />
+                    <attribute name="givenName" />
+                    <attribute name="id" />
+                    <attribute name="identities" />
+                    <attribute name="imAddresses" />
+                    <attribute name="infoCatalogs" />
+                    <attribute name="isResourceAccount" />
+                    <attribute name="jobTitle" />
+                    <attribute name="lastPasswordChangeDateTime" />
+                    <attribute name="legalAgeGroupClassification" />
+                    <attribute name="licenseAssignmentStates" />
+                    <attribute name="mail" />
+                    <attribute name="mailNickname" />
+                    <attribute name="mobilePhone" />
+                    <attribute name="officeLocation" />
+                    <attribute name="onPremisesDistinguishedName" />
+                    <attribute name="onPremisesDomainName" />
+                    <attribute name="onPremisesExtensionAttributes" />
+                    <attribute name="onPremisesImmutableId" />
+                    <attribute name="onPremisesLastSyncDateTime" />
+                    <attribute name="onPremisesProvisioningErrors" />
+                    <attribute name="onPremisesSamAccountName" />
+                    <attribute name="onPremisesSecurityIdentifier" />
+                    <attribute name="onPremisesSyncEnabled" />
+                    <attribute name="onPremisesUserPrincipalName" />
+                    <attribute name="otherMails" />
+                    <attribute name="passwordPolicies" />
+                    <attribute name="passwordProfile" />
+                    <attribute name="postalCode" />
+                    <attribute name="preferredDataLocation" />
+                    <attribute name="preferredLanguage" />
+                    <attribute name="provisionedPlans" />
+                    <attribute name="proxyAddresses" />
+                    <attribute name="refreshTokensValidFromDateTime" />
+                    <attribute name="showInAddressList" />
+                    <attribute name="signInActivity" />
+                    <attribute name="signInSessionsValidFromDateTime" />
+                    <attribute name="state" />
+                    <attribute name="streetAddress" />
+                    <attribute name="surname" />
+                    <attribute name="usageLocation" />
+                    <attribute name="userPrincipalName" />
+                    <attribute name="userType" />
+                </select>
+            </request>
+            <request>
+                <name>graph_deviceRegistrationPolicy</name>
+                <uri>policies/deviceRegistrationPolicy</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_devices</name>
+                <uri>devices</uri>
+                <relationships>
+                    <relationship name="graph_devices_registeredOwners" />
+                    <relationship name="graph_devices_registeredUsers" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_directoryAudits</name>
+                <uri>auditLogs/directoryaudits?$top=100000</uri>
+            </request>
+            <request>
+                <name>graph_directoryRoles</name>
+                <uri>directoryRoles</uri>
+                <relationships>
+                    <relationship name="graph_directoryRoles_members" />
+                    <relationship name="graph_directoryRoles_scopedMembers" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_directoryRoleTemplates</name>
+                <uri>directoryRoleTemplates</uri>
+            </request>
+            <request>
+                <name>graph_directorySettingTemplates</name>
+                <uri>directorySettingTemplates</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_domains</name>
+                <uri>domains</uri>
+                <relationships>
+                    <relationship name="graph_domains_domainNameReferences" />
+                    <relationship name="graph_domains_serviceConfigurationRecords" />
+                    <relationship name="graph_domains_verificationDnsRecords" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_featureRolloutPolicies</name>
+                <uri>policies/featureRolloutPolicies</uri>
+            </request>
+            <request>
+                <name>graph_globalAdmins</name>
+                <uri>directoryRoles/roleTemplateId=62e90394-69f5-4237-9190-012177145e10/members</uri>
+                <relationships>
+                    <relationship name="graph_signIns" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_groups</name>
+                <uri>groups</uri>
+                <select>
+                    <attribute name="assignedLabels" />
+                    <attribute name="assignedLicenses" />
+                    <attribute name="classification" />
+                    <attribute name="createdByAppId" />
+                    <attribute name="createdDateTime" />
+                    <attribute name="deletedDateTime" />
+                    <attribute name="description" />
+                    <attribute name="displayName" />
+                    <attribute name="expirationDateTime" />
+                    <attribute name="groupTypes" />
+                    <attribute name="id" />
+                    <attribute name="infoCatalogs" />
+                    <attribute name="isAssignableToRole" />
+                    <attribute name="licenseProcessingState" />
+                    <attribute name="mail" />
+                    <attribute name="mailEnabled" />
+                    <attribute name="mailNickname" />
+                    <attribute name="membershipRule" />
+                    <attribute name="membershipRuleProcessingState" />
+                    <attribute name="membershipRuleProcessingStatus" />
+                    <attribute name="onPremisesDomainName" />
+                    <attribute name="onPremisesLastSyncDateTime" />
+                    <attribute name="onPremisesNetBiosName" />
+                    <attribute name="onPremisesProvisioningErrors" />
+                    <attribute name="onPremisesSamAccountName" />
+                    <attribute name="onPremisesSecurityIdentifier" />
+                    <attribute name="onPremisesSyncEnabled" />
+                    <attribute name="preferredDataLocation" />
+                    <attribute name="preferredLanguage" />
+                    <attribute name="proxyAddresses" />
+                    <attribute name="renewedDateTime" />
+                    <attribute name="resourceBehaviorOptions" />
+                    <attribute name="resourceProvisioningOptions" />
+                    <attribute name="securityEnabled" />
+                    <attribute name="securityIdentifier" />
+                    <attribute name="theme" />
+                    <attribute name="unseenConversationsCount" />
+                    <attribute name="unseenMessagesCount" />
+                    <attribute name="visibility" />
+                </select>
+                <relationships>
+                    <relationship name="graph_groups_appRoleAssignments" />
+                    <relationship name="graph_groups_memberOf" />
+                    <relationship name="graph_groups_members" />
+                    <relationship name="graph_groups_owners" />
+                    <relationship name="graph_groups_permissionGrants" />
+                    <relationship name="graph_groups_settings" />
+                    <relationship name="graph_groups_transitiveMembers" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_groupLifecyclePolicies</name>
+                <uri>groupLifecyclePolicies</uri>
+            </request>
+            <request>
+                <name>graph_groupSettings</name>
+                <uri>groupSettings</uri>
+            </request>
+            <request>
+                <name>graph_groupSettingTemplates</name>
+                <uri>groupSettingTemplates</uri>
+            </request>
+            <request>
+                <name>graph_homeRealmDiscoveryPolicies</name>
+                <uri>policies/homeRealmDiscoveryPolicies</uri>
+                <relationships>
+                    <relationship name="graph_homeRealmDiscoveryPolicies_appliesTo" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_identityProviders</name>
+                <uri>identity/identityProviders</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_identitySecurityDefaultsEnforcementPolicy</name>
+                <uri>policies/identitySecurityDefaultsEnforcementPolicy</uri>
+            </request>
+            <request>
+                <name>graph_mobileAppManagementPolicies</name>
+                <uri>policies/mobileAppManagementPolicies</uri>
+                <api_version>beta</api_version>
+                <relationships>
+                    <relationship name="graph_mobileAppManagementPolicies_includedGroups" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_mobileDeviceManagementPolicies</name>
+                <uri>policies/mobileDeviceManagementPolicies</uri>
+                <api_version>beta</api_version>
+                <relationships>
+                    <relationship name="graph_mobileDeviceManagementPolicies_includedGroups" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_namedLocations</name>
+                <uri>identity/conditionalAccess/namedLocations</uri>
+            </request>
+            <request>
+                <name>graph_oauth2PermissionGrants</name>
+                <uri>oauth2PermissionGrants</uri>
+            </request>
+            <request>
+                <name>graph_onPremisesPublishingProfiles_applicationProxy</name>
+                <uri>onPremisesPublishingProfiles/applicationProxy/</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_onPremisesPublishingProfiles_authentication</name>
+                <uri>onPremisesPublishingProfiles/authentication/</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_onPremisesPublishingProfiles_provisioning</name>
+                <uri>onPremisesPublishingProfiles/provisioning/</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_onPremisesPublishingProfilesAgents_adAdministration</name>
+                <uri>onPremisesPublishingProfiles/adAdministration/agents</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_onPremisesPublishingProfilesAgents_authentication</name>
+                <uri>onPremisesPublishingProfiles/authentication/agents</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_onPremisesPublishingProfilesAgents_exchangeOnline</name>
+                <uri>onPremisesPublishingProfiles/exchangeOnline/agents</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_onPremisesPublishingProfilesAgents_provisioning</name>
+                <uri>onPremisesPublishingProfiles/provisioning/agents</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_onPremisesPublishingProfilesConnectors_applicationProxy</name>
+                <uri>onPremisesPublishingProfiles/applicationProxy/connectors</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_onSignUpStartListeners</name>
+                <uri>identity/events/onSignupStart</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_organization</name>
+                <uri>organization</uri>
+                <relationships>
+                    <relationship name="graph_organization_certificateBasedAuthConfiguration" />
+                    <relationship name="graph_organization_itemInsights" />
+                    <relationship name="graph_organization_microsoftApplicationDataAccess" />
+                    <relationship name="graph_organization_profileCardProperties" />
+                    <relationship name="graph_organization_settings" />
+                    <relationship name="graph_pim_roleAssignments" />
+                    <relationship name="graph_pim_roleDefinitions" />
+                    <relationship name="graph_pim_roleSettings" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_permissionGrantPolicies</name>
+                <uri>policies/permissionGrantPolicies</uri>
+                <relationships>
+                    <relationship name="graph_permissionGrantPolicies_includes" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_pim_aadrolesResources</name>
+                <uri>privilegedAccess/aadroles/resources</uri>
+                <api_version>beta</api_version>
+                <relationships>
+                    <relationship name="graph_pim_aadrolesResources_roleAssignments" />
+                    <relationship name="graph_pim_aadrolesResources_roleDefinitions" />
+                    <relationship name="graph_pim_aadrolesResources_roleSettings" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_pim_aadGroupsResources</name>
+                <uri>privilegedAccess/aadGroups/resources</uri>
+                <api_version>beta</api_version>
+                <relationships>
+                    <relationship name="graph_pim_aadGroupsResources_roleAssignments" />
+                    <relationship name="graph_pim_aadGroupsResources_roleDefinitions" />
+                    <relationship name="graph_pim_aadGroupsResources_roleSettings" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_pim_azureResources</name>
+                <uri>privilegedAccess/azureResources/resources</uri>
+                <api_version>beta</api_version>
+                <relationships>
+                    <relationship name="graph_pim_azureResources_roleAssignments" />
+                    <relationship name="graph_pim_azureResources_roleDefinitions" />
+                    <relationship name="graph_pim_azureResources_roleSettings" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_provisioning</name>
+                <uri>auditLogs/provisioning?$top=100000</uri>
+            </request>
+            <request>
+                <name>graph_resourceNamespaces</name>
+                <uri>roleManagement/directory/resourceNamespaces</uri>
+                <api_version>beta</api_version>
+                <relationships>
+                    <relationship name="graph_resourceNamespaces_resourceActions" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_riskDetections</name>
+                <uri>identityProtection/riskDetections</uri>
+            </request>
+            <request>
+                <name>graph_riskyServicePrincipals</name>
+                <uri>identityProtection/riskyServicePrincipals</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_riskyUsers</name>
+                <uri>identityProtection/riskyUsers</uri>
+            </request>
+            <request>
+                <name>graph_roleDefinitions</name>
+                <uri>roleManagement/directory/roleDefinitions</uri>
+                <relationships>
+                    <relationship name="graph_roleDefinitions_roleAssignments" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_roleDefinitionsEntitlementManagement</name>
+                <uri>roleManagement/entitlementManagement/roleDefinitions</uri>
+                <relationships>
+                    <relationship name="graph_roleDefinitionsEntitlementManagement_roleAssignments" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_roleDefinitions_roleAssignmentScheduleInstances</name>
+                <uri>roleManagement/directory/roleAssignmentScheduleInstances</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_roleDefinitions_roleAssignmentScheduleRequests</name>
+                <uri>roleManagement/directory/roleAssignmentScheduleRequests</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_roleDefinitions_roleAssignmentSchedules</name>
+                <uri>roleManagement/directory/roleAssignmentSchedules</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_roleDefinitions_roleEligibilityScheduleInstances</name>
+                <uri>roleManagement/directory/roleEligibilityScheduleInstances</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_roleDefinitions_roleEligibilityScheduleRequests</name>
+                <uri>roleManagement/directory/roleEligibilityScheduleRequests</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_roleDefinitions_roleEligibilitySchedules</name>
+                <uri>roleManagement/directory/roleEligibilitySchedules</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_samlOrWsFedExternalDomainFederation</name>
+                <uri>directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation</uri>
+                <api_version>beta</api_version>
+                <relationships>
+                    <relationship name="graph_samlOrWsFedExternalDomainFederation_domains" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_schemaExtensions</name>
+                <uri>schemaExtensions</uri>
+            </request>
+            <request>
+                <name>graph_secureScores</name>
+                <uri>security/secureScores</uri>
+            </request>
+            <request>
+                <name>graph_secureScoreControlProfiles</name>
+                <uri>security/secureScoreControlProfiles</uri>
+            </request>
+            <request>
+                <name>graph_servicePrincipalRiskDetections</name>
+                <uri>identityProtection/servicePrincipalRiskDetections</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_servicePrincipals</name>
+                <uri>servicePrincipals</uri>
+                <relationships>
+                    <relationship name="graph_servicePrincipals_appRoleAssignedTo" />
+                    <relationship name="graph_servicePrincipals_appRoleAssignments" />
+                    <relationship name="graph_servicePrincipals_createdObjects" />
+                    <relationship name="graph_servicePrincipals_delegatedPermissionClassifications" />
+                    <relationship name="graph_servicePrincipals_oauth2PermissionGrants" />
+                    <relationship name="graph_servicePrincipals_ownedObjects" />
+                    <relationship name="graph_servicePrincipals_owners" />
+                    <relationship name="graph_pim_roleAssignments" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_settings</name>
+                <uri>settings</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_subscribedSkus</name>
+                <uri>subscribedSkus</uri>
+            </request>
+            <request>
+                <name>graph_subscriptions</name>
+                <uri>subscriptions</uri>
+            </request>
+            <request>
+                <name>graph_tokenIssuancePolicies</name>
+                <uri>policies/tokenIssuancePolicies</uri>
+                <relationships>
+                    <relationship name="graph_tokenIssuancePolicies_appliesTo" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_tokenLifetimePolicies</name>
+                <uri>policies/tokenLifetimePolicies</uri>
+                <relationships>
+                    <relationship name="graph_tokenLifetimePolicies_appliesTo" />
+                </relationships>
+            </request>
+            <request>
+                <name>graph_topSignIns</name>
+                <uri>auditLogs/signIns?$top=1000000</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_trustFrameworkPolicies</name>
+                <uri>trustFramework/policies</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_userCredentialUsageDetails</name>
+                <uri>reports/userCredentialUsageDetails</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_userFlowAttributes</name>
+                <uri>identity/userFlowAttributes</uri>
+            </request>
+            <request>
+                <name>graph_userRegistrationDetails</name>
+                <uri>reports/authenticationMethods/userRegistrationDetails</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_usersRegisteredByFeature</name>
+                <uri>reports/authenticationMethods/usersRegisteredByFeature(includedUserTypes='all',includedUserRoles='all')</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_usersRegisteredByMethod</name>
+                <uri>reports/authenticationMethods/usersRegisteredByMethod(includedUserTypes='all',includedUserRoles='all')</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_users</name>
+                <uri>users</uri>
+                <select>
+                    <attribute name="accountEnabled" />
+                    <attribute name="ageGroup" />
+                    <attribute name="assignedLicenses" />
+                    <attribute name="assignedPlans" />
+                    <attribute name="businessPhones" />
+                    <attribute name="city" />
+                    <attribute name="companyName" />
+                    <attribute name="consentProvidedForMinor" />
+                    <attribute name="country" />
+                    <attribute name="createdDateTime" />
+                    <attribute name="creationType" />
+                    <attribute name="deletedDateTime" />
+                    <attribute name="department" />
+                    <attribute name="displayName" />
+                    <attribute name="employeeHireDate" />
+                    <attribute name="employeeId" />
+                    <attribute name="employeeOrgData" />
+                    <attribute name="employeeType" />
+                    <attribute name="externalUserState" />
+                    <attribute name="externalUserStateChangeDateTime" />
+                    <attribute name="faxNumber" />
+                    <attribute name="givenName" />
+                    <attribute name="id" />
+                    <attribute name="identities" />
+                    <attribute name="imAddresses" />
+                    <attribute name="infoCatalogs" />
+                    <attribute name="isResourceAccount" />
+                    <attribute name="jobTitle" />
+                    <attribute name="lastPasswordChangeDateTime" />
+                    <attribute name="legalAgeGroupClassification" />
+                    <attribute name="licenseAssignmentStates" />
+                    <attribute name="mail" />
+                    <attribute name="mailNickname" />
+                    <attribute name="mobilePhone" />
+                    <attribute name="officeLocation" />
+                    <attribute name="onPremisesDistinguishedName" />
+                    <attribute name="onPremisesDomainName" />
+                    <attribute name="onPremisesExtensionAttributes" />
+                    <attribute name="onPremisesImmutableId" />
+                    <attribute name="onPremisesLastSyncDateTime" />
+                    <attribute name="onPremisesProvisioningErrors" />
+                    <attribute name="onPremisesSamAccountName" />
+                    <attribute name="onPremisesSecurityIdentifier" />
+                    <attribute name="onPremisesSyncEnabled" />
+                    <attribute name="onPremisesUserPrincipalName" />
+                    <attribute name="otherMails" />
+                    <attribute name="passwordPolicies" />
+                    <attribute name="passwordProfile" />
+                    <attribute name="postalCode" />
+                    <attribute name="preferredDataLocation" />
+                    <attribute name="preferredLanguage" />
+                    <attribute name="provisionedPlans" />
+                    <attribute name="proxyAddresses" />
+                    <attribute name="refreshTokensValidFromDateTime" />
+                    <attribute name="showInAddressList" />
+                    <attribute name="signInActivity" />
+                    <attribute name="signInSessionsValidFromDateTime" />
+                    <attribute name="state" />
+                    <attribute name="streetAddress" />
+                    <attribute name="surname" />
+                    <attribute name="usageLocation" />
+                    <attribute name="userPrincipalName" />
+                    <attribute name="userType" />
+                </select>
+                <relationships>
+                    <relationship name="graph_users_appRoleAssignments" />
+                    <relationship name="graph_users_createdObjects" />
+                    <relationship name="graph_users_directReports" />
+                    <relationship name="graph_users_licenseDetails" />
+                    <relationship name="graph_users_oauth2PermissionGrants" />
+                    <relationship name="graph_users_ownedObjects" />
+                    <relationship name="graph_users_ownedDevices" />
+                    <relationship name="graph_users_registeredDevices" />
+                    <relationship name="graph_users_scopedRoleMemberOf" />
+                </relationships>
+            </request>
+        </requests>
+        <relationships>
+            <relationship>
+                <name>graph_accessReviewsDefinitions_instances</name>
+                <uri>identityGovernance/accessReviews/definitions/[1]/instances</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_administrativeUnits_members</name>
+                <uri>directory/administrativeUnits/[1]/members</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_administrativeUnits_scopedRoleMembers</name>
+                <uri>directory/administrativeUnits/[1]/scopedRoleMembers</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_appConsentRequests_userConsentRequests</name>
+                <uri>identityGovernance/appConsent/appConsentRequests/[1]/userConsentRequests</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_applications_extensionProperties</name>
+                <uri>applications/[1]/extensionProperties</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_applications_owners</name>
+                <uri>applications/[1]/owners</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_appManagementPolicies_appliesTo</name>
+                <uri>policies/appManagementPolicies/[1]/appliesTo</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_b2cUserFlows_apiConnectorConfiguration</name>
+                <uri>identity/b2cUserFlows/[1]/apiConnectorConfiguration</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_b2cUserFlows_userAttributeAssignments</name>
+                <uri>identity/b2cUserFlows/[1]/userAttributeAssignments</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_b2cUserFlows_userflowIdentityProviders</name>
+                <uri>identity/b2cUserFlows/[1]/userflowIdentityProviders</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_b2xUserFlows_apiConnectorConfiguration</name>
+                <uri>identity/b2xUserFlows/[1]/apiConnectorConfiguration</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_b2xUserFlowss_userAttributeAssignments</name>
+                <uri>identity/b2xUserFlows/[1]/userAttributeAssignments</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_b2xUserFlows_userflowIdentityProviders</name>
+                <uri>identity/b2xUserFlows/[1]/userflowIdentityProviders</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_claimsMappingPolicy_appliesTo</name>
+                <uri>policies/claimsMappingPolicies/[1]/appliesTo</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_contacts_memberOf</name>
+                <uri>contacts/[1]/memberOf</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_contacts_directReports</name>
+                <uri>contacts/[1]/directReports</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_devices_registeredOwners</name>
+                <uri>devices/[1]/registeredOwners</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_devices_registeredUsers</name>
+                <uri>devices/[1]/registeredUsers</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_directoryRoles_members</name>
+                <uri>directoryRoles/[1]/members</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_directoryRoles_scopedMembers</name>
+                <uri>directoryRoles/[1]/scopedMembers</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_domains_domainNameReferences</name>
+                <uri>domains/[1]/domainNameReferences</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_domains_serviceConfigurationRecords</name>
+                <uri>domains/[1]/serviceConfigurationRecords</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_domains_verificationDnsRecords</name>
+                <uri>domains/[1]/verificationDnsRecords</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_groups_appRoleAssignments</name>
+                <uri>groups/[1]/appRoleAssignments</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_groups_memberOf</name>
+                <uri>groups/[1]/memberOf</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_groups_members</name>
+                <uri>groups/[1]/members</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_groups_owners</name>
+                <uri>groups/[1]/owners</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_groups_permissionGrants</name>
+                <uri>groups/[1]/permissionGrants</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <conditions>
+                    <condition>
+                        <parameter>groupTypes</parameter>
+                        <operator>contains</operator>
+                        <value>Unified</value>
+                    </condition>
+                </conditions>
+            </relationship>
+            <relationship>
+                <name>graph_groups_settings</name>
+                <uri>groups/[1]/settings</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_groups_transitiveMembers</name>
+                <uri>groups/[1]/transitiveMembers</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_homeRealmDiscoveryPolicies_appliesTo</name>
+                <uri>policies/homeRealmDiscoveryPolicies/[1]/appliesTo</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_mobileDeviceManagementPolicies_includedGroups</name>
+                <uri>policies/mobileDeviceManagementPolicies/[1]/includedGroups</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_mobileAppManagementPolicies_includedGroups</name>
+                <uri>policies/mobileAppManagementPolicies/[1]/includedGroups</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_organization_certificateBasedAuthConfiguration</name>
+                <uri>organization/[1]/certificateBasedAuthConfiguration</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_organization_itemInsights</name>
+                <uri>organization/[1]/settings/itemInsights</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_organization_microsoftApplicationDataAccess</name>
+                <uri>organization/[1]/settings/microsoftApplicationDataAccess</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_organization_profileCardProperties</name>
+                <uri>organization/[1]/settings/profileCardProperties</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_organization_settings</name>
+                <uri>organization/[1]/settings</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_permissionGrantPolicies_includes</name>
+                <uri>policies/permissionGrantPolicies/[1]/includes</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_pim_aadGroupsResources_roleAssignments</name>
+                <uri>privilegedAccess/aadGroups/resources/[1]/roleAssignments</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_pim_aadGroupsResources_roleDefinitions</name>
+                <uri>privilegedAccess/aadGroups/resources/[1]/roleDefinitions</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_pim_aadGroupsResources_roleSettings</name>
+                <uri>privilegedAccess/aadGroups/resources/[1]/roleSettings</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_pim_aadrolesResources_roleAssignments</name>
+                <uri>privilegedAccess/aadroles/resources/[1]/roleAssignments</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_pim_aadrolesResources_roleDefinitions</name>
+                <uri>privilegedAccess/aadroles/resources/[1]/roleDefinitions</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_pim_aadrolesResources_roleSettings</name>
+                <uri>privilegedAccess/aadroles/resources/[1]/roleSettings</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_pim_azureResources_roleAssignments</name>
+                <uri>privilegedAccess/azureResources/resources/[1]/roleAssignments</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_pim_azureResources_roleDefinitions</name>
+                <uri>privilegedAccess/azureResources/resources/[1]/roleDefinitions</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_pim_azureResources_roleSettings</name>
+                <uri>privilegedAccess/azureResources/resources/[1]/roleSettings</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_pim_roleAssignments</name>
+                <uri>privilegedAccess/aadroles/resources/[1]/roleAssignments</uri>
+                <param>$expand=roleDefinition($select=id,type,displayName,templateId)&amp;$filter=resourceId eq &apos;[1]&apos;</param>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_pim_roleDefinitions</name>
+                <uri>privilegedAccess/aadroles/resources/[1]/roleDefinitions</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_pim_roleSettings</name>
+                <uri>privilegedAccess/aadroles/resources/[1]/roleSettings</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_resourceNamespaces_resourceActions</name>
+                <uri>roleManagement/directory/resourceNamespaces/[1]/resourceActions</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_roleDefinitions_roleAssignments</name>
+                <uri>roleManagement/directory/roleAssignments</uri>
+                <param>$filter=roleDefinitionId eq &apos;[1]&apos;</param>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_roleDefinitionsEntitlementManagement_roleAssignments</name>
+                <uri>roleManagement/entitlementManagement/roleAssignments</uri>
+                <param>$filter=roleDefinitionId eq &apos;[1]&apos;</param>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_samlOrWsFedExternalDomainFederation_domains</name>
+                <uri>directory/federationConfigurations/microsoft.graph.samlOrWsFedExternalDomainFederation/[1]/domains</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_signIns</name>
+                <uri>auditLogs/signIns</uri>
+                <param>$filter=userId eq &apos;[1]&apos;</param>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_appRoleAssignments</name>
+                <uri>users/[1]/appRoleAssignments</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_authenticationEmailMethods</name>
+                <uri>users/[1]/authentication/emailMethods</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_authenticationFido2Methods</name>
+                <uri>users/[1]/authentication/fido2Methods</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_authenticationMethods</name>
+                <uri>users/[1]/authentication/methods</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_authenticationMicrosoftAuthenticatorMethods</name>
+                <uri>users/[1]/authentication/microsoftAuthenticatorMethods</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_authenticationPasswordMethods</name>
+                <uri>users/[1]/authentication/passwordMethods</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_authenticationPhoneMethods</name>
+                <uri>users/[1]/authentication/phoneMethods</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_authenticationSoftwareOathMethods</name>
+                <uri>users/[1]/authentication/softwareOathMethods</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_authenticationTemporaryAccessPassMethods</name>
+                <uri>users/[1]/authentication/temporaryAccessPassMethods</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_authenticationWindowsHelloForBusinessMethods</name>
+                <uri>users/[1]/authentication/windowsHelloForBusinessMethods</uri>
+                <api_version>beta</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_createdObjects</name>
+                <uri>users/[1]/createdObjects</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_users_directReports</name>
+                <uri>users/[1]/directReports</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_users_licenseDetails</name>
+                <uri>users/[1]/licenseDetails</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_oauth2PermissionGrants</name>
+                <uri>users/[1]/oauth2PermissionGrants</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_ownedDevices</name>
+                <uri>users/[1]/ownedDevices</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_ownedObjects</name>
+                <uri>users/[1]/ownedObjects</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_users_registeredDevices</name>
+                <uri>users/[1]/registeredDevices</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_scopedRoleMemberOf</name>
+                <uri>users/[1]/scopedRoleMemberOf</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_users_settings</name>
+                <uri>users/[1]/settings</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_servicePrincipals_appRoleAssignedTo</name>
+                <uri>servicePrincipals/[1]/appRoleAssignedTo</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_servicePrincipals_appRoleAssignments</name>
+                <uri>servicePrincipals/[1]/appRoleAssignments</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_servicePrincipals_createdObjects</name>
+                <uri>servicePrincipals/[1]/createdObjects</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_servicePrincipals_delegatedPermissionClassifications</name>
+                <uri>servicePrincipals/[1]/delegatedPermissionClassifications</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_servicePrincipals_oauth2PermissionGrants</name>
+                <uri>servicePrincipals/[1]/oauth2PermissionGrants</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_servicePrincipals_ownedObjects</name>
+                <uri>servicePrincipals/[1]/ownedObjects</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_servicePrincipals_owners</name>
+                <uri>servicePrincipals/[1]/owners</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+                <select>
+                    <attribute name="id" />
+                    <attribute name="displayName" />
+                </select>
+            </relationship>
+            <relationship>
+                <name>graph_tokenIssuancePolicies_appliesTo</name>
+                <uri>policies/tokenIssuancePolicies/[1]/appliesTo</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>graph_tokenLifetimePolicies_appliesTo</name>
+                <uri>policies/tokenLifetimePolicies/[1]/appliesTo</uri>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+        </relationships>
+    </service>
+    <service>
+        <name>intAPI</name>
+        <description>Microsoft Graph Internal</description>
+        <base_url>https://graph.windows.net/</base_url>
+        <uri_scheme>[TENANT]/[URI]?api-version=[VERSION][PARAMS]</uri_scheme>
+        <client_id>1950a258-227b-4e31-a9cf-717495945fc2</client_id>
+        <api_version>1.61-internal</api_version>
+        <error_code>odata.error/code</error_code>
+        <error_message>odata.error/message/value</error_message>
+        <next_link>odata.nextLink</next_link>
+        <requests>
+            <request>
+                <name>int_deviceConfiguration</name>
+                <uri>deviceConfiguration</uri>
+            </request>
+            <request>
+                <name>int_directoryRoles</name>
+                <uri>directoryRoles</uri>
+                <relationships>
+                    <relationship name="int_directoryRoles_members" />
+                </relationships>
+            </request>
+            <request>
+                <name>int_directoryRoleTemplates</name>
+                <uri>directoryRoleTemplates</uri>
+            </request>
+            <request>
+                <name>int_domains</name>
+                <uri>domains</uri>
+                <keys>
+                    <key name="[TENANT]">myorganization</key>
+                    <key name="[VERSION]">1.6</key>
+                </keys>
+            </request>
+            <request>
+                <name>int_oauth2PermissionGrants</name>
+                <uri>oauth2PermissionGrants</uri>
+            </request>
+            <request>
+                <name>int_policies</name>
+                <uri>policies</uri>
+            </request>
+            <request>
+                <name>int_roleDefinitions</name>
+                <uri>roleDefinitions</uri>
+            </request>
+            <request>
+                <name>int_settings</name>
+                <uri>settings</uri>
+            </request>
+            <request>
+                <name>int_tenantDetails</name>
+                <uri>tenantDetails</uri>
+            </request>
+            <request>
+                <name>int_userStrongAuthenticationDetails</name>
+                <uri>users</uri>
+            </request>
+        </requests>
+        <relationships>
+            <relationship>
+                <name>int_directoryRoles_members</name>
+                <uri>directoryRoles/[1]/members</uri>
+                <keys>
+                    <key name="[1]">objectId</key>
+                </keys>
+            </relationship>
+        </relationships>
+    </service>
+    <service>
+        <name>mgmtAPI</name>
+        <description>Microsoft Azure Management</description>
+        <base_url>https://management.azure.com/</base_url>
+        <uri_scheme>[URI]?api-version=[VERSION][PARAMS]</uri_scheme>
+        <api_version>2020-08-01</api_version>
+        <error_code>error/code</error_code>
+        <error_message>error/message</error_message>
+        <next_link>nextLink</next_link>
+        <requests>
+            <request>
+                <name>mgmt_authorizationOperations</name>
+                <uri>providers/Microsoft.Authorization/operations</uri>
+                <api_version>2017-05-01</api_version>
+            </request>
+            <request>
+                <name>mgmt_managedIdentities</name>
+                <uri>providers/Microsoft.ManagedIdentity/operations</uri>
+                <api_version>2018-11-30</api_version>
+            </request>
+            <request>
+                <name>mgmt_managementGroups</name>
+                <uri>providers/Microsoft.Management/managementGroups</uri>
+                <api_version>2020-10-01</api_version>
+                <relationships>
+                    <relationship name="mgmt_managementGroups_descendants" />
+                    <relationship name="mgmt_managementGroups_roleAssignments" />
+                    <relationship name="mgmt_managementGroups_roleDefinitions" />
+                    <relationship name="mgmt_managementGroups_policyDefinitions" />
+                    <relationship name="mgmt_managementGroups_settings" />
+                </relationships>
+            </request>
+            <request>
+                <name>mgmt_operations</name>
+                <uri>providers/Microsoft.Features/operations</uri>
+                <api_version>2015-12-01</api_version>
+            </request>
+            <request>
+                <name>mgmt_operations2</name>
+                <uri>providers/Microsoft.Solutions/operations</uri>
+                <api_version>2019-07-01</api_version>
+            </request>
+            <request>
+                <name>mgmt_operations3</name>
+                <uri>providers/Microsoft.Management/operations</uri>
+                <api_version>2020-10-01</api_version>
+            </request>
+            <request>
+                <name>mgmt_operations4</name>
+                <uri>providers/Microsoft.Resources/operations</uri>
+                <api_version>2015-01-01</api_version>
+            </request>
+            <request>
+                <name>mgmt_providerOperationsMetadata</name>
+                <uri>providers/Microsoft.Authorization/providerOperations</uri>
+                <api_version>2018-07-01</api_version>
+            </request>
+            <request>
+                <name>mgmt_providerADHybridHealthService_AadSyncService</name>
+                <uri>providers/Microsoft.ADHybridHealthService/services</uri>
+                <param>serviceType=AadSyncService</param>
+                <mandatory>1</mandatory>
+                <api_version>2014-01-01</api_version>
+                <relationships>
+                    <relationship name="mgmt_providerADHybridHealthService_aadSyncSyncErrorReport" />
+                    <relationship name="mgmt_providerADHybridHealthService_counts" />
+                    <relationship name="mgmt_providerADHybridHealthService_servicemembers" />
+                </relationships>
+            </request>
+            <request>
+                <name>mgmt_providerADHybridHealthService_AdDomainService</name>
+                <uri>providers/Microsoft.ADHybridHealthService/services</uri>
+                <param>serviceType=AdDomainService</param>
+                <mandatory>1</mandatory>
+                <api_version>2014-01-01</api_version>
+                <relationships>
+                    <relationship name="mgmt_providerADHybridHealthService_aadSyncSyncErrorReport" />
+                    <relationship name="mgmt_providerADHybridHealthService_counts" />
+                    <relationship name="mgmt_providerADHybridHealthService_servicemembers" />
+                </relationships>
+            </request>
+            <request>
+                <name>mgmt_providerADHybridHealthService_AdFederationService</name>
+                <uri>providers/Microsoft.ADHybridHealthService/services</uri>
+                <param>serviceType=AdFederationService</param>
+                <mandatory>1</mandatory>
+                <api_version>2014-01-01</api_version>
+                <relationships>
+                    <relationship name="mgmt_providerADHybridHealthService_aadSyncSyncErrorReport" />
+                    <relationship name="mgmt_providerADHybridHealthService_counts" />
+                    <relationship name="mgmt_providerADHybridHealthService_servicemembers" />
+                </relationships>
+            </request>
+            <request>
+                <name>mgmt_providerADHybridHealthServiceConfiguration</name>
+                <uri>providers/Microsoft.ADHybridHealthService/configuration</uri>
+                <api_version>2014-01-01</api_version>
+                <mandatory>1</mandatory>
+            </request>
+            <request>
+                <name>mgmt_providerADHybridHealthServicePremiumCheck_AadSyncService</name>
+                <uri>providers/Microsoft.ADHybridHealthService/services/GetServices/PremiumCheck</uri>
+                <param>serviceType=AadSyncService</param>
+                <api_version>2014-01-01</api_version>
+                <mandatory>1</mandatory>
+            </request>
+            <request>
+                <name>mgmt_providerADHybridHealthServicePremiumCheck_AdDomainService</name>
+                <uri>providers/Microsoft.ADHybridHealthService/services/GetServices/PremiumCheck</uri>
+                <param>serviceType=AdDomainService</param>
+                <api_version>2014-01-01</api_version>
+                <mandatory>1</mandatory>
+            </request>
+            <request>
+                <name>mgmt_providerADHybridHealthServicePremiumCheck_AdFederationService</name>
+                <uri>providers/Microsoft.ADHybridHealthService/services/GetServices/PremiumCheck</uri>
+                <param>serviceType=AdFederationService</param>
+                <api_version>2014-01-01</api_version>
+                <mandatory>1</mandatory>
+            </request>
+            <request>
+                <name>mgmt_providers</name>
+                <uri>providers</uri>
+                <api_version>2020-08-01</api_version>
+                <mandatory>1</mandatory>
+            </request>
+            <request>
+                <name>mgmt_subscriptions</name>
+                <uri>subscriptions</uri>
+                <api_version>2020-08-01</api_version>
+                <relationships>
+                    <relationship name="mgmt_subscriptions_applications" />
+                    <relationship name="mgmt_subscriptions_applicationSecurityGroups" />
+                    <relationship name="mgmt_subscriptions_automationAccounts" />
+                    <relationship name="mgmt_subscriptions_availabilitySets" />
+                    <relationship name="mgmt_subscriptions_azureFirewalls" />
+                    <relationship name="mgmt_subscriptions_bastionHosts" />
+                    <relationship name="mgmt_subscriptions_cdnProfiles" />
+                    <relationship name="mgmt_subscriptions_classicAdministrators" />
+                    <relationship name="mgmt_subscriptions_deployments" />
+                    <relationship name="mgmt_subscriptions_disks" />
+                    <relationship name="mgmt_subscriptions_eventHubNamespaces" />
+                    <relationship name="mgmt_subscriptions_features" />
+                    <relationship name="mgmt_subscriptions_images" />
+                    <relationship name="mgmt_subscriptions_insightsComponents" />
+                    <relationship name="mgmt_subscriptions_iotApps" />
+                    <relationship name="mgmt_subscriptions_iotHubs" />
+                    <relationship name="mgmt_subscriptions_loadBalancers" />
+                    <relationship name="mgmt_subscriptions_locks" />
+                    <relationship name="mgmt_subscriptions_mediaservices" />
+                    <relationship name="mgmt_subscriptions_networkInterfaces" />
+                    <relationship name="mgmt_subscriptions_networkSecurityGroups" />
+                    <relationship name="mgmt_subscriptions_networkWatchers" />
+                    <relationship name="mgmt_subscriptions_policyAssignments" />
+                    <relationship name="mgmt_subscriptions_policyExemptions" />
+                    <relationship name="mgmt_subscriptions_publicIPAddresses" />
+                    <relationship name="mgmt_subscriptions_providers" />
+                    <relationship name="mgmt_subscriptions_recoveryVaults" />
+                    <relationship name="mgmt_subscriptions_resources" />
+                    <relationship name="mgmt_subscriptions_resourceLinks" />
+                    <relationship name="mgmt_subscriptions_resourceGroups" />
+                    <relationship name="mgmt_subscriptions_restorePointCollections" />
+                    <relationship name="mgmt_subscriptions_roleAssignments" />
+                    <relationship name="mgmt_subscriptions_roleDefinitions" />
+                    <relationship name="mgmt_subscriptions_routeTables" />
+                    <relationship name="mgmt_subscriptions_securityContacts" />
+                    <relationship name="mgmt_subscriptions_servers" />
+                    <relationship name="mgmt_subscriptions_sqlServers" />
+                    <relationship name="mgmt_subscriptions_sqlVirtualMachines" />
+                    <relationship name="mgmt_subscriptions_snapshots" />
+                    <relationship name="mgmt_subscriptions_storageAccounts" />
+                    <relationship name="mgmt_subscriptions_systemAssignedIdentities" />
+                    <relationship name="mgmt_subscriptions_systemTopics" />
+                    <relationship name="mgmt_subscriptions_trafficmanagerprofiles" />
+                    <relationship name="mgmt_subscriptions_userAssignedIdentities" />
+                    <relationship name="mgmt_subscriptions_vaults" />
+                    <relationship name="mgmt_subscriptions_virtualMachines" />
+                    <relationship name="mgmt_subscriptions_virtualNetworks" />
+                    <relationship name="mgmt_subscriptions_webapps" />
+                    <relationship name="mgmt_subscriptions_workspaces" />
+                </relationships>
+            </request>
+            <request>
+                <name>mgmt_sync_adds</name>
+                <uri>providers/Microsoft.ADHybridHealthService/services/GetServices/PremiumCheck</uri>
+                <api_version>2014-01-01</api_version>
+                <param>serviceType=AdDomainService</param>
+            </request>
+            <request>
+                <name>mgmt_sync_adfs</name>
+                <uri>providers/Microsoft.ADHybridHealthService/services/GetServices/PremiumCheck</uri>
+                <api_version>2014-01-01</api_version>
+                <param>serviceType=AdFederationService</param>
+            </request>
+            <request>
+                <name>mgmt_sync_adSyncService</name>
+                <uri>providers/Microsoft.ADHybridHealthService/services/GetServices/PremiumCheck</uri>
+                <api_version>2014-01-01</api_version>
+                <param>serviceType=AadSyncService</param>
+                <mandatory>1</mandatory>
+            </request>
+            <request>
+                <name>mgmt_sync_config</name>
+                <uri>providers/Microsoft.ADHybridHealthService/configuration</uri>
+                <api_version>2014-01-01</api_version>
+                <mandatory>1</mandatory>
+            </request>
+            <request>
+                <name>mgmt_tenants</name>
+                <uri>tenants</uri>
+                <api_version>2020-08-01</api_version>
+                <mandatory>1</mandatory>
+            </request>
+        </requests>
+        <relationships>
+            <relationship>
+                <name>mgmt_managementGroups_descendants</name>
+                <uri>providers/Microsoft.Management/managementGroups/[1]/descendants</uri>
+                <api_version>2021-04-01</api_version>
+                <keys>
+                    <key name="[1]">name</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_managementGroups_roleAssignments</name>
+                <uri>[1]/providers/Microsoft.Authorization/roleAssignments</uri>
+                <api_version>2018-07-01</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_managementGroups_roleDefinitions</name>
+                <uri>[1]/providers/Microsoft.Authorization/roleDefinitions</uri>
+                <api_version>2018-07-01</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_managementGroups_policyDefinitions</name>
+                <uri>providers/Microsoft.Management/managementGroups/[1]/providers/Microsoft.Authorization/policyDefinitions</uri>
+                <api_version>2020-08-01</api_version>
+                <keys>
+                    <key name="[1]">name</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_managementGroups_settings</name>
+                <uri>providers/Microsoft.Management/managementGroups/[1]/settings</uri>
+                <api_version>2021-04-01</api_version>
+                <keys>
+                    <key name="[1]">name</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_providerADHybridHealthService_aadSyncSyncErrorReport</name>
+                <uri>providers/Microsoft.ADHybridHealthService/services/[1]/CheckServiceFeatureAvailibility/aadSyncSyncErrorReport</uri>
+                <api_version>2014-01-01</api_version>
+                <keys>
+                    <key name="[1]">serviceName</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_providerADHybridHealthService_counts</name>
+                <uri>providers/Microsoft.ADHybridHealthService/services/[1]/exporterrors/counts</uri>
+                <api_version>2014-01-01</api_version>
+                <keys>
+                    <key name="[1]">serviceName</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_providerADHybridHealthService_servicemembers</name>
+                <uri>providers/Microsoft.ADHybridHealthService/services/[1]/servicemembers</uri>
+                <api_version>2014-01-01</api_version>
+                <keys>
+                    <key name="[1]">serviceName</key>
+                </keys>
+                <relationships>
+                    <relationship name="mgmt_providerADHybridHealthService_servicemembers_details" />
+                    <relationship name="mgmt_providerADHybridHealthService_servicemembers_serviceconfiguration" />
+                    <relationship name="mgmt_providerADHybridHealthService_servicemembers_status" />
+                </relationships>
+            </relationship>
+            <relationship>
+                <name>mgmt_providerADHybridHealthService_servicemembers_details</name>
+                <uri>[URL]/[1]</uri>
+                <api_version>2014-01-01</api_version>
+                <keys>
+                    <key name="[1]">serviceMemberId</key>
+                    <key name="[URL]">KEEP_URL</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_providerADHybridHealthService_servicemembers_serviceconfiguration</name>
+                <uri>[URL]/[1]/serviceconfiguration</uri>
+                <api_version>2014-01-01</api_version>
+                <keys>
+                    <key name="[1]">serviceMemberId</key>
+                    <key name="[URL]">KEEP_URL</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_providerADHybridHealthService_servicemembers_status</name>
+                <uri>[URL]/[1]/alerts</uri>
+                <api_version>2014-01-01</api_version>
+                <keys>
+                    <key name="[1]">serviceMemberId</key>
+                    <key name="[URL]">KEEP_URL</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_applications</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Solutions/applications</uri>
+                <api_version>2019-07-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_applicationSecurityGroups</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Network/applicationSecurityGroups</uri>
+                <api_version>2020-11-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_automationAccounts</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Automation/automationAccounts</uri>
+                <api_version>2015-10-31</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+                <relationships>
+                    <relationship name="mgmt_subscriptions_automationAccounts_runbooks" />
+                </relationships>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_automationAccounts_runbooks</name>
+                <uri>[1]/runbooks</uri>
+                <api_version>2015-10-31</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_availabilitySets</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Compute/availabilitySets</uri>
+                <api_version>2021-07-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_azureFirewalls</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Network/azureFirewalls</uri>
+                <api_version>2020-11-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_bastionHosts</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Network/bastionHosts</uri>
+                <api_version>2020-11-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_blobContainers</name>
+                <uri>[1]/blobServices/default/containers</uri>
+                <api_version>2021-01-01</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_blobServices</name>
+                <uri>[1]/blobServices</uri>
+                <api_version>2021-01-01</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_cdnProfiles</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Cdn/profiles</uri>
+                <api_version>2019-12-31</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+                <relationships>
+                    <relationship name="mgmt_subscriptions_cdnProfiles_endpoints" />
+                </relationships>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_cdnProfiles_endpoints</name>
+                <uri>[1]/endpoints</uri>
+                <api_version>2019-12-31</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_classicAdministrators</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Authorization/classicAdministrators</uri>
+                <api_version>2015-06-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_deployments</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Resources/deployments</uri>
+                <api_version>2020-08-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_disks</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Compute/disks</uri>
+                <api_version>2020-12-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_eventHubNamespaces</name>
+                <uri>subscriptions/[1]/providers/Microsoft.EventHub/namespaces</uri>
+                <api_version>2017-04-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_features</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Features/features</uri>
+                <api_version>2015-12-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_images</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Compute/images</uri>
+                <api_version>2021-03-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_insightsComponents</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Insights/components</uri>
+                <api_version>2015-05-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_iotApps</name>
+                <uri>subscriptions/[1]/providers/Microsoft.IoTCentral/iotApps</uri>
+                <api_version>2021-06-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_iotHubs</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Devices/IotHubs</uri>
+                <api_version>2018-04-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_loadBalancers</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Network/loadBalancers</uri>
+                <api_version>2021-03-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_locks</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Authorization/locks</uri>
+                <api_version>2017-04-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_mediaservices</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Media/mediaservices</uri>
+                <api_version>2021-06-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+                <relationships>
+                    <relationship name="mgmt_subscriptions_mediaservices_streamingEndpoints" />
+                </relationships>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_mediaservices_streamingEndpoints</name>
+                <uri>[1]/streamingEndpoints</uri>
+                <api_version>2021-06-01</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_networkInterfaces</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Network/networkInterfaces</uri>
+                <api_version>2021-02-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_networkSecurityGroups</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Network/networkSecurityGroups</uri>
+                <api_version>2021-02-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_networkWatchers</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Network/networkWatchers</uri>
+                <api_version>2021-02-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_policyAssignments</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Authorization/policyAssignments</uri>
+                <api_version>2020-08-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_policyExemptions</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Authorization/policyExemptions</uri>
+                <api_version>2020-07-01-preview</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_providers</name>
+                <uri>subscriptions/[1]/providers</uri>
+                <api_version>2020-08-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_publicIPAddresses</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Network/publicIPAddresses</uri>
+                <api_version>2021-02-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_recoveryVaults</name>
+                <uri>subscriptions/[1]/providers/Microsoft.RecoveryServices/vaults</uri>
+                <api_version>2016-06-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_resourceGroups</name>
+                <uri>subscriptions/[1]/resourcegroups</uri>
+                <api_version>2020-08-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+                <relationships>
+                    <relationship name="mgmt_subscriptions_resourceGroups_resources" />
+                    <relationship name="mgmt_subscriptions_resourceGroups_virtualNetworkGateways" />
+                </relationships>
+            </relationship>
+            <relationship name="mgmt_subscriptions_resourceGroups_resources">
+                <uri>[1]/resources</uri>
+                <api>managementAPI</api>
+                <apiVersion>2020-10-01</apiVersion>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_resources</name>
+                <uri>subscriptions/[1]/resources</uri>
+                <api_version>2020-08-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_resourceGroups_virtualNetworkGateways</name>
+                <uri>[1]/providers/Microsoft.Network/virtualNetworkGateways</uri>
+                <api_version>2020-11-01</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_resourceLinks</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Resources/links</uri>
+                <api_version>2020-08-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_resources</name>
+                <uri>subscriptions/[1]/resources</uri>
+                <api_version>2020-08-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_restorePointCollections</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Compute/restorePointCollections</uri>
+                <api_version>2021-07-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_roleAssignments</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Authorization/roleAssignments</uri>
+                <api_version>2018-07-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_roleDefinitions</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Authorization/roleDefinitions</uri>
+                <api_version>2018-07-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_routeTables</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Network/routeTables</uri>
+                <api_version>2020-11-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_securityContacts</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Security/securityContacts</uri>
+                <api_version>2020-01-01-preview</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_servers</name>
+                <uri>subscriptions/[1]/providers/Microsoft.AnalysisServices/servers</uri>
+                <api_version>2017-08-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_snapshots</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Compute/snapshots</uri>
+                <api_version>2020-12-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_sqlServers</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Sql/servers</uri>
+                <api_version>2021-05-01-preview</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+                <relationships>
+                    <relationship name="mgmt_subscriptions_sqlServers_databases" />
+                </relationships>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_sqlServers_databases</name>
+                <uri>[1]/databases</uri>
+                <api_version>2021-05-01-preview</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_sqlVirtualMachines</name>
+                <uri>subscriptions/[1]/providers/Microsoft.SqlVirtualMachine/sqlVirtualMachines</uri>
+                <api_version>2017-03-01-preview</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_storageAccounts</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Storage/storageAccounts</uri>
+                <api_version>2021-01-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+                <relationships>
+                    <relationship name="mgmt_subscriptions_blobContainers" />
+                    <relationship name="mgmt_subscriptions_blobServices" />
+                </relationships>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_systemAssignedIdentities</name>
+                <uri>subscriptions/[1]/providers/Microsoft.ManagedIdentity/identities/default</uri>
+                <api_version>2018-11-30</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_systemTopics</name>
+                <uri>subscriptions/[1]/providers/Microsoft.EventGrid/systemTopics</uri>
+                <api_version>2021-12-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_trafficmanagerprofiles</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Network/trafficmanagerprofiles</uri>
+                <api_version>2018-04-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_userAssignedIdentities</name>
+                <uri>subscriptions/[1]/providers/Microsoft.ManagedIdentity/userAssignedIdentities</uri>
+                <api_version>2018-11-30</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_vaults</name>
+                <uri>subscriptions/[1]/providers/Microsoft.KeyVault/vaults</uri>
+                <api_version>2019-09-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_virtualMachines</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Compute/virtualMachines</uri>
+                <api_version>2020-12-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+                <relationships>
+                    <relationship name="mgmt_subscriptions_virtualMachines_extensions" />
+                    <relationship name="mgmt_subscriptions_virtualMachines_systemAssignedIdentities" />
+                </relationships>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_virtualMachines_extensions</name>
+                <uri>[1]/extensions</uri>
+                <api_version>2021-03-01</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_virtualMachines_systemAssignedIdentities</name>
+                <uri>[1]/providers/Microsoft.ManagedIdentity/identities/default</uri>
+                <api_version>2018-11-30</api_version>
+                <keys>
+                    <key name="[1]">id</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_virtualNetworks</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Network/virtualNetworks</uri>
+                <api_version>2021-02-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_webapps</name>
+                <uri>subscriptions/[1]/providers/Microsoft.Web/sites</uri>
+                <api_version>2021-02-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>mgmt_subscriptions_workspaces</name>
+                <uri>subscriptions/[1]/providers/Microsoft.OperationalInsights/workspaces</uri>
+                <api_version>2020-08-01</api_version>
+                <keys>
+                    <key name="[1]">subscriptionId</key>
+                </keys>
+            </relationship>
+        </relationships>
+    </service>
+    <service>
+        <name>outlookAPI</name>
+        <description>Microsoft Exchange Based PowerShell</description>
+        <base_url>https://outlook.office365.com/</base_url>
+        <uri_scheme>[VERSION]/[TENANT]/[URI][PARAMS]</uri_scheme>
+        <client_id>fb78d390-0c51-40cd-8e17-fdbfab77341b</client_id>
+        <api_version>adminapi/beta</api_version>
+        <error_code>error/code</error_code>
+        <error_message>error/message</error_message>
+        <next_link>@odata.nextLink</next_link>
+        <requests>
+            <request>
+                <name>outlook_mailboxes</name>
+                <uri>Mailbox</uri>
+				<param>PropertySet=All</param>
+                <relationships>
+                    <relationship name="outlook_mailboxes_mailboxPermissions" />
+                    <relationship name="outlook_mailboxes_recipients" />
+                </relationships>
+            </request>
+        </requests>
+        <relationships>
+            <relationship>
+                <name>outlook_mailboxes_mailboxPermissions</name>
+                <uri>Mailbox(&apos;[1]&apos;)/MailboxPermission</uri>
+                <param>isEncoded=true</param>
+                <keys>
+                    <key name="[1]" encoded="true">UserPrincipalName</key>
+                </keys>
+            </relationship>
+            <relationship>
+                <name>outlook_mailboxes_recipients</name>
+                <uri>Recipient(&apos;[1]&apos;)</uri>
+                <param>$expand=RecipientPermission&amp;isEncoded=true</param>
+                <keys>
+                    <key name="[1]" encoded="true">UserPrincipalName</key>
+                </keys>
+            </relationship>
+        </relationships>
+    </service>
+</schema>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<config>
+    <tenant></tenant>
+    <app_id></app_id>
+
+    <services>
+        <service name="azure_resources">1</service>
+        <service name="exchange_online">1</service>
+    </services>
+
+    <threads>100</threads>
+
+    <outputFiles>0</outputFiles>                        <!-- Enable output cleartext files -->
+    <outputMLA>1</outputMLA>                            <!-- Enable output encrypted MLA archive -->
+</config>
