@@ -1,4 +1,4 @@
-<schema oradaz_version="1.0.08.11" schema_version="1.0.08.11">
+<schema oradaz_version="1.0.08.11" schema_version="1.0.08.18">
     <service>
         <name>graphAPI</name>
         <description>Microsoft Graph (through custom app)</description>
@@ -150,6 +150,11 @@
             <request>
                 <name>graph_conditionalAccessPolicies</name>
                 <uri>identity/conditionalAccess/policies</uri>
+            </request>
+            <request>
+                <name>graph_conditionalAccessPoliciesBeta</name>
+                <uri>identity/conditionalAccess/policies</uri>
+                <api_version>beta</api_version>
             </request>
             <request>
                 <name>graph_conditionalAccess_authenticationContextClassReferences</name>
