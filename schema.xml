@@ -1,4 +1,4 @@
-<schema oradaz_version="1.0.08.11" schema_version="1.0.08.18">
+<schema oradaz_version="1.0.08.11" schema_version="1.0.09.28">
     <service>
         <name>graphAPI</name>
         <description>Microsoft Graph (through custom app)</description>
@@ -361,7 +361,7 @@
             </request>
             <request>
                 <name>graph_directoryAudits</name>
-                <uri>auditLogs/directoryaudits?$top=100000</uri>
+                <uri>auditLogs/directoryaudits?$top=1000</uri>
             </request>
             <request>
                 <name>graph_directoryRoles</name>
@@ -604,7 +604,7 @@
             </request>
             <request>
                 <name>graph_provisioning</name>
-                <uri>auditLogs/provisioning?$top=100000</uri>
+                <uri>auditLogs/provisioning?$top=1000</uri>
             </request>
             <request>
                 <name>graph_resourceNamespaces</name>
@@ -739,7 +739,7 @@
             </request>
             <request>
                 <name>graph_topSignIns</name>
-                <uri>auditLogs/signIns?$top=1000000</uri>
+                <uri>auditLogs/signIns?$top=1000</uri>
                 <api_version>beta</api_version>
             </request>
             <request>
@@ -841,6 +841,7 @@
                 </select>
                 <relationships>
                     <relationship name="graph_users_appRoleAssignments" />
+                    <relationship name="graph_users_authenticationMethods" />
                     <relationship name="graph_users_createdObjects" />
                     <relationship name="graph_users_directReports" />
                     <relationship name="graph_users_licenseDetails" />
@@ -1341,7 +1342,6 @@
             <relationship>
                 <name>graph_users_authenticationEmailMethods</name>
                 <uri>users/[1]/authentication/emailMethods</uri>
-                <api_version>beta</api_version>
                 <keys>
                     <key name="[1]">id</key>
                 </keys>
@@ -1370,7 +1370,6 @@
             <relationship>
                 <name>graph_users_authenticationPasswordMethods</name>
                 <uri>users/[1]/authentication/passwordMethods</uri>
-                <api_version>beta</api_version>
                 <keys>
                     <key name="[1]">id</key>
                 </keys>
@@ -1378,7 +1377,6 @@
             <relationship>
                 <name>graph_users_authenticationPhoneMethods</name>
                 <uri>users/[1]/authentication/phoneMethods</uri>
-                <api_version>beta</api_version>
                 <keys>
                     <key name="[1]">id</key>
                 </keys>
@@ -1386,7 +1384,6 @@
             <relationship>
                 <name>graph_users_authenticationSoftwareOathMethods</name>
                 <uri>users/[1]/authentication/softwareOathMethods</uri>
-                <api_version>beta</api_version>
                 <keys>
                     <key name="[1]">id</key>
                 </keys>
@@ -1394,7 +1391,6 @@
             <relationship>
                 <name>graph_users_authenticationTemporaryAccessPassMethods</name>
                 <uri>users/[1]/authentication/temporaryAccessPassMethods</uri>
-                <api_version>beta</api_version>
                 <keys>
                     <key name="[1]">id</key>
                 </keys>
@@ -1402,7 +1398,6 @@
             <relationship>
                 <name>graph_users_authenticationWindowsHelloForBusinessMethods</name>
                 <uri>users/[1]/authentication/windowsHelloForBusinessMethods</uri>
-                <api_version>beta</api_version>
                 <keys>
                     <key name="[1]">id</key>
                 </keys>
