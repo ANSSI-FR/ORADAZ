@@ -738,11 +738,6 @@
                 </relationships>
             </request>
             <request>
-                <name>graph_topSignIns</name>
-                <uri>auditLogs/signIns?$top=1000</uri>
-                <api_version>beta</api_version>
-            </request>
-            <request>
                 <name>graph_trustFrameworkPolicies</name>
                 <uri>trustFramework/policies</uri>
                 <api_version>beta</api_version>
