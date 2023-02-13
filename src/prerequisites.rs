@@ -3,7 +3,6 @@ use crate::errors::Error;
 use crate::metadata::PrerequisitesMetadata;
 
 use log::{error, warn, info, debug};
-use reqwest::header::AUTHORIZATION;
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -95,14 +94,18 @@ struct RecipientPermissionResponse {
     id: Option<String>,
 }
 
-fn http_get(url: &str, access_token: &str) -> Result<reqwest::blocking::Response, reqwest::Error> {
-    let client = reqwest::blocking::Client::new();
-    return client.get(url)
-        .header(AUTHORIZATION, &format!("Bearer {}", access_token))
-        .send();
+fn http_get(url: &str, access_token: &str, client: &reqwest::blocking::Client) -> Result<reqwest::blocking::Response, Error> {
+    match client.get(url).header(reqwest::header::AUTHORIZATION, &format!("Bearer {}", access_token)).send() {
+        Ok(r) => Ok(r),
+        Err(e) => {
+            error!("{:FL$}Could not check prerequisites.", "http_get");
+            error!("{:FL$}\t{}", "", e);
+            return Err(Error::PrerequisitesCheckError);
+        }
+    }
 }
 
-fn check_app_permissions(tokens: &HashMap<String, auth::TokenResponse>, app_id: &str) -> Result<(), Error> {
+fn check_app_permissions(tokens: &HashMap<String, auth::TokenResponse>, app_id: &str, client: &reqwest::blocking::Client) -> Result<(), Error> {
     let grap_api_permissions = HashMap::from([
         ("ebfcd32b-babb-40f4-a14b-42706e83bd28", "AccessReview.Read.All"),
         ("1b6ff35f-31df-4332-8571-d31ea5a4893f", "APIConnectors.Read.All"),
@@ -117,6 +120,7 @@ fn check_app_permissions(tokens: &HashMap<String, auth::TokenResponse>, app_id: 
         ("ea5c4ab0-5a73-4f35-8272-5d5337884e5d", "IdentityRiskyServicePrincipal.Read.All"),
         ("d04bb851-cb7c-4146-97c7-ca3e71baf56c", "IdentityRiskyUser.Read.All"),
         ("2903d63d-4611-4d43-99ce-a33f3f52e343", "IdentityUserFlow.Read.All"),
+        ("f6609722-4100-44eb-b747-e6ca0536989d", "OnPremDirectorySynchronization.Read.All"),
         ("4908d5b9-3fb2-4b1e-9336-1888b7937185", "Organization.Read.All"),
         ("572fea84-0151-49b2-9301-11cb16974376", "Policy.Read.All"),
         ("414de6ea-2d92-462f-b120-6e2a809a6d01", "Policy.Read.PermissionGrant"),
@@ -144,7 +148,7 @@ fn check_app_permissions(tokens: &HashMap<String, auth::TokenResponse>, app_id: 
                     return Err(Error::MissingApiTokenError)
                 },
                 Some(access_token) => {
-                    let response = match http_get(&format!("https://graph.microsoft.com/v1.0/applications?$filter=appId eq '{}'&$select=requiredResourceAccess", app_id), access_token) {
+                    let response = match http_get(&format!("https://graph.microsoft.com/v1.0/applications?$filter=appId eq '{}'&$select=requiredResourceAccess", app_id), access_token, client) {
                         Err(_e) => {
                             error!("{:FL$}Cannot retrieve custom application to check permissions", "check_app_permissions");
                             return Err(Error::CannotRetrieveAppError);
@@ -201,7 +205,7 @@ fn check_app_permissions(tokens: &HashMap<String, auth::TokenResponse>, app_id: 
     Ok(())
 }
 
-fn check_aad_permissions(tokens: &HashMap<String, auth::TokenResponse>) -> Result<(), Error> {
+fn check_aad_permissions(tokens: &HashMap<String, auth::TokenResponse>, client: &reqwest::blocking::Client) -> Result<(), Error> {
     // TODO: Check by permissions instead of role
     let matching_roles: Vec<Vec<&str>> = vec![
         vec!["62e90394-69f5-4237-9190-012177145e10"], // Global Administrator
@@ -221,7 +225,7 @@ fn check_aad_permissions(tokens: &HashMap<String, auth::TokenResponse>) -> Resul
                     return Err(Error::MissingApiTokenError)
                 },
                 Some(access_token) => {
-                    let response = match http_get("https://graph.microsoft.com/v1.0/me?$select=id", access_token) {
+                    let response = match http_get("https://graph.microsoft.com/v1.0/me?$select=id", access_token, client) {
                         Err(_e) => {
                             error!("{:FL$}Cannot retrieve custom application to check permissions", "check_aad_permissions");
                             return Err(Error::CannotRetrieveAppError);
@@ -235,7 +239,7 @@ fn check_aad_permissions(tokens: &HashMap<String, auth::TokenResponse>) -> Resul
                             return Err(Error::CannotRetrieveCurrentUserError);
                         },
                         Some(id) => {
-                            let response = match http_get(&format!("https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?&$filter=principalId eq '{}'&$select=roleDefinitionId", &id), access_token) {
+                            let response = match http_get(&format!("https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?&$filter=principalId eq '{}'&$select=roleDefinitionId", &id), access_token, client) {
                                 Err(_e) => {
                                     error!("{:FL$}Cannot retrieve role assignments for current user", "check_aad_permissions");
                                     return Err(Error::CannotRetrieveCurrentUserRolesError);
@@ -270,7 +274,7 @@ fn check_aad_permissions(tokens: &HashMap<String, auth::TokenResponse>) -> Resul
     Ok(())
 }
 
-fn check_available_subscriptions(tokens: &HashMap<String, auth::TokenResponse>) -> Result<(), Error> {
+fn check_available_subscriptions(tokens: &HashMap<String, auth::TokenResponse>, client: &reqwest::blocking::Client) -> Result<(), Error> {
     info!("{:FL$}Checking available subscriptions", "check_available_subscriptions");
     match tokens.get("mgmtAPI") {
         None => {
@@ -284,7 +288,7 @@ fn check_available_subscriptions(tokens: &HashMap<String, auth::TokenResponse>) 
                     return Err(Error::MissingApiTokenError)
                 },
                 Some(access_token) => {
-                    let response = match http_get("https://management.azure.com/subscriptions?api-version=2020-08-01", access_token) {
+                    let response = match http_get("https://management.azure.com/subscriptions?api-version=2020-08-01", access_token, client) {
                         Err(_e) => {
                             error!("{:FL$}Cannot retrieve subscriptions", "check_available_subscriptions");
                             return Err(Error::CannotRetrieveSubscriptionsError);
@@ -316,7 +320,7 @@ fn check_available_subscriptions(tokens: &HashMap<String, auth::TokenResponse>) 
     Ok(())
 }
 
-fn check_outlook_permissions(tokens: &HashMap<String, auth::TokenResponse>, tenant: &str) -> Result<(), Error> {
+fn check_outlook_permissions(tokens: &HashMap<String, auth::TokenResponse>, tenant: &str, client: &reqwest::blocking::Client) -> Result<(), Error> {
     info!("{:FL$}Checking outlook permissions", "check_outlook_permissions");
     // TODO: find a better way to do this
     match tokens.get("outlookAPI") {
@@ -331,7 +335,7 @@ fn check_outlook_permissions(tokens: &HashMap<String, auth::TokenResponse>, tena
                     return Err(Error::MissingApiTokenError);
                 },
                 Some(access_token) => {
-                    let response = match http_get(&format!("https://outlook.office365.com/adminapi/beta/{}/Mailbox?$top=1&$select=UserPrincipalName", tenant), access_token) {
+                    let response = match http_get(&format!("https://outlook.office365.com/adminapi/beta/{}/Mailbox?$top=1&$select=UserPrincipalName", tenant), access_token, client) {
                         Err(_e) => {
                             error!("{:FL$}Cannot retrieve mailboxes", "check_outlook_permissions");
                             return Err(Error::CannotRetrieveMailboxesError);
@@ -350,7 +354,7 @@ fn check_outlook_permissions(tokens: &HashMap<String, auth::TokenResponse>, tena
                                 return Err(Error::CannotRetrieveMailboxesError)
                             } else if let Some(mailbox) = mailboxes.iter().next() {
                                 let username: &str = &mailbox.user_principal_name;
-                                let response = match http_get(&format!("https://outlook.office365.com/adminapi/beta/{}/Recipient('{}')?$expand=RecipientPermission", tenant, &username), access_token) {
+                                let response = match http_get(&format!("https://outlook.office365.com/adminapi/beta/{}/Recipient('{}')?$expand=RecipientPermission", tenant, &username), access_token, client) {
                                     Err(_e) => {
                                         error!("{:FL$}Missing permission to retrieve mailbox recipients", "check_outlook_permissions");
                                         return Err(Error::MissingExchangeOnlinePermissionsError);
@@ -376,11 +380,11 @@ fn check_outlook_permissions(tokens: &HashMap<String, auth::TokenResponse>, tena
     Ok(())
 }
 
-pub fn check(tokens: &mut HashMap<String, auth::TokenResponse>, tenant: &str, app_id: &str) -> Result<Vec<PrerequisitesMetadata>, Error> {
+pub fn check(tokens: &mut HashMap<String, auth::TokenResponse>, tenant: &str, app_id: &str, client: &reqwest::blocking::Client) -> Result<Vec<PrerequisitesMetadata>, Error> {
     let mut prerequisites_metadata: Vec<PrerequisitesMetadata> = Vec::new();
 
     // Checking custom application permissions
-    match check_app_permissions(tokens, app_id) {
+    match check_app_permissions(tokens, app_id, client) {
         Ok(()) => info!("{:FL$}Custom application permissions match required ones", "check"),
         Err(e) => {
             error!("{:FL$}Please add the required permission for the application", "check");
@@ -389,7 +393,7 @@ pub fn check(tokens: &mut HashMap<String, auth::TokenResponse>, tenant: &str, ap
     }
 
     // Checking that current user has required Azure AD permissions
-    match check_aad_permissions(tokens) {
+    match check_aad_permissions(tokens, client) {
         Ok(()) => info!("{:FL$}Current user has required permissions over Azure AD", "check"),
         Err(e) => {
             error!("{:FL$}Please verify the roles of the user and perform another the dump", "check");
@@ -398,7 +402,7 @@ pub fn check(tokens: &mut HashMap<String, auth::TokenResponse>, tenant: &str, ap
     }
 
     // Check subscriptions that will be audited
-    match check_available_subscriptions(tokens) {
+    match check_available_subscriptions(tokens, client) {
         Ok(()) => info!("{:FL$}The available subscriptions will be audited", "check"),
         Err(e) => {
             match e {
@@ -417,7 +421,7 @@ pub fn check(tokens: &mut HashMap<String, auth::TokenResponse>, tenant: &str, ap
     
 
     // Check if Get-RecipientPermission permissions has been provided
-    match check_outlook_permissions(tokens, tenant) {
+    match check_outlook_permissions(tokens, tenant, client) {
         Ok(()) => info!("{:FL$}Current user has required Exchange Online permissions", "check"),
         Err(e) => {
             match e {

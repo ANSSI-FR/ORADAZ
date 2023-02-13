@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 pub const FL: usize = 35;
-pub const VERSION: &str = "1.0.08.11";
+pub const VERSION: &str = "1.1.02.02";
 pub const SCHEMA_URL: &str = "https://raw.githubusercontent.com/ANSSI-FR/ORADAZ/master/schema.xml"; 
 const PUB_KEY: &[u8] = include_bytes!("./mlakey.pub");
 
@@ -87,6 +87,27 @@ fn main() {
                 .help("File where the schema is defined (default: download from GitHub)"),
         )
         .arg(
+            Arg::new("proxy")
+                .short('p')
+                .long("proxy")
+                .takes_value(true)
+                .help("Proxy address"),
+        )
+        .arg(
+            Arg::new("proxy_username")
+                .short('u')
+                .long("proxy_username")
+                .takes_value(true)
+                .help("Proxy username"),
+        )
+        .arg(
+            Arg::new("proxy_password")
+                .short('w')
+                .long("proxy_password")
+                .takes_value(true)
+                .help("Proxy password"),
+        )
+        .arg(
             Arg::new("output")
                 .short('o')
                 .long("output")
@@ -113,6 +134,9 @@ fn main() {
     let mut app_id: &str = matches.value_of("app_id").unwrap_or("");
     let config_file: &str = matches.value_of("config_file").unwrap_or("config-oradaz.xml");
     let schema_file: &str = matches.value_of("schema_file").unwrap_or("");
+    let mut proxy: &str = matches.value_of("proxy").unwrap_or("");
+    let mut proxy_username: &str = matches.value_of("proxy_username").unwrap_or("");
+    let mut proxy_password: &str = matches.value_of("proxy_password").unwrap_or("");
     let quiet: bool = matches.is_present("quiet");
     let debug: bool = matches.is_present("debug");
         
@@ -162,6 +186,64 @@ fn main() {
         },
         None => {
             warn!("{:FL$}Services not defined in config file, will audit all services", "main");
+        }
+    };
+    match &config.proxy {
+        Some(p) => {
+            proxy = &p.url;
+            match &p.username {
+                Some(u) => proxy_username = &u,
+                None => {}
+            };
+            match &p.password {
+                Some(p) => proxy_password = &p,
+                None => {}
+            };
+        },
+        None => {}
+    };
+
+    let client = match proxy.trim().is_empty() {
+        false => {
+            let prox = match reqwest::Proxy::all(proxy) {
+                Ok(p) => {
+                    if !proxy_username.trim().is_empty() && !proxy_password.trim().is_empty() {
+                        info!("{:FL$}Using proxy at url {} with Basic authentication", "main", proxy);
+                        p.basic_auth(proxy_username, proxy_password)
+                    } else {
+                        info!("{:FL$}Using proxy at url {} without authentication", "main", proxy);
+                        p
+                    }
+                },
+                Err(e) => {
+                    error!("{:FL$}Invalid proxy URL.", "main");
+                    error!("{:FL$}\t{}", "", e);
+                    error!("{:FL$}\t{}", "", Error::InvalidProxyURLError);
+                    return exit(&log_file_path, &mut None, None);
+                }
+            };
+            let c = match reqwest::blocking::Client::builder().proxy(prox).build() {
+                Ok(cl) => cl,
+                Err(e) => {
+                    error!("{:FL$}Could not create client.", "main");
+                    error!("{:FL$}\t{}", "", e);
+                    error!("{:FL$}\t{}", "", Error::CannotCreateClientError);
+                    return exit(&log_file_path, &mut None, None);
+                }
+            };
+            c
+        },
+        true => {
+            let c = match reqwest::blocking::Client::builder().build() {
+                Ok(cl) => cl,
+                Err(e) => {
+                    error!("{:FL$}Could not create client.", "main");
+                    error!("{:FL$}\t{}", "", e);
+                    error!("{:FL$}\t{}", "", Error::CannotCreateClientError);
+                    return exit(&log_file_path, &mut None, None);
+                }
+            };
+            c
         }
     };
     
@@ -241,7 +323,7 @@ fn main() {
     }
 
     // Get and parse schema
-    let schema_parser = match config::SchemaParser::new(schema_file, &config, &mut mla_archive, &output_folder) {
+    let schema_parser = match config::SchemaParser::new(schema_file, &config, &mut mla_archive, &output_folder, &client) {
         Err(err) => {
             error!("{:FL$}{}", "", err);
             return exit(&log_file_path, &mut mla_archive, Some(&output_folder));
@@ -261,7 +343,7 @@ fn main() {
     let mut auth_errors: Vec<AuthError> = Vec::new();
     let services: &Vec<Service> = &schema.services;
     for s in services.iter() {
-        match auth::get_token(s, tenant, app_id) {
+        match auth::get_token(s, tenant, app_id, &client) {
             Err(Error::StringError(err)) => {
                 auth_errors.push(AuthError{
                     api: s.name.clone(),
@@ -276,7 +358,7 @@ fn main() {
                 });
                 None
             },
-            Ok(token) => tokens.insert(s.name.to_string().to_string(), token)
+            Ok(token) => tokens.insert(s.name.to_string(), token)
         };
     };
     let mut token_metadata: Vec<TokensMetadata> = Vec::new();
@@ -327,7 +409,7 @@ fn main() {
     match &config.no_check {
         Some(nc) => {
             if !*nc {
-                prerequisites_metadata = match prerequisites::check(&mut tokens, tenant, app_id) {
+                prerequisites_metadata = match prerequisites::check(&mut tokens, tenant, app_id, &client) {
                     Err(err) => {
                         error!("{:FL$}{}", "", err);
                         return exit(&log_file_path, &mut mla_archive, Some(&output_folder));
@@ -337,7 +419,7 @@ fn main() {
             }
         },
         None => {
-            prerequisites_metadata = match prerequisites::check(&mut tokens, tenant, app_id) {
+            prerequisites_metadata = match prerequisites::check(&mut tokens, tenant, app_id, &client) {
                 Err(err) => {
                     error!("{:FL$}{}", "", err);
                     return exit(&log_file_path, &mut mla_archive, Some(&output_folder));
@@ -352,11 +434,11 @@ fn main() {
     for key in tokens.keys() {
         keys.push(key.to_string().to_string())
     }
-    let mut dumper = dumper::Dumper::new(&keys, &config, &schema, tenant);
+    let mut dumper = dumper::Dumper::new(&keys, &config, &schema, tenant, &client);
     info!("{:FL$}Successfully created dumper", "main");
     info!("{:FL$}Starting dump, this can take a while, do not close the window", "main");
     let start = Utc::now().time();
-    dumper.dump(&mut tokens, &mut mla_archive, config.output_files, &output_folder, &log_file_path);
+    dumper.dump(&mut tokens, &mut mla_archive, config.output_files, &output_folder, &log_file_path, services, tenant, app_id, &client);
     let end = Utc::now().time();
     info!("{:FL$}Finished dump using {} requests in {:02}:{:02}:{:02}", "main", dumper.request_count, (end - start).num_hours(), (end - start).num_minutes() % 60, (end - start).num_seconds() % 60);
     let error_length = dumper.errors.len();

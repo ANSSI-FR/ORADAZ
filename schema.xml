@@ -1,4 +1,4 @@
-<schema oradaz_version="1.0.08.11" schema_version="1.0.10.12">
+<schema oradaz_version="1.1.02.02" schema_version="1.1.02.13">
     <service>
         <name>graphAPI</name>
         <description>Microsoft Graph (through custom app)</description>
@@ -105,6 +105,11 @@
             <request>
                 <name>graph_authenticationMethodsX509Certificate</name>
                 <uri>policies/authenticationmethodspolicy/authenticationMethodConfigurations/x509Certificate</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_authenticationStrengthPolicies</name>
+                <uri>policies/authenticationStrengthPolicies</uri>
                 <api_version>beta</api_version>
             </request>
             <request>
@@ -547,6 +552,11 @@
                 <api_version>beta</api_version>
             </request>
             <request>
+                <name>graph_onPremisesSynchronization</name>
+                <uri>directory/onPremisesSynchronization</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
                 <name>graph_onSignUpStartListeners</name>
                 <uri>identity/events/onSignupStart</uri>
                 <api_version>beta</api_version>
@@ -603,6 +613,30 @@
                 </relationships>
             </request>
             <request>
+                <name>graph_pim_roleManagementPolicyAssignmentsDirectory</name>
+                <uri>policies/roleManagementPolicyAssignments</uri>
+                <param>$filter=scopeId eq &apos;/&apos; and scopeType eq &apos;Directory&apos;&amp;$expand=policy($expand=rules)</param>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_pim_roleManagementPolicyAssignmentsDirectoryRole</name>
+                <uri>policies/roleManagementPolicyAssignments</uri>
+                <param>$filter=scopeId eq &apos;/&apos; and scopeType eq &apos;DirectoryRole&apos;&amp;$expand=policy($expand=rules)</param>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_pim_roleManagementPoliciesDirectory</name>
+                <uri>policies/roleManagementPolicies</uri>
+                <param>$filter=scopeId eq &apos;/&apos; and scopeType eq &apos;Directory&apos;&amp;$expand=rules</param>
+                <api_version>beta</api_version>
+            </request>
+            <request>
+                <name>graph_pim_roleManagementPoliciesDirectoryRole</name>
+                <uri>policies/roleManagementPolicies</uri>
+                <param>$filter=scopeId eq &apos;/&apos; and scopeType eq &apos;DirectoryRole&apos;&amp;$expand=rules</param>
+                <api_version>beta</api_version>
+            </request>
+            <request>
                 <name>graph_provisioning</name>
                 <uri>auditLogs/provisioning?$top=1000</uri>
             </request>
@@ -615,17 +649,25 @@
                 </relationships>
             </request>
             <request>
+                <name>graph_riskBasedNotifications</name>
+                <uri>identityProtection/settings/notifications</uri>
+                <api_version>beta</api_version>
+            </request>
+            <request>
                 <name>graph_riskDetections</name>
                 <uri>identityProtection/riskDetections</uri>
             </request>
             <request>
                 <name>graph_riskyServicePrincipals</name>
                 <uri>identityProtection/riskyServicePrincipals</uri>
-                <api_version>beta</api_version>
             </request>
             <request>
                 <name>graph_riskyUsers</name>
                 <uri>identityProtection/riskyUsers</uri>
+            </request>
+            <request>
+                <name>graph_riskySignIns</name>
+                <uri>auditLogs/signIns?$filter=(riskState eq &apos;atRisk&apos; or riskState eq &apos;confirmedCompromised&apos;)</uri>
             </request>
             <request>
                 <name>graph_roleDefinitions</name>
@@ -736,6 +778,11 @@
                 <relationships>
                     <relationship name="graph_tokenLifetimePolicies_appliesTo" />
                 </relationships>
+            </request>
+            <request>
+                <name>graph_topSignIns</name>
+                <uri>auditLogs/signIns?$top=1000</uri>
+                <api_version>beta</api_version>
             </request>
             <request>
                 <name>graph_trustFrameworkPolicies</name>

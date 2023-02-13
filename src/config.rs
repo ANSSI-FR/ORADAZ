@@ -198,7 +198,7 @@ pub struct SchemaParser {
 }
 
 impl<'a> SchemaParser {
-    pub fn new(schema_file: &str, config: &Config, mla_archive: &mut Option<ArchiveWriter<'a, &'a File>>, output_folder: &str) -> Result<SchemaParser, Error> {
+    pub fn new(schema_file: &str, config: &Config, mla_archive: &mut Option<ArchiveWriter<'a, &'a File>>, output_folder: &str, client: &reqwest::blocking::Client) -> Result<SchemaParser, Error> {
         let f: String;
         if schema_file != "" {
             if fs::metadata(schema_file).is_err() {
@@ -208,16 +208,15 @@ impl<'a> SchemaParser {
             info!("{:FL$}Using schema file {}", "SchemaParser", schema_file);
             f = match fs::read_to_string(schema_file) {
                 Err(e) => {
-                    error!("{:FL$}Cannot open schema file {}.", "ApiRequest", schema_file);
+                    error!("{:FL$}Cannot open schema file {}.", "SchemaParser", schema_file);
                     return Err(Error::IOError(e));
                 },
                 Ok(res) => res
             };
         } else {
-            let client = reqwest::blocking::Client::new();
             f = match client.get(SCHEMA_URL).send() {
                 Err(e) => {
-                    error!("{:FL$}Cannot retrieve schema file from {}.", "ApiRequest", SCHEMA_URL);
+                    error!("{:FL$}Cannot retrieve schema file from {}.", "SchemaParser", SCHEMA_URL);
                     error!("{:FL$}\t{}", "", e);
                     return Err(Error::CannotDownloadSchemaFileError);
                 },
@@ -339,11 +338,19 @@ pub struct ServicesConfig {
 }
 
 #[derive(Deserialize)]
+pub struct ProxyConfig {
+    pub url: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct Config {
     pub tenant: String,
     pub app_id: String,
     pub threads: usize,
     pub services: Option<ServicesConfig>,
+    pub proxy: Option<ProxyConfig>,
     #[serde(rename = "outputFiles")]
     pub output_files: bool,
     #[serde(rename = "outputMLA")]

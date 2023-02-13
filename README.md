@@ -29,6 +29,7 @@ Edit `config-oradaz.xml`.
         * IdentityRiskyServicePrincipal.Read.All
         * IdentityRiskyUser.Read.All
         * IdentityUserFlow.Read.All
+        * OnPremDirectorySynchronization.Read.All
         * Organization.Read.All
         * Policy.Read.All
         * Policy.Read.PermissionGrant

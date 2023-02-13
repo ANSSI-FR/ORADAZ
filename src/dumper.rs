@@ -1,4 +1,4 @@
-use crate::auth::TokenResponse;
+use crate::auth::{self, TokenResponse};
 use crate::errors::Error;
 use crate::config::{Config, Condition, Key, Request, Service, Schema};
 use crate::metadata::TablesMetadata;
@@ -59,7 +59,7 @@ pub struct Dumper {
 }
 
 impl Dumper {
-    pub fn new(token_keys: &[String], config: &Config, schema: &Schema, tenant: &str) -> Self {
+    pub fn new(token_keys: &[String], config: &Config, schema: &Schema, tenant: &str, client: &reqwest::blocking::Client) -> Self {
         let mut urls = Vec::new();
         let services: &Vec<Service> = &schema.services;
         for s in services.iter() {
@@ -89,19 +89,18 @@ impl Dumper {
             }
         };
         urls.shuffle(&mut thread_rng());
-        let client = reqwest::blocking::Client::new();
-
+        
         Self {
             urls,
             errors: Vec::new(),
             tables: Vec::new(),
             threads: config.threads,
             request_count: 0,
-            client,
+            client: client.clone(),
         }
     }
 
-    pub fn dump<'a>(&mut self, tokens: &mut HashMap<String, TokenResponse>, mla_archive: &mut Option<ArchiveWriter<'a, &File>>, config_output_files: bool, output_folder: &str, log_file_path: &PathBuf) {
+    pub fn dump<'a>(&mut self, tokens: &mut HashMap<String, TokenResponse>, mla_archive: &mut Option<ArchiveWriter<'a, &File>>, config_output_files: bool, output_folder: &str, log_file_path: &PathBuf, services: &Vec<Service>, tenant: &str, app_id: &str, client: &reqwest::blocking::Client) {
         let pool = match ThreadPoolBuilder::new().num_threads(self.threads).build() {
             Ok(p) => p,
             Err(_e) => {
@@ -146,12 +145,24 @@ impl Dumper {
                     return exit(&log_file_path, mla_archive, Some(&output_folder));
                 };
                 if thread_token.expires_on - Utc::now().timestamp() < 600 {
-                    if let Err(e) = thread_token.refresh_token() {
+                    if let Err(e) = thread_token.refresh_token(&self.client) {
                         error!("{:FL$}{}", "", e);
-                        return exit(&log_file_path, mla_archive, Some(&output_folder));
+                        for s in services.iter() {
+                            if &thread_api == &s.name {
+                                error!("{:FL$}A new authentication is required for API {}", "", &s.name);
+                                match auth::get_token(s, tenant, app_id, &client) {
+                                    Err(err) => {
+                                        error!("{:FL$}{}", "", err);
+                                        return exit(&log_file_path, mla_archive, Some(&output_folder));
+                                    },
+                                    Ok(new_token) => tokens.insert(thread_api.to_string(), new_token)
+                                };
+                            }
+                        };
+                    } else {
+                        let new_token = thread_token.clone();
+                        tokens.insert(thread_api.to_string(), new_token);
                     };
-                    let new_token = thread_token.clone();
-                    tokens.insert(thread_api.to_string(), new_token);
                 }
                 let access_token = match &thread_token.access_token {
                     None => String::from(""),

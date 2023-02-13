@@ -54,7 +54,7 @@ pub struct TokenResponseV1 {
     pub oradaz_error: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct TokenResponse {
     pub expires_in: Option<u64>,
     pub ext_expires_in: Option<u64>,
@@ -89,7 +89,7 @@ pub struct TokenResponse {
 }
 
 impl TokenResponse {
-    pub fn refresh_token(&mut self) -> Result<(), Error> {
+    pub fn refresh_token(&mut self, client: &reqwest::blocking::Client) -> Result<(), Error> {
         match &self.refresh_token {
             Some(r) => {
                 info!("{:FL$}Refreshing token for api {}", "refresh_token", self.api);
@@ -100,12 +100,12 @@ impl TokenResponse {
                     ("refresh_token", r)
                 ];
     
-                let authority = match Authority::new(&self.authority_url) {
+                let authority = match Authority::new(&self.authority_url, client) {
                     Ok(a) => a,
                     Err(_e) => return Err(Error::InvalidAuthorityUrlError)
                 };
     
-                let response = http_post(&authority.token_endpoint, &params).unwrap();
+                let response = http_post(&authority.token_endpoint, &params, client).unwrap();
     
                 let mut json_response: TokenResponse = response.json().unwrap();
 
@@ -153,7 +153,7 @@ impl TokenResponse {
         Ok(())
     }
 
-    pub fn refresh_token_for_resource(&mut self, resource: &str) -> Result<(), Error> {
+    pub fn refresh_token_for_resource(&mut self, resource: &str, client: &reqwest::blocking::Client) -> Result<(), Error> {
         match &self.refresh_token {
             Some(r) => {
                 let params: Vec<(&str, &str)> = vec![
@@ -164,12 +164,12 @@ impl TokenResponse {
                     ("resource", resource)
                 ];
     
-                let authority = match AuthorityV1::new(&self.authority_url) {
+                let authority = match AuthorityV1::new(&self.authority_url, client) {
                     Ok(a) => a,
                     Err(_e) => return Err(Error::InvalidAuthorityUrlError)
                 };
     
-                let response = http_post(&authority.token_endpoint, &params).unwrap();
+                let response = http_post(&authority.token_endpoint, &params, client).unwrap();
     
                 let mut json_response: TokenResponseV1 = response.json().unwrap();
 
@@ -236,8 +236,8 @@ pub struct Authority {
 }
 
 impl Authority {
-    pub fn new(authority_url: &str) -> Result<Self, Error> {
-        let tenant_discovery_response = match Self::tenant_discovery(authority_url){
+    pub fn new(authority_url: &str, client: &reqwest::blocking::Client) -> Result<Self, Error> {
+        let tenant_discovery_response = match Self::tenant_discovery(authority_url, client){
             Ok(t) => t,
             Err(e) => {
                 error!("{:FL$}Invalid tenant id provided", "tenant_discovery");
@@ -255,8 +255,8 @@ impl Authority {
         })
     }
 
-    fn tenant_discovery(authority_url: &str) -> Result<TenantDiscoveryResponse, Error> {
-        let response = http_get(&format!("{}/v2.0/.well-known/openid-configuration", authority_url));
+    fn tenant_discovery(authority_url: &str, client: &reqwest::blocking::Client) -> Result<TenantDiscoveryResponse, Error> {
+        let response = http_get(&format!("{}/v2.0/.well-known/openid-configuration", authority_url), client);
         let response = response.unwrap();
         let response = match response.json::<TenantDiscoveryResponse>() {
             Err(_e) => return Err(Error::InvalidAuthorityUrlError),
@@ -274,8 +274,8 @@ pub struct AuthorityV1 {
 }
 
 impl AuthorityV1 {
-    pub fn new(authority_url: &str) -> Result<Self, Error> {
-        let tenant_discovery_response = match Self::tenant_discovery(authority_url){
+    pub fn new(authority_url: &str, client: &reqwest::blocking::Client) -> Result<Self, Error> {
+        let tenant_discovery_response = match Self::tenant_discovery(authority_url, client){
             Ok(t) => t,
             Err(e) => {
                 error!("{:FL$}Invalid tenant id provided", "tenant_discovery");
@@ -293,8 +293,8 @@ impl AuthorityV1 {
         })
     }
 
-    fn tenant_discovery(authority_url: &str) -> Result<TenantDiscoveryResponse, Error> {
-        let response = http_get(&format!("{}/.well-known/openid-configuration", authority_url));
+    fn tenant_discovery(authority_url: &str, client: &reqwest::blocking::Client) -> Result<TenantDiscoveryResponse, Error> {
+        let response = http_get(&format!("{}/.well-known/openid-configuration", authority_url), client);
         let response = response.unwrap();
         let response = match response.json::<TenantDiscoveryResponse>() {
             Err(_e) => return Err(Error::InvalidAuthorityUrlError),
@@ -310,8 +310,8 @@ pub struct PublicClientApplication {
 }
 
 impl PublicClientApplication {
-    pub fn new(client_id: &str, authority_url: &str) -> Result<PublicClientApplication, Error> {
-        let authority = match Authority::new(authority_url) {
+    pub fn new(client_id: &str, authority_url: &str, client: &reqwest::blocking::Client) -> Result<PublicClientApplication, Error> {
+        let authority = match Authority::new(authority_url, client) {
             Ok(a) => a,
             Err(_e) => return Err(Error::InvalidAuthorityUrlError)
         };
@@ -322,11 +322,11 @@ impl PublicClientApplication {
         })
     }
     
-    pub fn initiate_device_flow(&self, scopes: &[&str]) -> Result<DeviceCodeFlow, Error> {
+    pub fn initiate_device_flow(&self, scopes: &[&str], client: &reqwest::blocking::Client) -> Result<DeviceCodeFlow, Error> {
         let scopes: &str = &format!("{} openid offline_access", scopes.join(" "));
         let params: Vec<(&str, &str)> = vec![("client_id", &self.client_id), ("scope", scopes)];
 
-        let device_code_flow = match http_post(&self.authority.device_code_endpoint, &params) {
+        let device_code_flow = match http_post(&self.authority.device_code_endpoint, &params, client) {
             Err(_e) => {
                 error!("{:FL$}Could not acquire device flow for scopes {}", "initiate_device_flow", &scopes);
                 return Err(Error::CannotAcquireDeviceCodeFlowError)
@@ -347,7 +347,7 @@ impl PublicClientApplication {
         Ok(flow)
     }
     
-    pub fn acquire_token_by_device_flow(&self, api: &str, authority_url: &str, scopes: &[&str], flow: DeviceCodeFlow) -> Result<TokenResponse, Error> {
+    pub fn acquire_token_by_device_flow(&self, api: &str, authority_url: &str, scopes: &[&str], flow: &DeviceCodeFlow, client: &reqwest::blocking::Client) -> Result<TokenResponse, Error> {
         let scopes: &str = &format!("{} openid offline_access", scopes.join(" "));
         let params: Vec<(&str, &str)> = vec![
             ("client_id", &self.client_id),
@@ -363,7 +363,7 @@ impl PublicClientApplication {
                 return Err(Error::ExpiredDeciveCodeError);
             }
 
-            let response = http_post(&self.authority.token_endpoint, &params).unwrap();
+            let response = http_post(&self.authority.token_endpoint, &params, client).unwrap();
 
             let mut json_response: TokenResponse = response.json().unwrap();
 
@@ -422,51 +422,72 @@ impl PublicClientApplication {
     }
 }
 
-fn http_get(url: &str) -> Result<reqwest::blocking::Response, reqwest::Error> {
-    reqwest::blocking::get(url)
-}
-
-fn http_post(url: &str, params: &[(&str, &str)]) -> Result<reqwest::blocking::Response, reqwest::Error> {
-    let client = reqwest::blocking::Client::new();
-    client.post(url).form(&params).send()
-}
-
-pub fn get_token(service: &config::Service, tenant: &str, app_id: &str) -> Result<TokenResponse, Error> {
-    let authority_url: &str = &format!("https://login.microsoftonline.com/{}", tenant);
-    let mut api_client_id: &str = &service.client_id;
-    if api_client_id.is_empty() {
-        api_client_id = app_id;
-    };
-    let scope: &str = &format!("{}.default", service.base_url);
-    let scopes: Vec<&str> = vec![scope];
-    let pca = match PublicClientApplication::new(api_client_id, authority_url){
-        Ok(p) => p,
-        Err(e) => return Err(e)
-    };
-    let flow = match pca.initiate_device_flow(&scopes) {
-        Err(e) => return Err(e),
-        Ok(flow) => {
-            let description = format!(" / ! \\   INTERACTION REQUIRED!!!     |  {:40}", &service.description);
-            println!("{}", White.on(Red).paint("  / \\                                |  Authentication for:                     "));
-            println!("{}", White.on(Red).paint(description));
-            println!("{}", White.on(Red).paint("/_____\\                              |  REST API                                "));
-            println!("{}", flow.message);
-            flow
-        }
-    };
-    let mut token = match pca.acquire_token_by_device_flow(&service.name, authority_url, &scopes, flow) {
+fn http_get(url: &str, client: &reqwest::blocking::Client) -> Result<reqwest::blocking::Response, Error> {
+    match client.get(url).send() {
+        Ok(r) => Ok(r),
         Err(e) => {
-            error!("{:FL$}Could not acquire token for API {}", "get_token", &service.name); 
-            return Err(e)
-        },
-        Ok(token) => {
-            token
+            error!("{:FL$}Could not check prerequisites.", "http_get");
+            error!("{:FL$}\t{}", "", e);
+            return Err(Error::PrerequisitesCheckError);
         }
-    };
+    }
+}
+
+fn http_post(url: &str, params: &[(&str, &str)], client: &reqwest::blocking::Client) -> Result<reqwest::blocking::Response, Error> {
+    match client.post(url).form(&params).send() {
+        Ok(r) => Ok(r),
+        Err(e) => {
+            error!("{:FL$}Could not check prerequisites.", "http_post");
+            error!("{:FL$}\t{}", "", e);
+            return Err(Error::PrerequisitesCheckError);
+        }
+    }
+}
+
+pub fn get_token(service: &config::Service, tenant: &str, app_id: &str, client: &reqwest::blocking::Client) -> Result<TokenResponse, Error> {
+    let mut do_loop = true;
+    let mut token:TokenResponse = Default::default();
+    let description = format!(" / ! \\   INTERACTION REQUIRED!!!     |  {:40}", &service.description);
+    println!("{}", White.on(Red).paint("  / \\                                |  Authentication for:                     "));
+    println!("{}", White.on(Red).paint(description));
+    println!("{}", White.on(Red).paint("/_____\\                              |  REST API                                "));
+    while do_loop {
+        let authority_url: &str = &format!("https://login.microsoftonline.com/{}", tenant);
+        let mut api_client_id: &str = &service.client_id;
+        if api_client_id.is_empty() {
+            api_client_id = app_id;
+        };
+        let scope: &str = &format!("{}.default", service.base_url);
+        let scopes: Vec<&str> = vec![scope];
+        let pca = match PublicClientApplication::new(api_client_id, authority_url, client){
+            Ok(p) => p,
+            Err(e) => return Err(e)
+        };
+        let flow = match pca.initiate_device_flow(&scopes, client) {
+            Err(e) => return Err(e),
+            Ok(flow) => {
+                println!("{}", flow.message);
+                flow
+            }
+        };
+        match pca.acquire_token_by_device_flow(&service.name, authority_url, &scopes, &flow, client) {
+            Err(Error::ExpiredDeciveCodeError) => {
+                info!("{:FL$}Performing a new authentication request for API {}", "get_token", &service.name);
+            }
+            Err(e) => {
+                error!("{:FL$}Could not acquire token for API {}", "get_token", &service.name); 
+                return Err(e)
+            },
+            Ok(token_value) => {
+                token = token_value;
+                do_loop = false;
+            }
+        };
+    }
     if service.resource.is_empty() {
         Ok(token)
     } else {
-        match token.refresh_token_for_resource(&service.resource) {
+        match token.refresh_token_for_resource(&service.resource, client) {
             Err(e) => {
                 error!("{:FL$}Could not refresh token for API {} and resource {}", "get_token", &service.name, &service.resource); 
                 Err(e)

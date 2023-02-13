@@ -19,6 +19,10 @@ pub enum Error {
     InvalidConfigXMLStructureError,
     /// Provided schema file does not exists
     SchemaFileNotFoundError,
+    /// Provided proxy URL is invalid
+    InvalidProxyURLError,
+    /// Could not create reqwest client 
+    CannotCreateClientError,
     /// Could not retrieve schema file from GitHub
     CannotDownloadSchemaFileError,
     /// Provided schema file is not a valid XML file
@@ -31,6 +35,8 @@ pub enum Error {
     MetadataToJSONError,
     /// Error while trying to convert errors to json
     ErrorsToJSONError,
+    /// Error while trying to check the prerequisites
+    PrerequisitesCheckError,
 
     /// Could not retrieve token metadata
     RetrieveTokenMetadataError,
