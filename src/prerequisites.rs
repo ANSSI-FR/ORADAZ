@@ -45,8 +45,8 @@ struct MeResponse {
 
 #[derive(Deserialize)]
 struct RoleDefinitionId {
-    #[serde(rename = "roleDefinitionId")]
-    role_definition_id: String,
+    #[serde(rename = "roleTemplateId")]
+    role_template_id: String,
 }
 
 #[derive(Deserialize)]
@@ -239,7 +239,7 @@ fn check_aad_permissions(tokens: &HashMap<String, auth::TokenResponse>, client: 
                             return Err(Error::CannotRetrieveCurrentUserError);
                         },
                         Some(id) => {
-                            let response = match http_get(&format!("https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?&$filter=principalId eq '{}'&$select=roleDefinitionId", &id), access_token, client) {
+                            let response = match http_get(&format!("https://graph.microsoft.com/v1.0/users/{}/transitiveMemberOf/microsoft.graph.directoryRole?$select=roleTemplateId", &id), access_token, client) {
                                 Err(_e) => {
                                     error!("{:FL$}Cannot retrieve role assignments for current user", "check_aad_permissions");
                                     return Err(Error::CannotRetrieveCurrentUserRolesError);
@@ -255,7 +255,7 @@ fn check_aad_permissions(tokens: &HashMap<String, auth::TokenResponse>, client: 
                                 Some(value) => {
                                     let mut found: bool = false;
                                     for requirement in &matching_roles {
-                                        if requirement.iter().all(|&x| value.iter().any(|role| role.role_definition_id == x)) {
+                                        if requirement.iter().all(|&x| value.iter().any(|role| role.role_template_id == x)) {
                                             found = true;
                                         }
                                     }

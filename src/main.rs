@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 pub const FL: usize = 35;
-pub const VERSION: &str = "1.1.02.02";
+pub const VERSION: &str = "1.1.02.23";
 pub const SCHEMA_URL: &str = "https://raw.githubusercontent.com/ANSSI-FR/ORADAZ/master/schema.xml"; 
 const PUB_KEY: &[u8] = include_bytes!("./mlakey.pub");
 
