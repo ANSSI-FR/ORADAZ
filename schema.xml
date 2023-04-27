@@ -1,4 +1,4 @@
-<schema oradaz_version="1.1.02.23" schema_version="1.1.02.13">
+<schema oradaz_version="1.1.02.23" schema_version="1.1.04.27">
     <service>
         <name>graphAPI</name>
         <description>Microsoft Graph (through custom app)</description>
@@ -778,11 +778,6 @@
                 <relationships>
                     <relationship name="graph_tokenLifetimePolicies_appliesTo" />
                 </relationships>
-            </request>
-            <request>
-                <name>graph_topSignIns</name>
-                <uri>auditLogs/signIns?$top=1000</uri>
-                <api_version>beta</api_version>
             </request>
             <request>
                 <name>graph_trustFrameworkPolicies</name>
