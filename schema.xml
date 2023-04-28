@@ -1,4 +1,4 @@
-<schema oradaz_version="1.1.02.23" schema_version="1.1.04.27">
+<schema oradaz_version="1.1.02.23" schema_version="1.1.04.28">
     <service>
         <name>graphAPI</name>
         <description>Microsoft Graph (through custom app)</description>
@@ -363,10 +363,6 @@
                     <relationship name="graph_devices_registeredOwners" />
                     <relationship name="graph_devices_registeredUsers" />
                 </relationships>
-            </request>
-            <request>
-                <name>graph_directoryAudits</name>
-                <uri>auditLogs/directoryaudits?$top=1000</uri>
             </request>
             <request>
                 <name>graph_directoryRoles</name>
