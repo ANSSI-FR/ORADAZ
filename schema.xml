@@ -341,7 +341,6 @@
                     <attribute name="proxyAddresses" />
                     <attribute name="refreshTokensValidFromDateTime" />
                     <attribute name="showInAddressList" />
-                    <attribute name="signInActivity" />
                     <attribute name="signInSessionsValidFromDateTime" />
                     <attribute name="state" />
                     <attribute name="streetAddress" />
@@ -863,7 +862,6 @@
                     <attribute name="proxyAddresses" />
                     <attribute name="refreshTokensValidFromDateTime" />
                     <attribute name="showInAddressList" />
-                    <attribute name="signInActivity" />
                     <attribute name="signInSessionsValidFromDateTime" />
                     <attribute name="state" />
                     <attribute name="streetAddress" />
