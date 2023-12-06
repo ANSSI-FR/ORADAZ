@@ -5,7 +5,6 @@ use ansi_term::Colour::{Red, White};
 use chrono::Utc;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::{thread, time};
 
 
@@ -355,14 +354,7 @@ impl PublicClientApplication {
             ("device_code", &flow.device_code)
         ];
 
-        let device_code_expiration = flow.expires_in + SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-
         loop {
-            if device_code_expiration < SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() {
-                error!("{:FL$}Device code flow authentication process expired", "acquire_token_by_device_flow");
-                return Err(Error::ExpiredDeciveCodeError);
-            }
-
             let response = http_post(&self.authority.token_endpoint, &params, client).unwrap();
 
             let mut json_response: TokenResponse = response.json().unwrap();
@@ -412,8 +404,21 @@ impl PublicClientApplication {
                     return Ok(json_response)
                 },
                 _ => {
-                    error!("{:FL$}Error while trying to authenticate. Exception is the following: {}", "acquire_token_by_device_flow", json_response.error_description.unwrap());
-                    return Err(Error::DeviceCodeFlowAuthenticationError);
+                    match json_response.error_codes {
+                        Some(codes) => {
+                            if codes.contains(&70020) {
+                                error!("{:FL$}Device code flow authentication process expired", "acquire_token_by_device_flow");
+                                return Err(Error::ExpiredDeciveCodeError);
+                            } else {
+                                error!("{:FL$}Error while trying to authenticate. Exception is the following: {}", "acquire_token_by_device_flow", json_response.error_description.unwrap());
+                                return Err(Error::DeviceCodeFlowAuthenticationError);
+                            }
+                        },
+                        None => {
+                            error!("{:FL$}Error while trying to authenticate. Exception is the following: {}", "acquire_token_by_device_flow", json_response.error_description.unwrap());
+                            return Err(Error::DeviceCodeFlowAuthenticationError);
+                        }
+                    }
                 },
             }
 

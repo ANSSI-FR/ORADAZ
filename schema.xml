@@ -1,4 +1,4 @@
-<schema oradaz_version="1.1.02.23" schema_version="1.1.11.30">
+<schema oradaz_version="1.1.12.06" schema_version="1.1.11.30">
     <service>
         <name>graphAPI</name>
         <description>Microsoft Graph (through custom app)</description>
