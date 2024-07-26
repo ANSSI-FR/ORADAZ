@@ -5,7 +5,7 @@ use crate::metadata::TablesMetadata;
 use crate::exit;
 
 use chrono::Utc;
-use log::{error, warn, info, debug};
+use log::{error, warn, debug};
 use mla::{ArchiveFileID, ArchiveWriter};
 use rand::{seq::SliceRandom, thread_rng};
 use rayon::ThreadPoolBuilder;
@@ -128,7 +128,7 @@ impl Dumper {
             let (tx, rx) = sync::mpsc::channel();
 
             if wait {
-                info!("{:FL$}Waiting 2 seconds due to error code 429", "dump");
+                debug!("{:FL$}Waiting 2 seconds due to error code 429", "dump");
                 thread::sleep(time::Duration::from_millis(2000));
             };
             wait = false;

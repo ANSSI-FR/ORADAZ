@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 pub const FL: usize = 35;
-pub const VERSION: &str = "1.1.02.23";
+pub const VERSION: &str = "1.1.12.06";
 pub const SCHEMA_URL: &str = "https://raw.githubusercontent.com/ANSSI-FR/ORADAZ/master/schema.xml"; 
 const PUB_KEY: &[u8] = include_bytes!("./mlakey.pub");
 
@@ -39,7 +39,7 @@ pub fn exit<'a>(log_file_path: &PathBuf, mla_archive: &mut Option<ArchiveWriter<
     let filename: &str = &format!("{}", &log_file_path.display());
     let f = File::open(log_file_path).unwrap_or_else(|_| panic!("Cannot open file {}", filename));
     if let Some(mla) = mla_archive {
-        if let Err(e) = mla.add_file(filename, f.metadata().unwrap().len() as u64, f) {
+        if let Err(e) = mla.add_file("oradaz.log", f.metadata().unwrap().len() as u64, f) {
             error!("{:FL$}Could not add log file to archive", "main"); 
             error!("{:FL$}{}", "", Error::MLAError(e));
         };
@@ -154,7 +154,7 @@ fn main() {
 
     // Initialize logging
     #[cfg(target_os = "windows")]
-    ansi_term::enable_ansi_support();
+    let _ = ansi_term::enable_ansi_support();
     let log_file_path = output.join("oradaz.log");
     logger::initialize(
         &log_file_path,
@@ -487,14 +487,14 @@ fn main() {
     let filename: &str = &format!("{}", &log_file_path.display());
     let f = File::open(log_file_path).unwrap_or_else(|_| panic!("Cannot open file {}", filename));
     if let Some(mut mla) = mla_archive {
-        if let Err(e) = mla.add_file(filename, f.metadata().unwrap().len() as u64, f) {
+        if let Err(e) = mla.add_file("oradaz.log", f.metadata().unwrap().len() as u64, f) {
             error!("{:FL$}Could not add log file to archive", "main"); 
             error!("{:FL$}{}", "", Error::MLAError(e));
         };
         mla.finalize().unwrap();
     };
     if config.output_files {
-        if let Err(e) = fs::copy(filename, &format!("{}/oradad.log", output_folder)) {
+        if let Err(e) = fs::copy(filename, &format!("{}/oradaz.log", output_folder)) {
             error!("{:FL$}Could not copy log file to unencrypted folder", "main"); 
             error!("{:FL$}{}", "", Error::IOError(e));
         };
