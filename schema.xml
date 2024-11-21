@@ -167,14 +167,6 @@
                 <api_version>beta</api_version>
             </request>
             <request>
-                <name>graph_contacts</name>
-                <uri>contacts</uri>
-                <relationships>
-                    <relationship name="graph_contacts_memberOf" />
-                    <relationship name="graph_contacts_directReports" />
-                </relationships>
-            </request>
-            <request>
                 <name>graph_continuousAccessEvaluationPolicy</name>
                 <uri>identity/continuousAccessEvaluationPolicy</uri>
                 <api_version>beta</api_version>
