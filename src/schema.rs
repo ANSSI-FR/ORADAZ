@@ -490,14 +490,8 @@ impl Schema {
         /*
         Initialize Schema structure
         */
-        let schema_str: String = match Schema::get_content(cli, writer, requests) {
-            Err(err) => return Err(err),
-            Ok(o) => o,
-        };
-        let schema = match Schema::deserialize(schema_str) {
-            Err(err) => return Err(err),
-            Ok(schema) => schema,
-        };
+        let schema_str: String =Schema::get_content(cli, writer, requests)?;
+        let schema = Schema::deserialize(schema_str)?; 
         Ok(schema)
     }
 

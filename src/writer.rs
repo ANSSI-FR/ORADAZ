@@ -291,7 +291,7 @@ impl MlaWriter {
         /*
         Append data to the file inside MLA archive
         */
-        if self.file_ids.get(filepath).is_none() {
+        if !self.file_ids.contains_key(filepath) {
             match self.mla_archive.start_file(filepath) {
                 Err(err) => {
                     error!(
@@ -305,6 +305,10 @@ impl MlaWriter {
                     if let Some(old_file_id) = self.file_ids.insert(String::from(filepath), file_id)
                     {
                         // If for any reason (that should never happen) we erased the entry, revert the change
+                        debug!(
+                            "{:FL$}Reverting the erased entry for file {}",
+                            "MlaWriter", filepath
+                        );
                         self.file_ids.insert(String::from(filepath), old_file_id);
                     }
                 }

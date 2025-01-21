@@ -69,17 +69,11 @@ impl Dumper {
         Create new Dumper
         */
         // Parse schema file
-        let schema: Schema = match Schema::new(cli, writer, &requests) {
-            Err(err) => return Err(err),
-            Ok(s) => s,
-        };
+        let schema: Schema = Schema::new(cli, writer, &requests)?;
 
         // Authenticate for the different services
         let mut tokens: HashMap<String, Token> =
-            match Tokens::initialize(tenant, app_id, config, &schema, writer) {
-                Err(err) => return Err(err),
-                Ok(t) => t,
-            };
+            Tokens::initialize(tenant, app_id, config, &schema, writer)?;
 
         // Check prerequisites
         match config.no_check {

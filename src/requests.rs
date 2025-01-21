@@ -37,13 +37,11 @@ impl Requests {
                 match &config.proxy {
                     // Proxy defined in config file
                     Some(p) => {
-                        match &p.username {
-                            Some(u) => proxy_username = &u,
-                            None => {}
+                        if let Some(u) = &p.username {
+                            proxy_username = u
                         };
-                        match &p.password {
-                            Some(p) => proxy_password = &p,
-                            None => {}
+                        if let Some(p) = &p.password {
+                            proxy_password = p
                         };
                         &p.url
                     }
