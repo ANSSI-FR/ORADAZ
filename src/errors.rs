@@ -5,86 +5,157 @@ use std::io;
 
 #[derive(Debug)]
 pub enum Error {
+    /// Generic errors
     /// Custom errors
     StringError(String),
     /// IO Error (not enough data, etc.)
     IOError(io::Error),
+    /// Error while creating url
+    UrlCreation,
+    /// Error occured while sending / receiving messages over unbounded channels
+    ChannelError,
+    /// Error while creating Regex
+    RegexError,
+
+    /// Auth errors
+    /// Error when strating device code flow
+    DeviceCodeFlowCreation,
+    /// Error during device code flow authentication
+    DeviceCodeFlowAuthentication,
+    /// Device flow stream ended unexpectedly
+    DeviceCodeFlowUnexpectedEnd,
+    /// Error while parsing access token
+    AccessTokenParsing,
+    /// Error while converting auth_errors to json
+    AuthErrorsToJSON,
+    /// Error while refreshing a token : no refresh token
+    MissingRefreshToken,
+    /// Error while exchanging a refresh token
+    ExchangeRefreshToken,
+    /// New authentication required
+    NewAuthRequired,
+
+    /// Config errors
+    /// Provided config file does not exists
+    ConfigFileNotFound,
+    /// Provided config file is not a valid XML file
+    InvalidConfigXMLStructure,
+    /// Error while writing config options to archive
+    ConfigToJSON,
+
+    /// Requests errors
+    /// Provided proxy URL is invalid
+    InvalidProxyURL,
+    /// Proxy creation error
+    ProxyCreation,
+    /// Could not create reqwest client
+    CannotCreateClient,
+    /// Error to indicate to reprocess the URL later
+    Reprocess,
+
+    /// Schema errors
+    /// Provided schema file does not exists
+    SchemaFileNotFound,
+    /// Could not retrieve schema file from GitHub
+    CannotDownloadSchemaFile,
+    /// The version of the dumper is not the last available
+    NotLastVersion,
+    /// Schema file parsing error
+    SchemaFileParsing,
+    /// Error while constructing urls from schema file
+    UrlsGeneration,
+
+    /// Prerequisites errors
+    /// Missing Graph API token to check prerequisites
+    MissingGraphApiToken,
+    /// Missing Internal API token to check prerequisites
+    MissingInternalApiToken,
+    /// Missing Resources API token to check prerequisites
+    MissingResourcesApiToken,
+    /// Missing Exchange Online API token to check prerequisites
+    MissingExchangeApiToken,
+    /// Cannot retrieve custom application to check permissions
+    CannotRetrieveApp,
+    /// Missing required permission for the dump
+    MissingAppPermission,
+    /// Error while converting prerequisites errors to json
+    PrerequisitesErrorsToJSON,
+    /// Invalid token has been provided to check prerequisites
+    InvalidTokenToCheck,
+    /// Cannot retrieve the organization to check PIM status
+    CannotRetrieveOrganization,
+    /// Cannot retrieve the Entra roles for the current user
+    CannotRetrieveCurrentUserEntraRoles,
+    /// The current user is missing required Entra roles
+    MissingEntraRoles,
+    /// Cannot retrieve the PIM Entra roles assignments for the current user
+    CannotRetrieveCurrentUserPIMEntraRoles,
+    /// Cannot retrieve available subscriptions
+    CannotRetrieveSubscriptions,
+    /// No available subscriptions for current user
+    NoAvailableSubscription,
+    /// Cannot retrieve a mailbox to check the ability to retrieve recipients
+    CannotRetrieveMailboxes,
+    /// Cannot retrieve recipients for the mailboxes
+    CannotRetrieveMailboxesRecipients,
+    /// The current user cannot retrieve mailbox recipients
+    MissingExchangeOnlinePermissions,
+
+    /// Writer errors
+    /// Error writing file to result
+    WriteFile,
+    /// Invalid characters in MLA path
+    InvalidMlaPath,
+    /// MLA file creation error
+    MLACreateFile,
+    /// MLA PubKey error
+    MLAInvalidPubKey,
+    /// MLA archive creation error
+    MLACreateArchive,
+    /// MLA log file creation error
+    MLACreateLogFile,
+    /// Error while ending log file in MLA archive
+    MLAEndLogFile,
+    /// Error while ending file in MLA archive
+    MLAEndFile,
+    /// Error while finalizing MLA archive
+    MLAFinalizeArchive,
+    /// Error while writing log file in MLA archive
+    MLAWriteLog,
+    /// Error while adding data to file in MLA archive
+    MLAAppendDataToFile,
     /// MLA Error
     MLAError(MLAError),
-    /// Provided config file does not exists
-    ConfigFileNotFoundError,
-    /// The version of the dumper is not the last available 
-    NotLastVersionError,
-    /// Provided config file is not a valid XML file
-    InvalidConfigXMLStructureError,
-    /// Provided schema file does not exists
-    SchemaFileNotFoundError,
-    /// Provided proxy URL is invalid
-    InvalidProxyURLError,
-    /// Could not create reqwest client 
-    CannotCreateClientError,
-    /// Could not retrieve schema file from GitHub
-    CannotDownloadSchemaFileError,
-    /// Provided schema file is not a valid XML file
-    InvalidSchemaXMLStructureError,
-    /// Invalid tenant provided as argument
-    InvalidAuthorityUrlError,
-    /// Invalid client id provided as argument
-    InvalidAppId,
-    /// Error while trying to convert metadata to json
-    MetadataToJSONError,
-    /// Error while trying to convert errors to json
-    ErrorsToJSONError,
-    /// Error while trying to check the prerequisites
-    PrerequisitesCheckError,
+    /// Error while creating folder in which to output the results
+    FolderCreation,
+    /// Error while creating log file in output directory
+    FolderCreateLogFile,
+    /// Error while writing log file in output directory
+    FolderWriteLog,
+    /// Invalid path while writing an XML file
+    FolderInvalidFilePath,
+    /// Error while trying to rename the MLA archive
+    ArchiveRenaming,
+    /// Error while locking writer to use it
+    WriterLock,
 
-    /// Could not retrieve token metadata
-    RetrieveTokenMetadataError,
-    /// Device code has expired while waiting for user interaction
-    ExpiredDeciveCodeError,
-    /// Error during the device code flow authentication process
-    DeviceCodeFlowAuthenticationError,
-    /// Cannot get device code flow to acquire token
-    CannotAcquireDeviceCodeFlowError,
-    /// Token cannot be retrieved for an API
-    CannotAcquireTokenError,
-    /// Cannot retrieve the custom application to check if permissions match requirements
-    CannotRetrieveAppError,
-    /// Cannot retrieve current user to check if required Global Reader role is assigned
-    CannotRetrieveCurrentUserError,
-    /// Cannot retrieve current user roles assignments to check if required Global Reader role is assigned
-    CannotRetrieveCurrentUserRolesError,
-    /// Cannot retrieve the subscriptions that will be audited
-    CannotRetrieveSubscriptionsError,
-    /// Cannot retrieve the mailboxes
-    CannotRetrieveMailboxesError,
-    /// No privilegege to read any subscription
-    NoSubscriptionError,
-    /// Missing api definition in schema
-    ApiNotInSchemaError,
-    /// Missing required token
-    MissingApiTokenError,
-    /// Missing required permission for the dump
-    MissingAppPermissionError,
-    /// Missing required Azure AD Role to perform the dump
-    MissingAzureAdRoleError,
-    /// Missing required Exchange Online to perform the dump
-    MissingExchangeOnlinePermissionsError,
-    
-    /// Cannnot create the dumper 
-    DumperCreationError,
+    /// Metadata errors
+    /// Error while trying to convert metadata to json
+    MetadataToJSON,
+
+    /// Threading errors
     /// Cannnot create thread pool builder to perform the dump
-    ThreadPoolBuilderCreationError,
-    /// Cannnot refresh an expired access token
-    CannotRefreshTokenError,
-    /// Missing refresh token
-    MissingRefreshTokenError,
-    /// Invalid request sent to the server
-    InvalidRequestError,
-    /// Error while parsing the data received
-    ParsingError,
-    /// Operator not yet implemented for conditional relationships
-    OperatorNotImplementedError,
+    ThreadPoolBuilderCreation,
+    /// Prerequisites check failed after unexpected HTTP code from API
+    ErrorCodeDueToPrerequisites,
+
+    /// Dumper errors
+    /// Error while locking unbounded channel sender
+    SenderLock,
+    /// Error while locking unbounded channel receiver
+    ReceiverLock,
+    /// Error while locking metadata mutex
+    MetadataLock,
 }
 
 impl fmt::Display for Error {

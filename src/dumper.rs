@@ -1,685 +1,602 @@
-use crate::auth::{self, TokenResponse};
-use crate::config::{Condition, Config, Key, Request, Schema, Service};
+use crate::auth::{AuthError, Token, Tokens};
+use crate::config::Config;
 use crate::errors::Error;
 use crate::exit;
-use crate::metadata::TablesMetadata;
+use crate::prerequisites::Prerequisites;
+use crate::requests::Requests;
+use crate::schema::{Schema, Url};
+use crate::threading::{
+    ConditionError, DumpError, RequestMsg, RequestsHandler, WriterHandler, WriterMsg,
+};
+use crate::writer::OradazWriter;
+use crate::Cli;
 
-use chrono::Utc;
-use log::{debug, error, warn};
-use mla::{ArchiveFileID, ArchiveWriter};
-use rand::{seq::SliceRandom, thread_rng};
-use rayon::ThreadPoolBuilder;
+use crossbeam::channel::{unbounded, Receiver, Sender};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::fs::{self, File, OpenOptions};
-use std::io::Write;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::{sync, thread, time};
+use std::{thread, time::Duration};
 
 const FL: usize = crate::FL;
 
-#[derive(Serialize, Deserialize)]
-pub struct DumpError {
-    filename: String,
-    url: String,
-    status: String,
-    code: String,
-    message: String,
+pub enum ThreadError {
+    AuthError(AuthError),
+    ConditionError(ConditionError),
+    DumpError(DumpError),
+    BlockingError(Error),
 }
 
-#[derive(Clone)]
-struct Relationship {
-    filename: String,
-    url: String,
-    keys: Vec<Key>,
-    conditions: Vec<Condition>,
-    relationships: Vec<Relationship>,
+pub enum MainMsg {
+    Finished(usize),
+    NewUrl(Url),
+    ThreadError(ThreadError),
 }
 
-#[derive(Clone)]
-struct Url {
-    api: String,
-    filename: String,
-    url: String,
-    error_code: String,
-    error_message: String,
-    next_link: String,
-    relationships: Vec<Relationship>,
-    keys: Vec<Key>,
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Table {
+    pub name: String,
+    pub folder: String,
+    pub file: String,
+    pub count: usize,
 }
 
 pub struct Dumper {
-    urls: Vec<Url>,
-    pub errors: Vec<DumpError>,
-    pub tables: Vec<TablesMetadata>,
-    threads: usize,
-    pub request_count: usize,
-    client: reqwest::blocking::Client,
+    pub tenant: String,
+    pub app_id: String,
+    pub requests: Requests,
+    pub config: Config,
+    pub schema: Schema,
+    pub writer: Arc<Mutex<OradazWriter>>,
+    pub tokens: HashMap<String, Token>,
+    pub requests_threads: usize,
+    pub writer_threads: usize,
+    pub tables: Vec<Table>,
+    pub errors: usize,
+    pub condition_errors: usize,
 }
 
 impl Dumper {
     pub fn new(
-        token_keys: &[String],
-        config: &Config,
-        schema: &Schema,
-        tenant: &str,
-        client: &reqwest::blocking::Client,
-    ) -> Self {
-        let mut urls = Vec::new();
-        let services: &Vec<Service> = &schema.services;
-        for s in services.iter() {
-            if !token_keys.contains(&s.name) {
-                continue;
-            }
-            let base_url = &s.base_url;
-            let uri_scheme = &s.uri_scheme;
-            let default_api_version = &s.api_version;
-            let requests: &Vec<Request> = &s.requests;
-            for request in requests.iter() {
-                let url_string = get_url(
-                    tenant,
-                    base_url,
-                    uri_scheme,
-                    default_api_version,
-                    &request.uri,
-                    &request.api_version,
-                    &request.select,
-                    &request.param,
-                    &request.keys,
-                );
-                let relationships_names: &Vec<String> = &request.relationships;
-                let relationships: Vec<Relationship> =
-                    get_relationships(tenant, s, relationships_names);
-                let keys: Vec<Key> = Vec::new();
-                let url: Url = Url {
-                    api: s.name.to_string().to_string(),
-                    filename: request.name.to_string().to_string(),
-                    url: url_string,
-                    error_code: s.error_code.to_string().to_string(),
-                    error_message: s.error_message.to_string().to_string(),
-                    next_link: s.next_link.to_string().to_string(),
-                    relationships,
-                    keys,
-                };
-                urls.push(url);
-            }
-        }
-        urls.shuffle(&mut thread_rng());
-
-        Self {
-            urls,
-            errors: Vec::new(),
-            tables: Vec::new(),
-            threads: config.threads,
-            request_count: 0,
-            client: client.clone(),
-        }
-    }
-
-    pub fn dump<'a>(
-        &mut self,
-        tokens: &mut HashMap<String, TokenResponse>,
-        mla_archive: &mut Option<ArchiveWriter<'a, &File>>,
-        config_output_files: bool,
-        output_folder: &str,
-        log_file_path: &PathBuf,
-        services: &Vec<Service>,
         tenant: &str,
         app_id: &str,
-        client: &reqwest::blocking::Client,
-    ) {
-        let pool = match ThreadPoolBuilder::new().num_threads(self.threads).build() {
-            Ok(p) => p,
-            Err(_e) => {
-                error!(
-                    "{:FL$}Cannot create multithread pool to perform the dump",
-                    "dump"
-                );
-                error!("{:FL$}{}", "", Error::ThreadPoolBuilderCreationError);
-                return exit(&log_file_path, mla_archive, Some(&output_folder));
-            }
-        };
-
-        let mut request_count: usize = 0;
-        let mut new_urls: Vec<Url> = Vec::new();
-        let mut files: HashMap<String, ArchiveFileID> = HashMap::new();
-        let mut tables: HashMap<String, TablesMetadata> = HashMap::new();
-        let c_mutex = Arc::new(Mutex::new(0));
-
-        if config_output_files {
-            if let Err(err) = fs::create_dir(&format!("{}/objects", output_folder)) {
-                error!(
-                    "{:FL$}Cannot create directory {}/objects - {}",
-                    "main", output_folder, err
-                );
-                return exit(&log_file_path, mla_archive, Some(&output_folder));
-            };
-        };
-
-        let mut wait = false;
-        while !self.urls.is_empty() {
-            request_count += self.urls.len();
-            let (tx, rx) = sync::mpsc::channel();
-
-            if wait {
-                debug!("{:FL$}Waiting 2 seconds due to error code 429", "dump");
-                thread::sleep(time::Duration::from_millis(2000));
-            };
-            wait = false;
-
-            self.urls.iter().for_each(|url| {
-                let tx = tx.clone();
-                let thread_api = url.api.clone();
-                let mut thread_token: TokenResponse;
-                if let Some(token) = tokens.get_mut(&thread_api) {
-                    thread_token = token.clone();
-                } else {
-                    error!("{:FL$}Missing token for api {}", "dump", thread_api);
-                    error!("{:FL$}{}", "", Error::MissingApiTokenError);
-                    return exit(&log_file_path, mla_archive, Some(&output_folder));
-                };
-                if thread_token.expires_on - Utc::now().timestamp() < 600 {
-                    if let Err(e) = thread_token.refresh_token(&self.client) {
-                        error!("{:FL$}{}", "", e);
-                        for s in services.iter() {
-                            if &thread_api == &s.name {
-                                error!(
-                                    "{:FL$}A new authentication is required for API {}",
-                                    "", &s.name
-                                );
-                                match auth::get_token(s, tenant, app_id, &client) {
-                                    Err(err) => {
-                                        error!("{:FL$}{}", "", err);
-                                        return exit(
-                                            &log_file_path,
-                                            mla_archive,
-                                            Some(&output_folder),
-                                        );
-                                    }
-                                    Ok(new_token) => {
-                                        tokens.insert(thread_api.to_string(), new_token)
-                                    }
-                                };
-                            }
-                        }
-                    } else {
-                        let new_token = thread_token.clone();
-                        tokens.insert(thread_api.to_string(), new_token);
-                    };
-                }
-                let access_token = match &thread_token.access_token {
-                    None => String::from(""),
-                    Some(access_token) => access_token.clone(),
-                };
-                if access_token == *"" {
-                    error!("{:FL$}Missing token for api {}", "dump", thread_api);
-                    error!("{:FL$}{}", "", Error::MissingApiTokenError);
-                    return exit(&log_file_path, mla_archive, Some(&output_folder));
-                } else {
-                    let mut thread_url = url.clone();
-                    thread_url.url = thread_url
-                        .url
-                        .replace("//", "/")
-                        .replace("https:/", "https://");
-                    let thread_client = self.client.clone();
-                    pool.spawn(move || {
-                        match ApiRequest::new(&thread_url, &access_token, &thread_client) {
-                            Ok(resp) => tx.send(ApiResponse::ApiRequest(Box::new(resp))).unwrap(),
-                            Err(_e) => tx.send(ApiResponse::Url(thread_url)).unwrap(),
-                        };
-                    });
-                }
-            });
-            drop(tx);
-            rx.into_iter().for_each(|resp| {
-                match resp {
-                    ApiResponse::ApiRequest(r) => {
-                        if r.response.status().as_u16() == 429 {
-                            debug!("{:FL$}Error 429 for API {} with url {}", "dump", r.url.api, r.url.url);
-                            new_urls.push(r.url);
-                            wait = true;
-                        } else if !r.response.status().is_success() {
-                            let filename: &str = &r.url.filename.clone();
-                            match r.handle_error(filename) {
-                                Ok(e) => self.errors.push(e),
-                                Err(e) => {
-                                    error!("{:FL$}{}", "", e);
-                                    return exit(&log_file_path, mla_archive, Some(&output_folder));
-                                }
-                            }
-                        } else {
-                            let filename: &str = &r.url.filename.clone();
-                            let url = r.url.clone();
-                            match r.handle_success() {
-                                Ok((nl, nu, data)) => {
-                                    if let Some(n) = nl {
-                                        new_urls.push(n);
-                                    };
-                                    let mut relationships = nu;
-                                    new_urls.append(&mut relationships);
-                                    let mut data_count = data.len();
-                                    match tables.get(filename) {
-                                        None => (),
-                                        Some(t) => data_count += t.count,
-                                    }
-                                    for d in data {
-                                        let mut lock = c_mutex.try_lock();
-                                        if let Ok(ref mut _mutex) = lock {
-                                            let to_write = format!("{}\n", d);
-                                            match files.get(filename) {
-                                                None => {
-                                                    if let Some(mla) = mla_archive {
-                                                        let id_file = mla.start_file(&format!("objects/{}.json", filename)).unwrap();
-                                                        files.insert(filename.to_string(), id_file);
-                                                        mla.append_file_content(id_file, to_write.len() as u64, to_write.as_bytes()).unwrap();
-                                                    };
-                                                    if config_output_files {
-                                                        let mut data_file = match File::create(&format!("{}/objects/{}.json", output_folder, filename)) {
-                                                            Err(e) => {
-                                                                error!("{:FL$}Could not create output file {} in unencrypted folder", "dump", filename); 
-                                                                error!("{:FL$}{}", "", Error::IOError(e));
-                                                                return exit(&log_file_path, mla_archive, Some(&output_folder));
-                                                            },
-                                                            Ok(f) => f,
-                                                        };
-                                                        if let Err(e) = data_file.write_all(to_write.as_bytes()) {
-                                                            error!("{:FL$}Could not write data to output file {} in unencrypted folder", "dump", filename); 
-                                                            error!("{:FL$}{}", "", Error::IOError(e));
-                                                            return exit(&log_file_path, mla_archive, Some(&output_folder));
-                                                        };
-                                                    };
-                                                },
-                                                Some(id) => {
-                                                    if let Some(mla) = mla_archive {
-                                                        mla.append_file_content(*id, to_write.len() as u64, to_write.as_bytes()).unwrap();
-                                                    };
-                                                    if config_output_files {
-                                                        let mut data_file = match OpenOptions::new().write(true).append(true).open(&format!("{}/objects/{}.json", output_folder, filename)) {
-                                                            Err(e) => {
-                                                                error!("{:FL$}Could not open output file {} in unencrypted folder", "dump", filename); 
-                                                                error!("{:FL$}{}", "", Error::IOError(e));
-                                                                return exit(&log_file_path, mla_archive, Some(&output_folder));
-                                                            },
-                                                            Ok(f) => f,
-                                                        };
-                                                        if let Err(e) = data_file.write_all(to_write.as_bytes()) {
-                                                            error!("{:FL$}Could not write data to output file {} in unencrypted folder", "dump", filename); 
-                                                            error!("{:FL$}{}", "", Error::IOError(e));
-                                                            return exit(&log_file_path, mla_archive, Some(&output_folder));
-                                                        };
-                                                    }
-                                                },
-                                            }
-                                        } else {
-                                            warn!("{:FL$}try_lock failed while writing the following data", "dump");
-                                            warn!("{:FL$}{}", "", format!("{}\t{}", filename, d));
-                                            data_count -= 1;
-                                        }
-                                    }
-                                    tables.insert(filename.to_string(), TablesMetadata {
-                                        file: format!("objects\\{}.json", filename),
-                                        table_name: filename.to_string(),
-                                        count: data_count,
-                                    });
-                                },
-                                Err(e) => {
-                                    error!("{:FL$}{}", "", e);
-                                    new_urls.push(url);
-                                }
-                            }
-                        };
-                    },
-                    ApiResponse::Url(url) => {
-                        new_urls.push(url);
-                    },
-                }
-            });
-            // Priority to nextlink urls
-            if new_urls.len() <= self.threads {
-                self.urls = new_urls.clone();
-                new_urls = Vec::new();
-            } else {
-                let tmp_urls = new_urls.clone();
-                let (left, right) = tmp_urls.split_at(self.threads);
-                self.urls = left.to_vec().clone();
-                new_urls = right.to_vec().clone();
-            }
-        }
-        for (_filename, id) in files {
-            if let Some(mla) = mla_archive {
-                mla.end_file(id).unwrap();
-            }
-        }
-        self.tables = tables.values().cloned().collect();
-        self.request_count = request_count;
-    }
-}
-
-enum ApiResponse {
-    Url(Url),
-    ApiRequest(Box<ApiRequest>),
-}
-
-struct ApiRequest {
-    url: Url,
-    response: reqwest::blocking::Response,
-}
-
-impl ApiRequest {
-    pub fn new(
-        url: &Url,
-        access_token: &str,
-        client: &reqwest::blocking::Client,
+        writer: &Arc<Mutex<OradazWriter>>,
+        config: &Config,
+        cli: &Cli,
+        requests: Requests,
     ) -> Result<Self, Error> {
-        let response = match client
-            .get(&url.url)
-            .header(
-                reqwest::header::AUTHORIZATION,
-                &format!("Bearer {}", access_token),
-            )
-            .header(
-                "x-ms-client-request-id",
-                "5b565221-a13a-4b72-a77f-7d055c91f0ab",
-            ) // Random request id for unsupported main API
-            .header("x-ms-client-session-id", "f87c8a7bf35d4a55b9644065931fb92a") // Random session id for unsupported main API
-            .send()
-        {
-            Err(e) => {
-                warn!(
-                    "{:FL$}Cannot perform request to url {}. Will retry later.",
-                    "ApiRequest", url.url
-                );
-                warn!("{:FL$}\t{}", "", e);
-                return Err(Error::InvalidRequestError);
-            }
-            Ok(res) => res,
+        /*
+        Create new Dumper
+        */
+        // Parse schema file
+        let schema: Schema = match Schema::new(cli, writer, &requests) {
+            Err(err) => return Err(err),
+            Ok(s) => s,
         };
+
+        // Authenticate for the different services
+        let mut tokens: HashMap<String, Token> =
+            match Tokens::initialize(tenant, app_id, config, &schema, writer) {
+                Err(err) => return Err(err),
+                Ok(t) => t,
+            };
+
+        // Check prerequisites
+        match config.no_check {
+            Some(true) => info!(
+                "{:FL$}Skipping prerequisites checks dur to config file option noCheck",
+                "Dumper"
+            ),
+            _ => {
+                Prerequisites::check_all(writer, &requests.client, &mut tokens)?;
+            }
+        };
+
+        // Default number of requests threads is 100
+        let requests_threads: usize = config.requests_threads.unwrap_or(100);
+        // Default number of requests threads is 5
+        let writer_threads: usize = config.writer_threads.unwrap_or(100);
+
         Ok(Self {
-            url: url.clone(),
-            response,
+            tenant: tenant.to_string(),
+            app_id: app_id.to_string(),
+            requests,
+            config: config.clone(),
+            schema,
+            writer: Arc::clone(writer),
+            tokens,
+            requests_threads,
+            writer_threads,
+            tables: Vec::new(),
+            errors: 0,
+            condition_errors: 0,
         })
     }
 
-    pub fn handle_error(self, filename: &str) -> Result<DumpError, Error> {
-        warn!("{:FL$}An error occured for url {}", "dump", self.url.url);
-        let status = String::from(self.response.status().as_str());
-        let response = &self.response.text().unwrap();
-        let mut code: String = String::from("Unknown");
-        let message: String;
-        let error: Result<Value, serde_json::Error> = serde_json::from_str(response);
-        match error {
-            Ok(e) => {
-                code = match e.pointer(&format!("/{}", self.url.error_code)) {
-                    Some(v) => v.as_str().unwrap().to_string(),
-                    None => String::from("Unknown"),
-                };
-                message = match e.pointer(&format!("/{}", self.url.error_message)) {
-                    Some(v) => v.as_str().unwrap().to_string(),
-                    None => String::from("Unknown"),
-                };
-            }
-            Err(_) => {
-                message = response.to_string();
-            }
-        };
-        warn!("{:FL$}\t{} - {} - {}", "", status, code, message);
-
-        Ok(DumpError {
-            filename: filename.to_string(),
-            url: self.url.url,
-            status,
-            code,
+    pub fn write_dump_error(&mut self, message: String, url: Url) {
+        /*
+        Write a dump error in archive
+        */
+        // Add to errors.json
+        self.errors += 1;
+        let dump_error = DumpError {
+            folder: url.service_name,
+            file: url.api,
+            url: url.url,
+            status: 0,
+            code: String::from("SendRequestMsgFromInitialUrlError"),
             message,
-        })
-    }
-
-    pub fn handle_success(self) -> Result<(Option<Url>, Vec<Url>, Vec<Value>), Error> {
-        let mut new_urls: Vec<Url> = Vec::new();
-
-        let response_text = match self.response.text() {
-            Ok(e) => e,
-            Err(_e) => {
-                error!(
-                    "{:FL$}Cannot parse response for request to url {}",
-                    "handle_success", self.url.url
-                );
-                return Err(Error::ParsingError);
-            }
         };
-        let response: Value = match serde_json::from_str(response_text.as_str()) {
-            Ok(e) => e,
-            Err(_e) => {
-                error!(
-                    "{:FL$}Cannot parse response for request to url {}",
-                    "handle_success", self.url.url
-                );
-                return Err(Error::ParsingError);
-            }
-        };
-        let next_links: Option<Url> = match response.pointer(&format!("/{}", self.url.next_link)) {
-            Some(e) => {
-                let mut new_url = self.url.clone();
-                if new_url.api == "intAPI" {
-                    let next_link = e.as_str().unwrap().to_string();
-                    if next_link.starts_with("https://") {
-                        new_url.url = format!("{}&api-version=1.61-internal", next_link);
-                    } else if next_link.starts_with("directoryObjects") {
-                        let url_parts: Vec<String> =
-                            new_url.url.split('/').map(|s| s.to_string()).collect();
-                        let url_start = &url_parts[0..4].join("/");
-                        new_url.url =
-                            format!("{}/{}&api-version=1.61-internal", url_start, next_link);
-                    } else {
-                        let url_parts: Vec<String> =
-                            new_url.url.split('/').map(|s| s.to_string()).collect();
-                        let useful_len = url_parts.len() - 1;
-                        let url_start = &url_parts[0..useful_len].join("/");
-                        new_url.url =
-                            format!("{}/{}&api-version=1.61-internal", url_start, next_link);
+        let string_error: String = match serde_json::to_string(&dump_error) {
+            Err(err) => {
+                error!("{:FL$}Could not convert dump_error to json", "Dumper");
+                debug!("{}", err);
+                match self.writer.lock() {
+                    Ok(mut w) => {
+                        if let Err(error) = w.set_broken() {
+                            error!("{:FL$}{}", "Dumper", error);
+                        };
                     }
-                    Some(new_url)
-                } else {
-                    match e.as_str() {
-                        None => None,
-                        Some(a) => {
-                            new_url.url = a.to_string();
-                            Some(new_url)
-                        }
+                    Err(err) => {
+                        error!(
+                            "{:FL$}Error while locking Writer, could not treat archive as broken",
+                            "Dumper"
+                        );
+                        error!("{:FL$}{}", "Dumper", Error::WriterLock);
+                        debug!("{}", err);
                     }
                 }
+                exit();
+                String::new()
             }
-            None => None,
+            Ok(j) => format!("{}\n", j),
         };
-        let initial_data: Vec<Value> = match response.pointer("/value") {
-            Some(e) => e.as_array().unwrap().to_vec(),
-            None => match response {
-                Value::Array(r) => r,
-                Value::Object(o) => vec![Value::Object(o)],
-                _ => vec![json!({"result": response.clone()})],
-            },
-        };
-        let mut data: Vec<Value> = Vec::new();
-        for d in initial_data {
-            let mut elmt: Value = d.clone();
-            for key in &self.url.keys {
-                elmt[&format!("_parentObject_{}", key.name)] = json!(key.value.clone());
+        match self.writer.lock() {
+            Ok(mut w) => {
+                if let Err(err) =
+                    w.write_file(String::new(), "errors.json".to_string(), string_error)
+                {
+                    error!("{:FL$}{}", "Dumper", err);
+                    exit()
+                };
             }
-            data.push(elmt);
+            Err(err) => {
+                error!("{:FL$}Error while locking Writer to write errors", "Dumper");
+                error!("{:FL$}{}", "Dumper", Error::WriterLock);
+                debug!("{}", err);
+                exit()
+            }
+        }
+    }
+
+    pub fn dump(&mut self) -> Result<usize, Error> {
+        /*
+        Perform the dump based on the schema file
+        */
+        // Construct urls
+        let u: Result<Vec<Url>, Error> =
+            self.schema
+                .clone()
+                .get_urls(self.tenant.clone(), &self.tokens, &self.requests.client);
+        let urls: Vec<Url> = match u {
+            Ok(urls) => urls,
+            Err(err) => {
+                return Err(err);
+            }
+        };
+
+        // Create unbounded channels to send and receive messages between threads
+        // Dumper ---s1/r1---> RequestThread
+        let (s1, r1) = unbounded::<RequestMsg>();
+        // RequestThread ---s2/r2---> WriterThread
+        let (s2, r2) = unbounded::<WriterMsg>();
+        // WriterThread ---s3/r3---> Dumper
+        let (s3, r3) = unbounded::<MainMsg>();
+
+        // Pushing the channels in Arc Mutex
+        let main_sender: Arc<Mutex<Sender<RequestMsg>>> = Arc::new(Mutex::new(s1));
+        let requests_receiver: Arc<Mutex<Receiver<RequestMsg>>> = Arc::new(Mutex::new(r1));
+        let requests_sender: Arc<Mutex<Sender<WriterMsg>>> = Arc::new(Mutex::new(s2));
+        let writer_receiver: Arc<Mutex<Receiver<WriterMsg>>> = Arc::new(Mutex::new(r2));
+        let writer_sender: Arc<Mutex<Sender<MainMsg>>> = Arc::new(Mutex::new(s3));
+
+        // Thread to handle the processing of the requests
+        let requests_count: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+        let tokens: Arc<Mutex<HashMap<String, Token>>> = Arc::new(Mutex::new(self.tokens.clone()));
+        let requests_handle = thread::spawn({
+            let requests_count: Arc<Mutex<usize>> = Arc::clone(&requests_count);
+            let requests_receiver: Arc<Mutex<Receiver<RequestMsg>>> =
+                Arc::clone(&requests_receiver);
+            let requests_sender: Arc<Mutex<Sender<WriterMsg>>> = Arc::clone(&requests_sender);
+            let writer_sender: Arc<Mutex<Sender<MainMsg>>> = Arc::clone(&writer_sender);
+            let main_sender: Arc<Mutex<Sender<RequestMsg>>> = Arc::clone(&main_sender);
+            let tokens_sender: Arc<Mutex<HashMap<String, Token>>> = Arc::clone(&tokens);
+            let client = self.requests.clone().client;
+            let requests_threads: usize = self.requests_threads;
+            let requests_config: Config = self.config.clone();
+            move || {
+                let rh = RequestsHandler::new(
+                    requests_config,
+                    requests_threads,
+                    requests_receiver,
+                    requests_sender,
+                    writer_sender,
+                    main_sender,
+                    client,
+                    tokens_sender,
+                    requests_count,
+                );
+                rh.start()
+            }
+        });
+
+        // Thread to handle writing the results
+        let tables: Arc<Mutex<HashMap<String, Table>>> = Arc::new(Mutex::new(HashMap::new()));
+        let writer_handle = thread::spawn({
+            let oradaz_writer: Arc<Mutex<OradazWriter>> = Arc::clone(&self.writer);
+            let thread_tables: Arc<Mutex<HashMap<String, Table>>> = Arc::clone(&tables);
+            let writer_receiver: Arc<Mutex<Receiver<WriterMsg>>> = Arc::clone(&writer_receiver);
+            let writer_sender: Arc<Mutex<Sender<MainMsg>>> = Arc::clone(&writer_sender);
+            let main_sender: Arc<Mutex<Sender<RequestMsg>>> = Arc::clone(&main_sender);
+            let tokens_sender: Arc<Mutex<HashMap<String, Token>>> = Arc::clone(&tokens);
+            let writer_threads: usize = self.writer_threads;
+            let tenant_threads: String = self.tenant.clone();
+            let client = self.requests.clone().client;
+            move || {
+                let rh = WriterHandler::new(
+                    tenant_threads,
+                    writer_threads,
+                    writer_receiver,
+                    writer_sender,
+                    main_sender,
+                    oradaz_writer,
+                    thread_tables,
+                    client,
+                    tokens_sender,
+                );
+                match rh.start() {
+                    Ok(r) => r,
+                    Err(err) => return Err(err),
+                };
+                Ok(())
+            }
+        });
+
+        // Send the URLs to be processed
+        let mut counter = 0;
+        let main_sender: Arc<Mutex<Sender<RequestMsg>>> = Arc::clone(&main_sender);
+        for url in urls {
+            counter += 1;
+            match main_sender.lock() {
+                Ok(s) => {
+                    if let Err(err) = s.send(RequestMsg::Url(url.clone())) {
+                        warn!("{:FL$}Error sending initial URL to RequestThread", "Dumper");
+                        debug!(
+                            "Skipping data for service {:?}: {:?} - {:?}",
+                            url.service_name, url.api, url.url
+                        );
+                        debug!("{}", err);
+                        self.write_dump_error(err.to_string(), url);
+                        counter -= 1;
+                    };
+                }
+                Err(err) => {
+                    error!(
+                        "{:FL$}Error while locking Dumper sender to send URLs to be processed",
+                        "Dumper"
+                    );
+                    error!("{:FL$}{}", "Dumper", Error::SenderLock);
+                    debug!("{}", err);
+                    exit()
+                }
+            }
         }
 
-        for obj in data.clone() {
-            let relationships = self.url.relationships.clone();
-            for relationship in relationships {
-                if !relationship.conditions.is_empty() {
-                    let mut matched_conditions = true;
-                    for c in relationship.conditions {
-                        let operator: &str = &c.operator;
-                        match operator {
-                            "contains" => {
-                                let v: Vec<String> = match obj.pointer(&format!("/{}", c.parameter))
-                                {
-                                    Some(e) => {
-                                        let mut res: Vec<String> = Vec::new();
-                                        for i in e.as_array().unwrap() {
-                                            res.push(i.to_string());
-                                        }
-                                        res
-                                    }
-                                    None => {
-                                        error!(
-                                            "{:FL$}Cannot find parameter {} in response to url {}",
-                                            "handle_success", c.parameter, self.url.url
-                                        );
-                                        error!("{:FL$}{}", "handle_success", obj);
-                                        return Err(Error::ParsingError);
-                                    }
+        // Wait response and send new urls if any
+        while counter > 0 {
+            // Timeout after 5 minutes in case of missing message to decrease counter
+            match r3.recv_timeout(Duration::from_secs(300)) {
+                Ok(msg) => match msg {
+                    MainMsg::Finished(i) => {
+                        // A URL has been processed correctly
+                        counter -= i;
+                    }
+                    MainMsg::NewUrl(url) => {
+                        // A new URL need to be processed
+                        counter += 1;
+                        match main_sender.lock() {
+                            Ok(s) => {
+                                if let Err(err) = s.send(RequestMsg::Url(url.clone())) {
+                                    warn!("{:FL$}Error sending new URL to RequestThread", "Dumper");
+                                    debug!(
+                                        "Skipping data for service {:?}: {:?} - {:?}",
+                                        url.service_name, url.api, url.url
+                                    );
+                                    debug!("{}", err);
+                                    self.write_dump_error(err.to_string(), url);
+                                    counter -= 1;
                                 };
-                                if !v.contains(&c.value) {
-                                    matched_conditions = false;
+                            }
+                            Err(err) => {
+                                error!(
+                                    "{:FL$}Error while locking Dumper sender to send new URLs to be processed",
+                                    "Dumper"
+                                );
+                                error!("{:FL$}{}", "Dumper", Error::SenderLock);
+                                debug!("{}", err);
+                                exit()
+                            }
+                        }
+                    }
+                    MainMsg::ThreadError(thread_error) => match thread_error {
+                        // An error occured while processing a URL
+                        ThreadError::AuthError(auth_error) => {
+                            // Write authentication error to auth_errors.json
+                            let string_error: String = match serde_json::to_string(&auth_error) {
+                                Err(err) => {
+                                    error!("{:FL$}Could not convert auth_error to json", "Dumper");
+                                    debug!("{}", err);
+                                    match self.writer.lock() {
+                                        Ok(mut w) => {
+                                            if let Err(error) = w.set_broken() {
+                                                error!("{:FL$}{}", "Dumper", error);
+                                            };
+                                        }
+                                        Err(err) => {
+                                            error!("{:FL$}Error while locking Writer, could not treat archive as broken", "Dumper");
+                                            error!("{:FL$}{}", "Dumper", Error::WriterLock);
+                                            debug!("{}", err);
+                                        }
+                                    }
+                                    exit();
+                                    String::new()
+                                }
+                                Ok(j) => format!("{}\n", j),
+                            };
+                            match self.writer.lock() {
+                                Ok(mut w) => {
+                                    if let Err(err) = w.write_file(
+                                        String::new(),
+                                        "auth_errors.json".to_string(),
+                                        string_error,
+                                    ) {
+                                        error!("{:FL$}{}", "Dumper", err);
+                                        exit()
+                                    };
+                                }
+                                Err(err) => {
+                                    error!(
+                                        "{:FL$}Error while locking Writer to write auth errors",
+                                        "Dumper"
+                                    );
+                                    error!("{:FL$}{}", "Dumper", Error::WriterLock);
+                                    debug!("{}", err);
+                                    exit()
                                 }
                             }
-                            _ => {
-                                error!("{:FL$}Operator {} not yet implemented for conditional relationships", "handle_success", c.operator);
-                                return Err(Error::OperatorNotImplementedError);
+                        }
+                        ThreadError::DumpError(dump_error) => {
+                            // Write dump error to errors.json
+                            self.errors += 1;
+                            let string_error: String = match serde_json::to_string(&dump_error) {
+                                Err(err) => {
+                                    error!("{:FL$}Could not convert dump_error to json", "Dumper");
+                                    debug!("{}", err);
+                                    match self.writer.lock() {
+                                        Ok(mut w) => {
+                                            if let Err(error) = w.set_broken() {
+                                                error!("{:FL$}{}", "Dumper", error);
+                                            };
+                                        }
+                                        Err(err) => {
+                                            error!("{:FL$}Error while locking Writer, could not treat archive as broken", "Dumper");
+                                            error!("{:FL$}{}", "Dumper", Error::WriterLock);
+                                            debug!("{}", err);
+                                        }
+                                    }
+                                    exit();
+                                    String::new()
+                                }
+                                Ok(j) => format!("{}\n", j),
+                            };
+                            match self.writer.lock() {
+                                Ok(mut w) => {
+                                    if let Err(err) = w.write_file(
+                                        String::new(),
+                                        "errors.json".to_string(),
+                                        string_error,
+                                    ) {
+                                        error!("{:FL$}{}", "Dumper", err);
+                                        exit()
+                                    };
+                                }
+                                Err(err) => {
+                                    error!(
+                                        "{:FL$}Error while locking Writer to write dump errors",
+                                        "Dumper"
+                                    );
+                                    error!("{:FL$}{}", "Dumper", Error::WriterLock);
+                                    debug!("{}", err);
+                                    exit()
+                                }
                             }
                         }
-                    }
-                    if !matched_conditions {
-                        continue;
-                    }
-                }
-                let mut new_url = self.url.clone();
-                new_url.filename = relationship.filename.clone();
-                new_url.relationships = relationship.relationships.clone();
-                let mut url: String = relationship.url.clone();
-                let mut new_keys: Vec<Key> = Vec::new();
-                for key in relationship.keys {
-                    if key.name == "[URL]" {
-                        let mut previous_url: &str = new_url.url.as_str();
-                        previous_url = previous_url.split('?').collect::<Vec<&str>>()[0];
-                        let mut part_url: &str = url.as_str();
-                        part_url = part_url.split("[URL]").collect::<Vec<&str>>()[1];
-                        let replaced: String = format!("{}{}", previous_url, part_url);
-                        url = replaced.clone();
-                        continue;
-                    };
-                    let mut v: String = match obj.pointer(&format!("/{}", key.value)) {
-                        Some(e) => e.as_str().unwrap().to_string(),
-                        None => {
-                            error!(
-                                "{:FL$}Cannot find key {} in response to url {}",
-                                "handle_success", key.value, self.url.url
-                            );
-                            error!("{:FL$}{}", "handle_success", obj);
-                            return Err(Error::ParsingError);
+                        ThreadError::ConditionError(condition_error) => {
+                            // Write condition error to condition_errors.json
+                            self.condition_errors += 1;
+                            let string_error: String = match serde_json::to_string(&condition_error)
+                            {
+                                Err(err) => {
+                                    error!(
+                                        "{:FL$}Could not convert condition_error to json",
+                                        "Dumper"
+                                    );
+                                    debug!("{}", err);
+                                    match self.writer.lock() {
+                                        Ok(mut w) => {
+                                            if let Err(error) = w.set_broken() {
+                                                error!("{:FL$}{}", "Dumper", error);
+                                            };
+                                        }
+                                        Err(err) => {
+                                            error!("{:FL$}Error while locking Writer, could not treat archive as broken", "Dumper");
+                                            error!("{:FL$}{}", "Dumper", Error::WriterLock);
+                                            debug!("{}", err);
+                                        }
+                                    }
+                                    exit();
+                                    String::new()
+                                }
+                                Ok(j) => format!("{}\n", j),
+                            };
+                            match self.writer.lock() {
+                                Ok(mut w) => {
+                                    if let Err(err) = w.write_file(
+                                        String::new(),
+                                        "condition_errors.json".to_string(),
+                                        string_error,
+                                    ) {
+                                        error!("{:FL$}{}", "Dumper", err);
+                                        exit()
+                                    };
+                                }
+                                Err(err) => {
+                                    error!(
+                                        "{:FL$}Error while locking Writer to write condition errors",
+                                        "Dumper"
+                                    );
+                                    error!("{:FL$}{}", "Dumper", Error::WriterLock);
+                                    debug!("{}", err);
+                                    exit()
+                                }
+                            }
                         }
-                    };
-                    new_keys.push(Key {
-                        name: key.value.clone(),
-                        value: v.clone(),
-                        encoded: false,
-                    });
-                    if key.encoded {
-                        let to_encode = v.as_bytes();
-                        v = base64::encode(to_encode);
+                        ThreadError::BlockingError(err) => {
+                            // Received error indicating to stop the dump
+                            error!("{:FL$}{}", "Dumper", err);
+                            match self.writer.lock() {
+                                Ok(mut w) => {
+                                    if let Err(error) = w.set_broken() {
+                                        error!("{:FL$}{}", "Dumper", error);
+                                    };
+                                }
+                                Err(err) => {
+                                    error!("{:FL$}Error while locking Writer, could not treat archive as broken", "Dumper");
+                                    error!("{:FL$}{}", "Dumper", Error::WriterLock);
+                                    debug!("{}", err);
+                                }
+                            }
+                            exit()
+                        }
+                    },
+                },
+                Err(err) => {
+                    error!(
+                        "{:FL$}Timeout while waiting data from WriterThread",
+                        "Dumper"
+                    );
+                    debug!("{}", err);
+                    debug!("Counter is still {}", counter);
+                    match self.writer.lock() {
+                        Ok(mut w) => {
+                            if let Err(error) = w.set_broken() {
+                                error!("{:FL$}{}", "Dumper", error);
+                            };
+                        }
+                        Err(err) => {
+                            error!("{:FL$}Error while locking Writer, could not treat archive as broken", "Dumper");
+                            error!("{:FL$}{}", "Dumper", Error::WriterLock);
+                            debug!("{}", err);
+                        }
                     }
-                    let replaced: String = (&url.replace(&key.name, &v)).to_string();
-                    url = replaced.clone();
+                    exit()
                 }
-                new_url.url = url;
-                new_url.keys = new_keys;
-                new_urls.push(new_url);
             }
         }
 
-        Ok((next_links, new_urls, data))
-    }
-}
-
-fn get_url(
-    tenant: &str,
-    base_url: &str,
-    uri_scheme: &str,
-    default_api_version: &str,
-    uri: &str,
-    api_version: &str,
-    attributes: &[String],
-    param: &str,
-    keys: &Vec<Key>,
-) -> String {
-    let mut version = default_api_version;
-    if !api_version.is_empty() {
-        version = api_version;
-    }
-    let mut parameters: String = String::from("");
-    if !attributes.is_empty() {
-        if uri_scheme.contains('?') {
-            parameters = format!("&$select={}", attributes.join(","));
-        } else {
-            parameters = format!("?$select={}", attributes.join(","));
+        // No more urls to process, finishing all threads
+        debug!("Finishing all threads");
+        for _ in 0..self.requests_threads {
+            match main_sender.lock() {
+                Ok(s) => {
+                    if let Err(err) = s.send(RequestMsg::Terminate) {
+                        error!(
+                            "{:FL$}Error sending finish request to RequestThread",
+                            "Dumper"
+                        );
+                        debug!("{}", err);
+                    };
+                }
+                Err(err) => {
+                    error!(
+                        "{:FL$}Error while locking Dumper sender to send finish requests to RequestThreads",
+                        "Dumper"
+                    );
+                    error!("{:FL$}{}", "Dumper", Error::SenderLock);
+                    debug!("{}", err);
+                }
+            }
         }
-    }
-    if !param.is_empty() {
-        if uri_scheme.contains('?') {
-            parameters = format!("{}&{}", parameters, param);
-        } else {
-            parameters = format!("?{}", param);
+        let requests_sender: Arc<Mutex<Sender<WriterMsg>>> = Arc::clone(&requests_sender);
+        for _ in 0..self.writer_threads {
+            match requests_sender.lock() {
+                Ok(s) => {
+                    if let Err(err) = s.send(WriterMsg::Terminate) {
+                        error!(
+                            "{:FL$}Error sending finish request to WriterThread",
+                            "Dumper"
+                        );
+                        debug!("{}", err);
+                    };
+                }
+                Err(err) => {
+                    error!(
+                        "{:FL$}Error while locking Dumper sender to send finish requests to WriterThreads",
+                        "Dumper"
+                    );
+                    error!("{:FL$}{}", "Dumper", Error::SenderLock);
+                    debug!("{}", err);
+                }
+            }
         }
-    }
 
-    let mut url_string = format!("{}{}", base_url, uri_scheme);
-
-    for key in keys {
-        url_string = (&url_string.replace(&key.name, &key.value)).to_string();
-    }
-
-    url_string = url_string
-        .replace("[VERSION]", version)
-        .replace("[URI]", uri)
-        .replace("[TENANT]", tenant)
-        .replace("[PARAMS]", &parameters);
-
-    url_string
-}
-
-fn get_relationships(tenant: &str, service: &Service, names: &[String]) -> Vec<Relationship> {
-    let mut relationships = Vec::new();
-    let base_url = &service.base_url;
-    let uri_scheme = &service.uri_scheme;
-    let default_api_version = &service.api_version;
-    for r in &service.relationships {
-        if !names.contains(&r.name) {
-            continue;
-        }
-        let tmp = Vec::new();
-        let url_string = get_url(
-            tenant,
-            base_url,
-            uri_scheme,
-            default_api_version,
-            &r.uri,
-            &r.api_version,
-            &r.select,
-            &r.param,
-            &tmp,
-        );
-        let mut keys: Vec<Key> = Vec::new();
-        for k in &r.keys {
-            keys.push(k.clone());
-        }
-        let relationships_names: &Vec<String> = &r.relationships;
-        let new_relationships: Vec<Relationship> =
-            get_relationships(tenant, service, relationships_names);
-        let relationship: Relationship = Relationship {
-            filename: r.name.to_string().to_string(),
-            url: url_string,
-            keys,
-            relationships: new_relationships,
-            conditions: r.conditions.clone(),
+        thread::sleep(Duration::from_secs(2));
+        drop(main_sender);
+        drop(r3);
+        if requests_handle.join().is_err() {
+            error!("{:FL$}Error finishing request thread", "Dumper");
         };
-        relationships.push(relationship);
+        if writer_handle.join().is_err() {
+            error!("{:FL$}Error finishing writer thread", "Dumper");
+        };
+
+        // Storing metadata
+        match tables.lock() {
+            Ok(tables) => {
+                self.tables = <HashMap<String, Table> as Clone>::clone(&tables)
+                    .into_values()
+                    .collect();
+            }
+            Err(err) => {
+                error!(
+                    "{:FL$}Could not lock tables for later write, exiting",
+                    "Dumper"
+                );
+                debug!("{}", err);
+                exit();
+            }
+        }
+
+        match Arc::clone(&requests_count).lock() {
+            Ok(c) => Ok(*c),
+            Err(err) => {
+                warn!(
+                    "{:FL$}Could not return requests counts, returning 0 instead",
+                    "Dumper"
+                );
+                debug!("{}", err);
+                Ok(0)
+            }
+        }
     }
-    relationships
 }

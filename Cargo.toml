@@ -1,21 +1,36 @@
 [package]
+edition = "2021"
 name = "oradaz"
-version = "1.1.1206"
-edition = "2018"
+version = "2.0.2204"
 
 [dependencies]
 ansi_term = "0.12.1"
-base64 = "0.13.0"
-chrono = "0.4"
-clap = "3.2.16"
-curve25519-parser = "0.4.0" 
-lazy_static = "1.4"
-log = {version = "0.4", features = ["max_level_debug", "release_max_level_debug"]}
-mla = "1.4.0"
+azure_core = "0.21.0"
+azure_identity = "0.21.0"
+base64 = "0.22.1"
+chrono = "0.4.39"
+clap = {version = "4.5.23", features = ["derive"]}
+crossbeam = "0.8.4"
+ctrlc = "3.4.5"
+curve25519-parser = "0.4.0"
+env_logger = "0.11.6"
+futures = "0.3.31"
+lazy_static = "1.5.0"
+log = {version = "0.4.22", features = ["max_level_debug", "release_max_level_debug"]}
+mla = {version = "1.4.0", default-features = false, features = ["send"]}
 rand = "0.8.5"
-rayon = "1.5.3"
-reqwest = { version = "0.11", features = ["json", "blocking"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0.83"
-serde_path_to_error = "0.1"
-serde-xml-rs = "0.5.1"
+rayon = "1.10.0"
+regex = "1.11.1"
+reqwest = {version = "0.12.12", features = ["json", "blocking"]}
+serde = {version = "1.0.217", features = ["derive"]}
+serde-xml-rs = "0.6.0"
+serde_json = "1.0.134"
+serde_path_to_error = "0.1.16"
+sha256 = "1.5.0"
+tokio = {version = "1.42.0", features = ["rt", "rt-multi-thread", "time", "macros"]}
+url = "2.5.4"
+
+[profile.release]
+codegen-units = 1 # Limit to 1 code generation units to improve generated code performance
+lto = true # Enable Link Time Optimization
+opt-level = 'z' # Optimize for size.

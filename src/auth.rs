@@ -1,505 +1,317 @@
-use crate::config;
+use crate::config::Config;
 use crate::errors::Error;
+use crate::schema::Schema;
+use crate::writer::OradazWriter;
 
 use ansi_term::Colour::{Red, White};
+use azure_core::{auth::Secret, new_http_client};
+use azure_identity::device_code_flow::{
+    start, DeviceCodeAuthorization, DeviceCodeErrorResponse, DeviceCodePhaseOneResponse,
+};
+use azure_identity::refresh_token::exchange;
+use base64::prelude::*;
 use chrono::Utc;
-use log::{error, info};
+use futures::StreamExt;
+use log::{debug, error};
 use serde::{Deserialize, Serialize};
-use std::{thread, time};
-
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 const FL: usize = crate::FL;
 
+pub struct Auth {
+    pub authorization: DeviceCodeAuthorization,
+}
+
+impl Auth {
+    #[tokio::main]
+    pub async fn new(
+        tenant: &str,
+        client_id: &str,
+        scopes: &[String],
+        description: &String,
+    ) -> Result<Self, Error> {
+        /*
+        Perform Azure authentication by device code flow.
+        */
+        println!(
+            "{}",
+            White.on(Red).paint(
+                "  / \\                                |  Authentication for                      "
+            )
+        );
+        println!(
+            "{}",
+            White.on(Red).paint(format!(
+                " / ! \\   INTERACTION REQUIRED!!!     |  {:40}",
+                description
+            ))
+        );
+        println!(
+            "{}",
+            White.on(Red).paint(
+                "/_____\\                              |  REST API                                "
+            )
+        );
+        let http_client = new_http_client();
+        let scopes_str: Vec<&str> = scopes.iter().map(String::as_str).collect();
+        let token: DeviceCodePhaseOneResponse =
+            match start(http_client.clone(), tenant, client_id, &scopes_str).await {
+                Ok(a) => a,
+                Err(err) => {
+                    error!("{:FL$}Error starting device code flow", "Auth");
+                    debug!("{}", err);
+                    return Err(Error::DeviceCodeFlowCreation);
+                }
+            };
+        println!("{}\n", token.message());
+        let authorization: DeviceCodeAuthorization = loop {
+            match token.stream().next().await {
+                Some(Ok(authorization)) => break authorization,
+                Some(Err(err)) => {
+                    if let Some(error_rsp) = err.downcast_ref::<DeviceCodeErrorResponse>() {
+                        if error_rsp.error == "authorization_pending" {
+                            continue;
+                        }
+                        error!(
+                            "{:FL$}Error while logging: {}",
+                            "Auth", error_rsp.error_description
+                        );
+                        debug!("{}", error_rsp.error);
+                        return Err(Error::DeviceCodeFlowAuthentication);
+                    }
+                }
+                None => {
+                    error!("{:FL$}Device flow stream ended unexpectedly", "Auth");
+                    return Err(Error::DeviceCodeFlowUnexpectedEnd);
+                }
+            }
+        };
+
+        Ok(Auth { authorization })
+    }
+
+    pub fn get_token(
+        self,
+        tenant: String,
+        client_id: String,
+        service: String,
+    ) -> Result<Token, Error> {
+        /*
+        Parse Auth structure to obtain Token
+        */
+        let expires_on: i64 = Utc::now().timestamp() + self.authorization.expires_in as i64;
+        let parts: Vec<&str> = self
+            .authorization
+            .access_token()
+            .secret()
+            .split('.')
+            .collect();
+        match BASE64_URL_SAFE_NO_PAD.decode(parts[1]) {
+            Ok(bytes) => {
+                let token_str = String::from_utf8_lossy(&bytes);
+                let refresh_token: Option<Secret> = self.authorization.refresh_token().cloned();
+                let access_token: Secret = self.authorization.access_token().clone();
+                let token_type: String = self.authorization.token_type;
+                match serde_json::from_str::<PartialAccessToken>(&token_str) {
+                    Ok(j) => Ok(Token {
+                        tenant_id: tenant,
+                        client_id,
+                        service,
+                        access_token,
+                        refresh_token,
+                        token_type,
+                        expires_on,
+                        user_id: j.oid,
+                        user_principal_name: j.name,
+                    }),
+                    Err(err) => {
+                        error!(
+                            "{:FL$}Error while parsing new access token for service {:?}",
+                            "Auth", service
+                        );
+                        debug!("{}", err);
+                        Err(Error::AccessTokenParsing)
+                    }
+                }
+            }
+            Err(err) => {
+                error!(
+                    "{:FL$}Error while decoding new access token for service {:?}",
+                    "Auth", service
+                );
+                debug!("{}", err);
+                Err(Error::AccessTokenParsing)
+            }
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct AuthError {
+    pub api: String,
+    pub error: String,
+}
+
+#[derive(Clone)]
+pub struct Token {
+    pub tenant_id: String,
+    pub client_id: String,
+    pub service: String,
+    pub expires_on: i64,
+    pub access_token: Secret,
+    pub refresh_token: Option<Secret>,
+    pub token_type: String,
+    pub user_id: String,
+    pub user_principal_name: String,
+}
+
+impl Token {
+    #[tokio::main]
+    pub async fn refresh_token(token: Token) -> Result<Token, Error> {
+        /*
+        Refresh a token to obtain a new one
+        */
+        debug!(
+            "{:FL$}Refreshing token for service {:?}",
+            "Token", token.service
+        );
+        let http_client = new_http_client();
+        let refresh_token: &Secret = match &token.refresh_token {
+            Some(t) => t,
+            None => {
+                // If there is no refresh token, return with error indicating
+                // to perform a new authentication
+                return Err(Error::NewAuthRequired);
+            }
+        };
+        match exchange(
+            http_client,
+            &token.tenant_id,
+            &token.client_id,
+            None,
+            refresh_token,
+        )
+        .await
+        {
+            Err(err) => {
+                error!(
+                    "{:FL$}Error while refreshing token for service {:?}",
+                    "Token", token.service
+                );
+                debug!("{}", err);
+                // TODO: try to send real error depending on refresh error ?
+                return Err(Error::NewAuthRequired);
+            }
+            Ok(t) => Ok(Token {
+                tenant_id: token.tenant_id,
+                client_id: token.client_id,
+                service: token.service,
+                expires_on: Utc::now().timestamp() + t.expires_in() as i64,
+                access_token: t.access_token().clone(),
+                refresh_token: Some(t.refresh_token().clone()),
+                token_type: t.token_type().to_string(),
+                user_id: token.user_id,
+                user_principal_name: token.user_principal_name,
+            }),
+        }
+    }
+}
+
 #[derive(Clone, Deserialize)]
 pub struct PartialAccessToken {
-    #[serde(default)]
     pub oid: String,
-    #[serde(default)]
     pub name: String,
 }
 
-#[derive(Deserialize)]
-struct TenantDiscoveryResponse {
-    authorization_endpoint: String,
-    token_endpoint: String,
-}
+pub struct Tokens {}
 
-#[derive(Clone, Deserialize)]
-pub struct DeviceCodeFlow {
-    pub user_code: String,
-    pub device_code: String,
-    pub verification_uri: String,
-    pub expires_in: u64,
-    pub interval: u64,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct TokenResponseV1 {
-    pub expires_in: Option<String>,
-    pub ext_expires_in: Option<String>,
-    pub expires_on: Option<String>,
-    pub access_token: Option<String>,
-    pub refresh_token: Option<String>,
-    pub id_token: Option<String>,
-
-    // Error
-    pub error: Option<String>,
-    pub error_description: Option<String>,
-    pub error_codes: Option<Vec<usize>>,
-    pub timestamp: Option<String>,
-    pub trace_id: Option<String>,
-    pub correlation_id: Option<String>,
-    pub oradaz_error: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct TokenResponse {
-    pub expires_in: Option<u64>,
-    pub ext_expires_in: Option<u64>,
-    pub access_token: Option<String>,
-    pub refresh_token: Option<String>,
-    pub id_token: Option<String>,
-    
-    // Custom fields
-    #[serde(default)]
-    pub expires_on: i64,
-    #[serde(default)]
-    pub api: String,
-    #[serde(default)]
-    pub oid: String,
-    #[serde(default)]
-    pub name: String,
-    #[serde(default)]
-    pub authority_url: String,
-    #[serde(default)]
-    pub scopes: String,
-    #[serde(default)]
-    pub client_id: String,
-
-    // Error
-    pub error: Option<String>,
-    pub error_description: Option<String>,
-    pub error_codes: Option<Vec<usize>>,
-    pub timestamp: Option<String>,
-    pub trace_id: Option<String>,
-    pub correlation_id: Option<String>,
-    pub oradaz_error: Option<String>,
-}
-
-impl TokenResponse {
-    pub fn refresh_token(&mut self, client: &reqwest::blocking::Client) -> Result<(), Error> {
-        match &self.refresh_token {
-            Some(r) => {
-                info!("{:FL$}Refreshing token for api {}", "refresh_token", self.api);
-                let params: Vec<(&str, &str)> = vec![
-                    ("client_id", &self.client_id),
-                    ("grant_type", "refresh_token"),
-                    ("scope", &self.scopes),
-                    ("refresh_token", r)
-                ];
-    
-                let authority = match Authority::new(&self.authority_url, client) {
-                    Ok(a) => a,
-                    Err(_e) => return Err(Error::InvalidAuthorityUrlError)
+impl Tokens {
+    pub fn initialize(
+        tenant: &str,
+        app_id: &str,
+        config: &Config,
+        schema: &Schema,
+        writer: &Arc<Mutex<OradazWriter>>,
+    ) -> Result<HashMap<String, Token>, Error> {
+        /*
+        Get a token for each service enabled in config (or mandatory)
+        */
+        let mut tokens: HashMap<String, Token> = HashMap::new();
+        let mut auth_errors: Vec<AuthError> = Vec::new();
+        for service in &schema.services {
+            if service.mandatory_auth || Config::service_enable(config, &service.name) {
+                let client_id: &str = match &service.client_id {
+                    Some(c) => c,
+                    None => app_id, // Use provided appId if not defined in schema
                 };
-    
-                let response = http_post(&authority.token_endpoint, &params, client).unwrap();
-    
-                let mut json_response: TokenResponse = response.json().unwrap();
-
-                match json_response.error.as_deref() {
-                    None => {
-                        let expires_on: i64 = match json_response.expires_in {
-                            Some(t) => Utc::now().timestamp() + t as i64,
-                            _ => {
-                                error!("{:FL$}Error while trying to refresh token for api {}", "refresh_token", self.api);
-                                json_response.oradaz_error = Some(String::from("CannotRefreshTokenError"));
-                                let j = match serde_json::to_string(&json_response) {
-                                    Err(_e) =>  {
-                                        return Err(Error::CannotRefreshTokenError);
-                                    },
-                                    Ok(j) => j
-                                };
-                                return Err(Error::StringError(j));
-                            }
-                        };
-                        self.expires_on = expires_on;
-                        self.access_token = json_response.access_token;
-                        self.refresh_token = json_response.refresh_token;
-                        self.expires_in = json_response.expires_in;
-                        self.ext_expires_in = json_response.ext_expires_in;
-                        self.id_token = json_response.id_token;
-                    },
-                    _ => {
-                        error!("{:FL$}Error while trying to refresh token for api {}", "refresh_token", self.api);
-                        json_response.oradaz_error = Some(String::from("CannotRefreshTokenError"));
-                        let j = match serde_json::to_string(&json_response) {
-                            Err(_e) =>  {
-                                return Err(Error::CannotRefreshTokenError);
-                            },
-                            Ok(j) => j
-                        };
-                        return Err(Error::StringError(j));
-                    },
-                }
-            },
-            None => {
-                error!("{:FL$}Error while trying to refresh token for api {}: no refresh token", "refresh_token", self.api);
-                return Err(Error::MissingRefreshTokenError)
-            }
-        };
-        Ok(())
-    }
-
-    pub fn refresh_token_for_resource(&mut self, resource: &str, client: &reqwest::blocking::Client) -> Result<(), Error> {
-        match &self.refresh_token {
-            Some(r) => {
-                let params: Vec<(&str, &str)> = vec![
-                    ("client_id", &self.client_id),
-                    ("grant_type", "refresh_token"),
-                    ("scope", &self.scopes),
-                    ("refresh_token", r),
-                    ("resource", resource)
-                ];
-    
-                let authority = match AuthorityV1::new(&self.authority_url, client) {
-                    Ok(a) => a,
-                    Err(_e) => return Err(Error::InvalidAuthorityUrlError)
-                };
-    
-                let response = http_post(&authority.token_endpoint, &params, client).unwrap();
-    
-                let mut json_response: TokenResponseV1 = response.json().unwrap();
-
-                match json_response.error.as_deref() {
-                    None => {
-                        self.expires_on = match &json_response.expires_on {
-                            Some(t) => match t.parse() {
-                                Ok(e) => e,
-                                _ => {
-                                    error!("{:FL$}Error while trying to refresh token for api {}", "refresh_token_for_resource", self.api);
-                                    json_response.oradaz_error = Some(String::from("CannotRefreshTokenError"));
-                                    let j = match serde_json::to_string(&json_response) {
-                                        Err(_e) =>  {
-                                            return Err(Error::CannotRefreshTokenError);
-                                        },
-                                        Ok(j) => j
-                                    };
-                                    return Err(Error::StringError(j));
-                                }
-                            },
-                            _ => {
-                                error!("{:FL$}Error while trying to refresh token for api {}", "refresh_token_for_resource", self.api);
-                                json_response.oradaz_error = Some(String::from("CannotRefreshTokenError"));
-                                let j = match serde_json::to_string(&json_response) {
-                                    Err(_e) =>  {
-                                        return Err(Error::CannotRefreshTokenError);
-                                    },
-                                    Ok(j) => j
-                                };
-                                return Err(Error::StringError(j));
-                            }
-                        };
-                        self.access_token = json_response.access_token;
-                        self.refresh_token = json_response.refresh_token;
-                        self.id_token = json_response.id_token;
-                    },
-                    _ => {
-                        error!("{:FL$}Error while trying to refresh token for api {}", "refresh_token_for_resource", self.api);
-                        json_response.oradaz_error = Some(String::from("CannotRefreshTokenError"));
-                        let j = match serde_json::to_string(&json_response) {
-                            Err(_e) =>  {
-                                return Err(Error::CannotRefreshTokenError);
-                            },
-                            Ok(j) => j
-                        };
-                        return Err(Error::StringError(j));
-                    },
-                }
-            },
-            None => {
-                error!("{:FL$}Error while trying to refresh token for api {}: no refresh token", "refresh_token_for_resource", self.api);
-                return Err(Error::MissingRefreshTokenError)
-            }
-        };
-        Ok(())
-    }
-}
-
-pub struct Authority {
-    pub authority_url: String,
-    pub authorization_endpoint: String,
-    pub token_endpoint: String,
-    pub device_code_endpoint: String,
-}
-
-impl Authority {
-    pub fn new(authority_url: &str, client: &reqwest::blocking::Client) -> Result<Self, Error> {
-        let tenant_discovery_response = match Self::tenant_discovery(authority_url, client){
-            Ok(t) => t,
-            Err(e) => {
-                error!("{:FL$}Invalid tenant id provided", "tenant_discovery");
-                return Err(e)
-            }
-        };
-
-        Ok(Authority {
-            authority_url: authority_url.to_string(),
-            authorization_endpoint: tenant_discovery_response.authorization_endpoint,
-            token_endpoint: tenant_discovery_response.token_endpoint.clone(),
-            device_code_endpoint: tenant_discovery_response
-                .token_endpoint
-                .replace("token", "devicecode"),
-        })
-    }
-
-    fn tenant_discovery(authority_url: &str, client: &reqwest::blocking::Client) -> Result<TenantDiscoveryResponse, Error> {
-        let response = http_get(&format!("{}/v2.0/.well-known/openid-configuration", authority_url), client);
-        let response = response.unwrap();
-        let response = match response.json::<TenantDiscoveryResponse>() {
-            Err(_e) => return Err(Error::InvalidAuthorityUrlError),
-            Ok(j) => j
-        };
-        Ok(response)
-    }
-}
-
-pub struct AuthorityV1 {
-    pub authority_url: String,
-    pub authorization_endpoint: String,
-    pub token_endpoint: String,
-    pub device_code_endpoint: String,
-}
-
-impl AuthorityV1 {
-    pub fn new(authority_url: &str, client: &reqwest::blocking::Client) -> Result<Self, Error> {
-        let tenant_discovery_response = match Self::tenant_discovery(authority_url, client){
-            Ok(t) => t,
-            Err(e) => {
-                error!("{:FL$}Invalid tenant id provided", "tenant_discovery");
-                return Err(e)
-            }
-        };
-
-        Ok(AuthorityV1 {
-            authority_url: authority_url.to_string(),
-            authorization_endpoint: tenant_discovery_response.authorization_endpoint,
-            token_endpoint: tenant_discovery_response.token_endpoint.clone(),
-            device_code_endpoint: tenant_discovery_response
-                .token_endpoint
-                .replace("token", "devicecode"),
-        })
-    }
-
-    fn tenant_discovery(authority_url: &str, client: &reqwest::blocking::Client) -> Result<TenantDiscoveryResponse, Error> {
-        let response = http_get(&format!("{}/.well-known/openid-configuration", authority_url), client);
-        let response = response.unwrap();
-        let response = match response.json::<TenantDiscoveryResponse>() {
-            Err(_e) => return Err(Error::InvalidAuthorityUrlError),
-            Ok(j) => j
-        };
-        Ok(response)
-    }
-}
-
-pub struct PublicClientApplication {
-    pub client_id: String,
-    authority: Authority,
-}
-
-impl PublicClientApplication {
-    pub fn new(client_id: &str, authority_url: &str, client: &reqwest::blocking::Client) -> Result<PublicClientApplication, Error> {
-        let authority = match Authority::new(authority_url, client) {
-            Ok(a) => a,
-            Err(_e) => return Err(Error::InvalidAuthorityUrlError)
-        };
-        let client_id = String::from(client_id);
-        Ok(PublicClientApplication {
-            client_id,
-            authority,
-        })
-    }
-    
-    pub fn initiate_device_flow(&self, scopes: &[&str], client: &reqwest::blocking::Client) -> Result<DeviceCodeFlow, Error> {
-        let scopes: &str = &format!("{} openid offline_access", scopes.join(" "));
-        let params: Vec<(&str, &str)> = vec![("client_id", &self.client_id), ("scope", scopes)];
-
-        let device_code_flow = match http_post(&self.authority.device_code_endpoint, &params, client) {
-            Err(_e) => {
-                error!("{:FL$}Could not acquire device flow for scopes {}", "initiate_device_flow", &scopes);
-                return Err(Error::CannotAcquireDeviceCodeFlowError)
-            },
-            Ok(flow) => {
-                flow
-            }
-        };
-        let flow = match device_code_flow.json::<DeviceCodeFlow>() {
-            Err(_e) => {
-                error!("{:FL$}Invalid application ID", "initiate_device_flow");
-                return Err(Error::InvalidAppId)
-            },
-            Ok(flow) => {
-                flow
-            }
-        };
-        Ok(flow)
-    }
-    
-    pub fn acquire_token_by_device_flow(&self, api: &str, authority_url: &str, scopes: &[&str], flow: &DeviceCodeFlow, client: &reqwest::blocking::Client) -> Result<TokenResponse, Error> {
-        let scopes: &str = &format!("{} openid offline_access", scopes.join(" "));
-        let params: Vec<(&str, &str)> = vec![
-            ("client_id", &self.client_id),
-            ("grant_type", "device_code"),
-            ("device_code", &flow.device_code)
-        ];
-
-        loop {
-            let response = http_post(&self.authority.token_endpoint, &params, client).unwrap();
-
-            let mut json_response: TokenResponse = response.json().unwrap();
-
-            match json_response.error.as_deref() {
-                Some("authorization_pending") => (),
-                None => {
-                    let expires_on: i64 = match json_response.expires_in {
-                        Some(t) => Utc::now().timestamp() + t as i64,
-                        _ => {
-                            error!("{:FL$}Error while trying to authenticate.", "acquire_token_by_device_flow");
-                            json_response.oradaz_error = Some(String::from("DeviceCodeFlowAuthenticationError"));
-                            let j = match serde_json::to_string(&json_response) {
-                                Err(_e) =>  {
-                                    return Err(Error::DeviceCodeFlowAuthenticationError);
-                                },
-                                Ok(j) => j
-                            };
-                            return Err(Error::StringError(j));
-                        }
-                    };
-                    let access_token: &str = match &json_response.access_token {
-                        Some(ref t) => t,
-                        _ => {
-                            error!("{:FL$}Error while trying to authenticate.", "acquire_token_by_device_flow");
-                            json_response.oradaz_error = Some(String::from("DeviceCodeFlowAuthenticationError"));
-                            let j = match serde_json::to_string(&json_response) {
-                                Err(_e) =>  {
-                                    return Err(Error::DeviceCodeFlowAuthenticationError);
-                                },
-                                Ok(j) => j
-                            };
-                            return Err(Error::StringError(j));
-                        }
-                    };
-                    let parts: Vec<&str> = access_token.split('.').collect();
-                    let bytes = base64::decode(parts[1]).unwrap();
-                    let token = String::from_utf8_lossy(&bytes);
-                    let j: PartialAccessToken = serde_json::from_str(&token).unwrap();
-                    json_response.name = j.name;
-                    json_response.oid = j.oid;
-                    json_response.expires_on = expires_on;
-                    json_response.api = api.to_string();
-                    json_response.authority_url = authority_url.to_string();
-                    json_response.scopes = scopes.to_string();
-                    json_response.client_id = self.client_id.clone();
-                    return Ok(json_response)
-                },
-                _ => {
-                    match json_response.error_codes {
-                        Some(codes) => {
-                            if codes.contains(&70020) {
-                                error!("{:FL$}Device code flow authentication process expired", "acquire_token_by_device_flow");
-                                return Err(Error::ExpiredDeciveCodeError);
-                            } else {
-                                error!("{:FL$}Error while trying to authenticate. Exception is the following: {}", "acquire_token_by_device_flow", json_response.error_description.unwrap());
-                                return Err(Error::DeviceCodeFlowAuthenticationError);
-                            }
-                        },
-                        None => {
-                            error!("{:FL$}Error while trying to authenticate. Exception is the following: {}", "acquire_token_by_device_flow", json_response.error_description.unwrap());
-                            return Err(Error::DeviceCodeFlowAuthenticationError);
+                match Auth::new(tenant, client_id, &service.scopes, &service.description) {
+                    Err(err) => {
+                        auth_errors.push(AuthError {
+                            api: service.name.clone(),
+                            error: err.to_string(),
+                        });
+                        if service.mandatory_auth {
+                            // If service is mandatory, stop here as we could not obtain a valid token
+                            return Err(err);
                         }
                     }
-                },
-            }
-
-            thread::sleep(time::Duration::from_secs(flow.interval))
-        }
-    }
-}
-
-fn http_get(url: &str, client: &reqwest::blocking::Client) -> Result<reqwest::blocking::Response, Error> {
-    match client.get(url).send() {
-        Ok(r) => Ok(r),
-        Err(e) => {
-            error!("{:FL$}Could not check prerequisites.", "http_get");
-            error!("{:FL$}\t{}", "", e);
-            return Err(Error::PrerequisitesCheckError);
-        }
-    }
-}
-
-fn http_post(url: &str, params: &[(&str, &str)], client: &reqwest::blocking::Client) -> Result<reqwest::blocking::Response, Error> {
-    match client.post(url).form(&params).send() {
-        Ok(r) => Ok(r),
-        Err(e) => {
-            error!("{:FL$}Could not check prerequisites.", "http_post");
-            error!("{:FL$}\t{}", "", e);
-            return Err(Error::PrerequisitesCheckError);
-        }
-    }
-}
-
-pub fn get_token(service: &config::Service, tenant: &str, app_id: &str, client: &reqwest::blocking::Client) -> Result<TokenResponse, Error> {
-    let mut do_loop = true;
-    let mut token:TokenResponse = Default::default();
-    let description = format!(" / ! \\   INTERACTION REQUIRED!!!     |  {:40}", &service.description);
-    println!("{}", White.on(Red).paint("  / \\                                |  Authentication for:                     "));
-    println!("{}", White.on(Red).paint(description));
-    println!("{}", White.on(Red).paint("/_____\\                              |  REST API                                "));
-    while do_loop {
-        let authority_url: &str = &format!("https://login.microsoftonline.com/{}", tenant);
-        let mut api_client_id: &str = &service.client_id;
-        if api_client_id.is_empty() {
-            api_client_id = app_id;
-        };
-        let scope: &str = &format!("{}.default", service.base_url);
-        let scopes: Vec<&str> = vec![scope];
-        let pca = match PublicClientApplication::new(api_client_id, authority_url, client){
-            Ok(p) => p,
-            Err(e) => return Err(e)
-        };
-        let flow = match pca.initiate_device_flow(&scopes, client) {
-            Err(e) => return Err(e),
-            Ok(flow) => {
-                println!("{}", flow.message);
-                flow
-            }
-        };
-        match pca.acquire_token_by_device_flow(&service.name, authority_url, &scopes, &flow, client) {
-            Err(Error::ExpiredDeciveCodeError) => {
-                info!("{:FL$}Performing a new authentication request for API {}", "get_token", &service.name);
-            }
-            Err(e) => {
-                error!("{:FL$}Could not acquire token for API {}", "get_token", &service.name); 
-                return Err(e)
-            },
-            Ok(token_value) => {
-                token = token_value;
-                do_loop = false;
-            }
-        };
-    }
-    if service.resource.is_empty() {
-        Ok(token)
-    } else {
-        match token.refresh_token_for_resource(&service.resource, client) {
-            Err(e) => {
-                error!("{:FL$}Could not refresh token for API {} and resource {}", "get_token", &service.name, &service.resource); 
-                Err(e)
-            },
-            Ok(()) => {
-                Ok(token)
+                    Ok(a) => {
+                        match a.get_token(
+                            tenant.to_string(),
+                            client_id.to_string(),
+                            service.name.clone(),
+                        ) {
+                            Ok(t) => {
+                                tokens.insert(service.name.clone(), t);
+                            }
+                            Err(err) => {
+                                auth_errors.push(AuthError {
+                                    api: service.name.clone(),
+                                    error: err.to_string(),
+                                });
+                                if service.mandatory_auth {
+                                    // If service is mandatory, stop here as we could not obtain a valid token
+                                    return Err(err);
+                                }
+                            }
+                        };
+                    }
+                };
             }
         }
+
+        // Write authentication errors to "auth_errors.json" file
+        if !auth_errors.is_empty() {
+            let mut multiline_string: String = String::new();
+            for error in auth_errors {
+                match serde_json::to_string(&error) {
+                    Err(err) => {
+                        error!("{:FL$}Could not convert auth_errors to json", "Tokens");
+                        debug!("{}", err);
+                        return Err(Error::AuthErrorsToJSON);
+                    }
+                    Ok(j) => multiline_string = format!("{}{}\n", multiline_string, j),
+                };
+            }
+            match writer.lock() {
+                Ok(mut w) => {
+                    w.write_file(
+                        String::new(),
+                        "auth_errors.json".to_string(),
+                        multiline_string,
+                    )?;
+                }
+                Err(err) => {
+                    error!(
+                        "{:FL$}Error while locking Writer to write auth errors",
+                        "Tokens"
+                    );
+                    debug!("{}", err);
+                    return Err(Error::WriterLock);
+                }
+            }
+        }
+        Ok(tokens)
     }
 }
