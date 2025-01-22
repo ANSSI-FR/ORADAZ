@@ -133,6 +133,16 @@ impl RelationshipUrl {
                                                             return String::new();
                                                         }
                                                     },
+                                                    c if c == "FolderTypeWithPermissions" => {
+                                                        if !Conditions::check_if_folder_require_permission_dump(data_value) {
+                                                            debug!(
+                                                                "{:FL$}Key {:?} for relationship {:?} of API {:?} for service {:?} does not meet condition {:?}, skipping it",
+                                                                "RelationshipUrl", &key.name, &self.name, &self.api, &self.service, condition
+                                                            );
+                                                            // Skip relationship if data does not match condition
+                                                            return String::new();
+                                                        }
+                                                    },
                                                     c => {
                                                         if !Conditions::check(client, token, c.clone()) {
                                                             debug!(
@@ -156,6 +166,12 @@ impl RelationshipUrl {
                                         Some(t) if t == "Base64" => {
                                             url = url.replace(&key.name, &URL_SAFE.encode(v.as_bytes()));
                                         },
+                                        Some(t) if t == "SplitBackslashFirstAndBase64" => {
+                                            url = url.replace(&key.name, &URL_SAFE.encode(v.split("\\").collect::<Vec<&str>>()[0].as_bytes()));
+                                        },
+                                        Some(t) if t == "SplitBackslashSecondAndBase64" => {
+                                            url = url.replace(&key.name, &URL_SAFE.encode(format!("\\{}", v.split("\\").collect::<Vec<&str>>()[1]).as_bytes()));
+                                        },
                                         Some(t) => {
                                             warn!(
                                                 "{:FL$}Invalid transform {:?} in schema file for key {:?} for relationship {:?} of API {:?} for service {:?}. Skipping transformation.",
@@ -166,6 +182,48 @@ impl RelationshipUrl {
                                     };
                                     done.push(key.name.clone());
                                 } else if !done.contains(&key.name) {
+                                    match &key.conditions {
+                                        None => {}, 
+                                        Some(c) => {
+                                            let mut ok: bool = true;
+                                            for condition in c.iter() {
+                                                match condition {
+                                                    c if c == "UnifiedGroup" => {
+                                                        if !Conditions::check_if_unified_group(data_value) {
+                                                            debug!(
+                                                                "{:FL$}Key {:?} for relationship {:?} of API {:?} for service {:?} does not meet condition {:?}, skipping it",
+                                                                "RelationshipUrl", &key.name, &self.name, &self.api, &self.service, condition
+                                                            );
+                                                            // Skip relationship if data does not match condition
+                                                            return String::new();
+                                                        }
+                                                    },
+                                                    c if c == "FolderTypeWithPermissions" => {
+                                                        if !Conditions::check_if_folder_require_permission_dump(data_value) {
+                                                            debug!(
+                                                                "{:FL$}Key {:?} for relationship {:?} of API {:?} for service {:?} does not meet condition {:?}, skipping it",
+                                                                "RelationshipUrl", &key.name, &self.name, &self.api, &self.service, condition
+                                                            );
+                                                            // Skip relationship if data does not match condition
+                                                            return String::new();
+                                                        }
+                                                    },
+                                                    c => {
+                                                        if !Conditions::check(client, token, c.clone()) {
+                                                            debug!(
+                                                                "{:FL$}Key {:?} for relationship {:?} of API {:?} for service {:?} does not meet condition {:?}, skipping it",
+                                                                "RelationshipUrl", &key.name, &self.name, &self.api, &self.service, condition
+                                                            );
+                                                            ok = false;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            if !ok {
+                                                continue
+                                            }
+                                        }
+                                    }
                                     debug!(
                                         "{:FL$}Trying to replace invalid key {:?} for relationship {:?} of API {:?} for service {:?}",
                                         "RelationshipUrl", &key.name, &self.name, &self.api, &self.service
@@ -220,6 +278,12 @@ impl RelationshipUrl {
                                 &URL_SAFE.encode(parameter.value.as_bytes()),
                             );
                         }
+                        Some(t) if t == "SplitBackslashFirstAndBase64" => {
+                            url = url.replace(&parameter.name, &URL_SAFE.encode(parameter.value.split("\\").collect::<Vec<&str>>()[0].as_bytes()));
+                        },
+                        Some(t) if t == "SplitBackslashSecondAndBase64" => {
+                            url = url.replace(&parameter.name, &URL_SAFE.encode(format!("\\{}", parameter.value.split("\\").collect::<Vec<&str>>()[1]).as_bytes()));
+                        },
                         Some(t) => {
                             warn!(
                                 "{:FL$}Invalid transform {:?} in schema file for parameter {:?} for relationship {:?} of API {:?} for service {:?}. Skipping transformation.",
@@ -269,6 +333,12 @@ impl RelationshipUrl {
                                 &URL_SAFE.encode(parameter.value.as_bytes()),
                             );
                         }
+                        Some(t) if t == "SplitBackslashFirstAndBase64" => {
+                            url = url.replace(&parameter.name, &URL_SAFE.encode(parameter.value.split("\\").collect::<Vec<&str>>()[0].as_bytes()));
+                        },
+                        Some(t) if t == "SplitBackslashSecondAndBase64" => {
+                            url = url.replace(&parameter.name, &URL_SAFE.encode(format!("\\{}", parameter.value.split("\\").collect::<Vec<&str>>()[1]).as_bytes()));
+                        },
                         Some(t) => {
                             warn!(
                                 "{:FL$}Invalid transform {:?} in schema file for default parameter {:?} for relationship {:?} of API {:?} for service {:?}. Skipping transformation.",
@@ -378,6 +448,12 @@ impl Api {
                                 &URL_SAFE.encode(parameter.value.as_bytes()),
                             );
                         }
+                        Some(t) if t == "SplitBackslashFirstAndBase64" => {
+                            url = url.replace(&parameter.name, &URL_SAFE.encode(parameter.value.split("\\").collect::<Vec<&str>>()[0].as_bytes()));
+                        },
+                        Some(t) if t == "SplitBackslashSecondAndBase64" => {
+                            url = url.replace(&parameter.name, &URL_SAFE.encode(format!("\\{}", parameter.value.split("\\").collect::<Vec<&str>>()[1]).as_bytes()));
+                        },
                         Some(t) => {
                             warn!(
                                 "{:FL$}Invalid transform {:?} in schema file for parameter {:?} for API {:?}. Skipping transformation.",
@@ -427,6 +503,12 @@ impl Api {
                                 &URL_SAFE.encode(parameter.value.as_bytes()),
                             );
                         }
+                        Some(t) if t == "SplitBackslashFirstAndBase64" => {
+                            url = url.replace(&parameter.name, &URL_SAFE.encode(parameter.value.split("\\").collect::<Vec<&str>>()[0].as_bytes()));
+                        },
+                        Some(t) if t == "SplitBackslashSecondAndBase64" => {
+                            url = url.replace(&parameter.name, &URL_SAFE.encode(format!("\\{}", parameter.value.split("\\").collect::<Vec<&str>>()[1]).as_bytes()));
+                        },
                         Some(t) => {
                             warn!(
                                 "{:FL$}Invalid transform {:?} in schema file for default parameter {:?} for API {:?}. Skipping transformation.",

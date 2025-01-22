@@ -379,4 +379,36 @@ impl Conditions {
         );
         false
     }
+
+    pub fn check_if_folder_require_permission_dump(value: &Value) -> bool {
+        /*
+        Check in value if folder is a type of folder for which we want to retrieve permissions
+        */
+        debug!("{:FL$}Checking if folder is a type of folder for which we want to retrieve permissions", "Conditions");
+        match value.as_str() {
+            None => {
+                debug!(
+                    "{:FL$}FolderType field is not a valid string, skipping permissions dumps",
+                    "Conditions"
+                );
+            }
+            Some(ft) => {
+                if [
+                    "Inbox",
+                    "Outbox",
+                    "SentItems",
+                    "User Created",
+                    "Archive",
+                    "Files",
+                    "Drafts",
+                    "DeletedItems",
+                ]
+                .contains(&ft)
+                {
+                    return true;
+                }
+            }
+        };
+        false
+    }
 }

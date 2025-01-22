@@ -29,7 +29,7 @@ use std::process;
 use std::sync::{Arc, Mutex};
 
 pub const FL: usize = 25;
-pub const VERSION: &str = "2.0.01.22";
+pub const VERSION: &str = "2.0.01.23";
 pub const SCHEMA_URL: &str = "https://raw.githubusercontent.com/ANSSI-FR/ORADAZ/master/schema.json";
 
 #[derive(Parser)]
