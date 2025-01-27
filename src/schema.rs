@@ -172,6 +172,9 @@ impl RelationshipUrl {
                                         Some(t) if t == "SplitBackslashSecondAndBase64" => {
                                             url = url.replace(&key.name, &URL_SAFE.encode(format!("\\{}", v.split("\\").collect::<Vec<&str>>()[1]).as_bytes()));
                                         },
+                                        Some(t) if t == "AddBackslashAndBase64" => {
+                                            url = url.replace(&key.name, &URL_SAFE.encode(format!("\\{}", v).as_bytes()));
+                                        },
                                         Some(t) => {
                                             warn!(
                                                 "{:FL$}Invalid transform {:?} in schema file for key {:?} for relationship {:?} of API {:?} for service {:?}. Skipping transformation.",
@@ -284,6 +287,9 @@ impl RelationshipUrl {
                         Some(t) if t == "SplitBackslashSecondAndBase64" => {
                             url = url.replace(&parameter.name, &URL_SAFE.encode(format!("\\{}", parameter.value.split("\\").collect::<Vec<&str>>()[1]).as_bytes()));
                         },
+                        Some(t) if t == "AddBackslashAndBase64" => {
+                            url = url.replace(&parameter.name, &URL_SAFE.encode(format!("\\{}", parameter.value).as_bytes()));
+                        },
                         Some(t) => {
                             warn!(
                                 "{:FL$}Invalid transform {:?} in schema file for parameter {:?} for relationship {:?} of API {:?} for service {:?}. Skipping transformation.",
@@ -338,6 +344,9 @@ impl RelationshipUrl {
                         },
                         Some(t) if t == "SplitBackslashSecondAndBase64" => {
                             url = url.replace(&parameter.name, &URL_SAFE.encode(format!("\\{}", parameter.value.split("\\").collect::<Vec<&str>>()[1]).as_bytes()));
+                        },
+                        Some(t) if t == "AddBackslashAndBase64" => {
+                            url = url.replace(&parameter.name, &URL_SAFE.encode(format!("\\{}", parameter.value).as_bytes()));
                         },
                         Some(t) => {
                             warn!(
@@ -454,6 +463,9 @@ impl Api {
                         Some(t) if t == "SplitBackslashSecondAndBase64" => {
                             url = url.replace(&parameter.name, &URL_SAFE.encode(format!("\\{}", parameter.value.split("\\").collect::<Vec<&str>>()[1]).as_bytes()));
                         },
+                        Some(t) if t == "AddBackslashAndBase64" => {
+                            url = url.replace(&parameter.name, &URL_SAFE.encode(format!("\\{}", parameter.value).as_bytes()));
+                        },
                         Some(t) => {
                             warn!(
                                 "{:FL$}Invalid transform {:?} in schema file for parameter {:?} for API {:?}. Skipping transformation.",
@@ -508,6 +520,9 @@ impl Api {
                         },
                         Some(t) if t == "SplitBackslashSecondAndBase64" => {
                             url = url.replace(&parameter.name, &URL_SAFE.encode(format!("\\{}", parameter.value.split("\\").collect::<Vec<&str>>()[1]).as_bytes()));
+                        },
+                        Some(t) if t == "AddBackslashAndBase64" => {
+                            url = url.replace(&parameter.name, &URL_SAFE.encode(format!("\\{}", parameter.value).as_bytes()));
                         },
                         Some(t) => {
                             warn!(

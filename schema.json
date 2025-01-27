@@ -1,6 +1,6 @@
 {
-    "oradaz_version": "2.0.01.23",
-    "schema_version": "2.0.01.23",
+    "oradaz_version": "2.0.01.27",
+    "schema_version": "2.0.01.27",
     "services": [
         {
             "name": "graph",
@@ -1126,6 +1126,7 @@
                                 {
                                     "name": "details",
                                     "uri": "[KEEP_URL]/[1]",
+                                    "expected_error_codes": [{"status": 404, "code": "MissingSubscription"}],
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
@@ -1142,6 +1143,7 @@
                                 {
                                     "name": "serviceconfiguration",
                                     "uri": "[KEEP_URL]/[1]/serviceconfiguration",
+                                    "expected_error_codes": [{"status": 404, "code": "MissingSubscription"}],
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
@@ -1158,6 +1160,7 @@
                                 {
                                     "name": "alerts",
                                     "uri": "[KEEP_URL]/[1]/alerts",
+                                    "expected_error_codes": [{"status": 404, "code": "MissingSubscription"}],
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
@@ -2240,6 +2243,7 @@
                                 {
                                     "name": "systemAssignedIdentities",
                                     "uri": "[1]/providers/Microsoft.ManagedIdentity/identities/default",
+                                    "expected_error_codes": [{"status": 404, "code": "NotFound"}],
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
@@ -2387,19 +2391,19 @@
                                     ], 
                                     "keys": [
                                         {
+                                            "name": "[FILTER]",
+                                            "value": "FolderType",
+                                            "conditions": ["FolderTypeWithPermissions"]
+                                        },
+                                        {
                                             "name": "[1]",
                                             "value": "Identity",
                                             "transform": "SplitBackslashFirstAndBase64"
                                         },
                                         {
                                             "name": "[2]",
-                                            "value": "Identity",
-                                            "transform": "SplitBackslashSecondAndBase64"
-                                        },
-                                        {
-                                            "name": "[3]",
-                                            "value": "FolderType",
-                                            "conditions": ["FolderTypeWithPermissions"]
+                                            "value": "FolderId",
+                                            "transform": "Base64"
                                         }
                                     ]
                                 }
