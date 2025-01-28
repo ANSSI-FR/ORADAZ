@@ -1,6 +1,6 @@
 {
-    "oradaz_version": "2.0.01.27",
-    "schema_version": "2.0.01.27",
+    "oradaz_version": "2.0.01.28",
+    "schema_version": "2.0.01.28",
     "services": [
         {
             "name": "graph",
@@ -126,8 +126,16 @@
                     "uri": "policies/authenticationFlowsPolicy"
                 },
                 {
+                    "name": "authenticationStrengthPolicies",
+                    "uri": "policies/authenticationStrengthPolicies"
+                },
+                {
                     "name": "authorizationPolicy",
                     "uri": "policies/authorizationPolicy"
+                },
+                {
+                    "name": "availableProviderTypes",
+                    "uri": "identity/identityProviders/availableProviderTypes"
                 },
                 {
                     "name": "conditionalAccessPolicies",
@@ -164,6 +172,30 @@
                                 {
                                     "name": "[PARAMS]",
                                     "value": "?$select=id,displayName"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "crossTenantAccessPolicy",
+                    "uri": "policies/crossTenantAccessPolicy"
+                },
+                {
+                    "name": "crossTenantAccessPolicyDefault",
+                    "uri": "policies/crossTenantAccessPolicy/default"
+                },
+                {
+                    "name": "crossTenantAccessPolicyPartners",
+                    "uri": "policies/crossTenantAccessPolicy/partners", 
+                    "relationships": [
+                        {
+                            "name": "identitySynchronization",
+                            "uri": "policies/crossTenantAccessPolicy/partners/[1]/identitySynchronization",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "tenantId"
                                 }
                             ]
                         }
@@ -308,6 +340,54 @@
                     "uri": "directoryRoleTemplates"
                 },
                 {
+                    "name": "domains",
+                    "uri": "domains",
+                    "relationships": [
+                        {
+                            "name": "domainNameReferences",
+                            "uri": "/domains/[1]/domainNameReferences",
+                            "expected_error_codes": [{"status": 400, "code": "Request_UnsupportedQuery"}],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "federationConfiguration",
+                            "uri": "/domains/[1]/federationConfiguration",
+                            "expected_error_codes": [{"status": 404, "code": "Request_ResourceNotFound"}],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "serviceConfigurationRecords",
+                            "uri": "/domains/[1]/serviceConfigurationRecords",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "verificationDnsRecords",
+                            "uri": "/domains/[1]/verificationDnsRecords",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
                     "name": "globalAdmins",
                     "uri": "directoryRoles/roleTemplateId=62e90394-69f5-4237-9190-012177145e10/members", 
                     "relationships": [
@@ -439,6 +519,26 @@
                     "uri": "groupSettingTemplates"
                 },
                 {
+                    "name": "homeRealmDiscoveryPolicies",
+                    "uri": "policies/homeRealmDiscoveryPolicies",
+                    "relationships": [
+                        {
+                            "name": "appliesTo",
+                            "uri": "policies/homeRealmDiscoveryPolicies/[1]/appliesTo",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "identityProviders",
+                    "uri": "identity/identityProviders"
+                },
+                {
                     "name": "identitySecurityDefaultsEnforcementPolicy",
                     "uri": "policies/identitySecurityDefaultsEnforcementPolicy"
                 },
@@ -528,6 +628,286 @@
                     "uri": "identity/conditionalAccess/namedLocations"
                 },
                 {
+                    "name": "onPremisesPublishingProfiles_adAdministration",
+                    "uri": "onPremisesPublishingProfiles/adAdministration",
+                    "expected_error_codes": [{"status": 500, "code": "UnknownError"}],
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_adAdministration_agentGroups",
+                    "uri": "onPremisesPublishingProfiles/adAdministration/agentGroups",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_adAdministration_agents",
+                    "uri": "onPremisesPublishingProfiles/adAdministration/agents",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_adAdministration_publishedResources",
+                    "uri": "onPremisesPublishingProfiles/adAdministration/publishedResources",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_applicationProxy",
+                    "uri": "onPremisesPublishingProfiles/applicationProxy",
+                    "expected_error_codes": [{"status": 404}],
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_applicationProxy_agentGroups",
+                    "uri": "onPremisesPublishingProfiles/applicationProxy/agentGroups",
+                    "expected_error_codes": [{"status": 404}],
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_applicationProxy_agents",
+                    "uri": "onPremisesPublishingProfiles/applicationProxy/agents",
+                    "expected_error_codes": [{"status": 404}],
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_applicationProxy_publishedResources",
+                    "uri": "onPremisesPublishingProfiles/applicationProxy/publishedResources",
+                    "expected_error_codes": [{"status": 404}],
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_applicationProxy_connectors",
+                    "uri": "onPremisesPublishingProfiles/applicationProxy/connectors",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ],
+                    "relationships": [
+                        {
+                            "name": "memberOf",
+                            "uri": "onPremisesPublishingProfiles/applicationProxy/connectors/[1]/memberOf",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "beta"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_applicationProxy_connectorGroups",
+                    "uri": "onPremisesPublishingProfiles/applicationProxy/connectorGroups",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ],
+                    "relationships": [
+                        {
+                            "name": "members",
+                            "uri": "onPremisesPublishingProfiles/applicationProxy/connectorGroups/[1]/members",
+                            "expected_error_codes": [{"status": 404, "code": "ConnectorGroup_NotFound"}],
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "beta"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "applications",
+                            "uri": "onPremisesPublishingProfiles/applicationProxy/connectorGroups/[1]/applications",
+                            "expected_error_codes": [{"status": 404, "code": "ApplicationsForGroup_NotFound"}],
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "beta"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_authentication",
+                    "uri": "onPremisesPublishingProfiles/authentication",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_authentication_agentGroups",
+                    "uri": "onPremisesPublishingProfiles/authentication/agentGroups",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_authentication_agents",
+                    "uri": "onPremisesPublishingProfiles/authentication/agents",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_authentication_publishedResources",
+                    "uri": "onPremisesPublishingProfiles/authentication/publishedResources",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_exchangeOnline",
+                    "uri": "onPremisesPublishingProfiles/exchangeOnline",
+                    "expected_error_codes": [{"status": 500, "code": "UnknownError"}],
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_exchangeOnline_agentGroups",
+                    "uri": "onPremisesPublishingProfiles/exchangeOnline/agentGroups",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_exchangeOnline_agents",
+                    "uri": "onPremisesPublishingProfiles/exchangeOnline/agents",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_exchangeOnline_publishedResources",
+                    "uri": "onPremisesPublishingProfiles/exchangeOnline/publishedResources",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_provisioning",
+                    "uri": "onPremisesPublishingProfiles/provisioning",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_provisioning_agentGroups",
+                    "uri": "onPremisesPublishingProfiles/provisioning/agentGroups",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_provisioning_agents",
+                    "uri": "onPremisesPublishingProfiles/provisioning/agents",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "onPremisesPublishingProfiles_provisioning_publishedResources",
+                    "uri": "onPremisesPublishingProfiles/provisioning/publishedResources",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
                     "name": "onPremisesSynchronization",
                     "uri": "directory/onPremisesSynchronization",
                     "conditions": ["GA"]
@@ -547,6 +927,22 @@
                     "name": "organization",
                     "uri": "organization",
                     "relationships": [
+                        {
+                            "name": "certificateBasedAuthConfiguration",
+                            "uri": "organization/[1]/certificateBasedAuthConfiguration",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "beta"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        },
                         {
                             "name": "pimRoleAssignments",
                             "uri": "privilegedAccess/aadroles/resources/[1]/roleAssignments?$expand=roleDefinition($select=id,type,displayName,templateId)&$filter=resourceId eq '[1]'",
@@ -683,6 +1079,22 @@
                         }
                     ],
                     "conditions": ["P2"]
+                },
+                {
+                    "name": "samlOrWsFedExternalDomainFederation",
+                    "uri": "directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation",
+                    "relationships": [
+                        {
+                            "name": "domains",
+                            "uri": "directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation/[1]/domains",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        }
+                    ]
                 },
                 {
                     "name": "servicePrincipals",
@@ -2306,6 +2718,16 @@
                                     "value": "subscriptionId"
                                 }
                             ]
+                        }
+                    ]
+                },
+                {
+                    "name": "tenants",
+                    "uri": "tenants",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "2020-08-01"
                         }
                     ]
                 }

@@ -29,7 +29,7 @@ use std::process;
 use std::sync::{Arc, Mutex};
 
 pub const FL: usize = 25;
-pub const VERSION: &str = "2.0.01.27";
+pub const VERSION: &str = "2.0.01.28";
 pub const SCHEMA_URL: &str = "https://raw.githubusercontent.com/ANSSI-FR/ORADAZ/master/schema.json";
 
 #[derive(Parser)]
@@ -284,6 +284,10 @@ fn main() {
         }
     };
     logger::add_writer(&writer);
+    debug!(
+        "{:FL$}Successfully added writer for ORADAZ version {}",
+        "main", VERSION
+    );
 
     // Write config options (with the exception of credentials)
     if let Err(err) = config.write(&writer) {
