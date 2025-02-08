@@ -1,6 +1,6 @@
 {
     "oradaz_version": "2.0.01.28",
-    "schema_version": "2.0.01.28",
+    "schema_version": "2.0.02.08",
     "services": [
         {
             "name": "graph",
@@ -1201,14 +1201,13 @@
                         },
                         {
                             "name": "authenticationMethods",
-                            "uri": "users/[1]/methods",
+                            "uri": "users/[1]/authentication/methods",
                             "keys": [
                                 {
                                     "name": "[1]",
                                     "value": "id"
                                 }
-                            ],
-                            "expected_error_codes": [{"status": 404, "code": "Request_ResourceNotFound"}]
+                            ]
                         },
                         {
                             "name": "createdObjects",
