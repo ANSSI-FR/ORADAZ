@@ -1,6 +1,6 @@
 {
     "oradaz_version": "2.0.01.28",
-    "schema_version": "2.0.02.08",
+    "schema_version": "2.0.02.27",
     "services": [
         {
             "name": "graph",
@@ -628,6 +628,10 @@
                     "uri": "identity/conditionalAccess/namedLocations"
                 },
                 {
+                    "name": "oauth2PermissionGrants",
+                    "uri": "oauth2PermissionGrants"
+                },
+                {
                     "name": "onPremisesPublishingProfiles_adAdministration",
                     "uri": "onPremisesPublishingProfiles/adAdministration",
                     "expected_error_codes": [{"status": 500, "code": "UnknownError"}],
@@ -1113,6 +1117,16 @@
                         {
                             "name": "appRoleAssignments",
                             "uri": "servicePrincipals/[1]/appRoleAssignments",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "oauth2PermissionGrants",
+                            "uri": "servicePrincipals/[1]/oauth2PermissionGrants",
                             "keys": [
                                 {
                                     "name": "[1]",
