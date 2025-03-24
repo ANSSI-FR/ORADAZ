@@ -1,6 +1,6 @@
 {
     "oradaz_version": "2.0.01.28",
-    "schema_version": "2.0.02.27",
+    "schema_version": "2.0.03.24",
     "services": [
         {
             "name": "graph",
@@ -2781,69 +2781,6 @@
                         }
                     ],
                     "relationships": [
-                        {
-                            "name": "folders_permissions",
-                            "uri": "Mailbox('[1]')/MailboxFolder('XA==')/MailboxFolderPermission",
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?IsUsingMailboxFolderId=True&isEncoded=true"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "UserPrincipalName",
-                                    "transform": "Base64"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "folders",
-                            "uri": "Mailbox('[1]')/MailboxFolder/Exchange.GetMailboxFolderStatistics(folderscope=Exchange.ElcFolderType'All')",
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?isEncoded=true"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "UserPrincipalName",
-                                    "transform": "Base64"
-                                }
-                            ],
-                            "relationships": [
-                                {
-                                    "name": "permissions",
-                                    "uri": "Mailbox('[1]')/MailboxFolder('[2]')/MailboxFolderPermission",
-                                    "parameters": [
-                                        {
-                                            "name": "[PARAMS]",
-                                            "value": "?IsUsingMailboxFolderId=True&isEncoded=true"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[FILTER]",
-                                            "value": "FolderType",
-                                            "conditions": ["FolderTypeWithPermissions"]
-                                        },
-                                        {
-                                            "name": "[1]",
-                                            "value": "Identity",
-                                            "transform": "SplitBackslashFirstAndBase64"
-                                        },
-                                        {
-                                            "name": "[2]",
-                                            "value": "FolderId",
-                                            "transform": "Base64"
-                                        }
-                                    ]
-                                }
-                            ]
-                        },
                         {
                             "name": "mailboxPermissions",
                             "uri": "Mailbox('[1]')/MailboxPermission",
