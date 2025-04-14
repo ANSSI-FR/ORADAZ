@@ -1,6 +1,6 @@
 {
-    "oradaz_version": "2.0.01.28",
-    "schema_version": "2.0.03.24",
+    "oradaz_version": "2.0.04.14",
+    "schema_version": "2.0.04.14",
     "services": [
         {
             "name": "graph",
@@ -26,6 +26,10 @@
                 }
             ],
             "apis": [
+                {
+                    "name": "activityBasedTimeoutPolicies",
+                    "uri": "policies/activityBasedTimeoutPolicies"
+                },
                 {
                     "name": "administrativeUnits",
                     "uri": "directory/administrativeUnits", 
@@ -113,7 +117,8 @@
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"]
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 504, "code": "UnknownError"}]
                         }
                     ]
                 },
@@ -136,6 +141,45 @@
                 {
                     "name": "availableProviderTypes",
                     "uri": "identity/identityProviders/availableProviderTypes"
+                },
+                {
+                    "name": "b2cAuthenticationMethodsPolicy",
+                    "uri": "policies/b2cAuthenticationMethodsPolicy",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ],
+                    "expected_error_codes": [{"status": 403, "code": "AADB2C"}]
+                },
+                {
+                    "name": "certificateBasedApplicationConfigurations",
+                    "uri": "directory/certificateAuthorities/certificateBasedApplicationConfigurations",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ], 
+                    "relationships": [
+                        {
+                            "name": "trustedCertificateAuthorities",
+                            "uri": "directory/certificateAuthorities/certificateBasedApplicationConfigurations/[1]/trustedCertificateAuthorities",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "beta"
+                                }
+                            ]
+                        }
+                    ]
                 },
                 {
                     "name": "conditionalAccessPolicies",
@@ -197,7 +241,8 @@
                                     "name": "[1]",
                                     "value": "tenantId"
                                 }
-                            ]
+                            ],
+                            "expected_error_codes": [{"status": 404, "code": "Directory_ObjectNotFound"}]
                         }
                     ]
                 },
@@ -388,6 +433,37 @@
                     ]
                 },
                 {
+                    "name": "externalAuthorizationSystems",
+                    "uri": "external/authorizationSystems",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ],
+                    "expected_error_codes": [{"status": 403, "code": "INVALID_TENANT_ROUTING"}]
+                },
+                {
+                    "name": "externalIdentitiesPolicy",
+                    "uri": "policies/externalIdentitiesPolicy", 
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "featureRolloutPolicies",
+                    "uri": "policies/featureRolloutPolicies", 
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
                     "name": "globalAdmins",
                     "uri": "directoryRoles/roleTemplateId=62e90394-69f5-4237-9190-012177145e10/members", 
                     "relationships": [
@@ -539,6 +615,16 @@
                     "uri": "identity/identityProviders"
                 },
                 {
+                    "name": "identityProvidersBeta",
+                    "uri": "identity/identityProviders",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
                     "name": "identitySecurityDefaultsEnforcementPolicy",
                     "uri": "policies/identitySecurityDefaultsEnforcementPolicy"
                 },
@@ -622,6 +708,18 @@
                     "name": "intuneWindowsMalwareInformation",
                     "uri": "deviceManagement/windowsMalwareInformation",
                     "conditions": ["Intune"]
+                },
+                {
+                    "name": "multiTenantOrganization",
+                    "uri": "tenantRelationships/multiTenantOrganization"
+                },
+                {
+                    "name": "multiTenantOrganizationPartnerConfiguration",
+                    "uri": "policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration"
+                },
+                {
+                    "name": "multiTenantOrganizationTenants",
+                    "uri": "tenantRelationships/multiTenantOrganization/tenants"
                 },
                 {
                     "name": "namedLocations",
@@ -1001,6 +1099,48 @@
                     ]
                 },
                 {
+                    "name": "permissionGrantPreApprovalPolicies",
+                    "uri": "policies/permissionGrantPreApprovalPolicies",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "permissionGrantPolicies",
+                    "uri": "policies/permissionGrantPolicies",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "publicKeyInfrastructure",
+                    "uri": "directory/publicKeyInfrastructure/certificateBasedAuthConfigurations",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ],
+                    "relationships": [
+                        {
+                            "name": "details",
+                            "uri": "directory/publicKeyInfrastructure/certificateBasedAuthConfigurations/[1]/certificateAuthorities",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
                     "name": "riskBasedNotification",
                     "uri": "identityProtection/settings/notifications",
                     "parameters": [
@@ -1024,7 +1164,19 @@
                 {
                     "name": "riskyUsers",
                     "uri": "identityProtection/riskyUsers",
-                    "conditions": ["P1"]
+                    "conditions": ["P1"],
+                    "relationships": [
+                        {
+                            "name": "history",
+                            "uri": "identityProtection/riskyUsers/[1]/history",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        }
+                    ]
                 },
                 {
                     "name": "roleAssignmentScheduleInstances",
@@ -1165,7 +1317,8 @@
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"]
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 504, "code": "UnknownError"}]
                         }
                     ]
                 },
@@ -1221,7 +1374,8 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
-                            ]
+                            ],
+                            "expected_error_codes": [{"status": 502, "code": "UnknownError"}]
                         },
                         {
                             "name": "createdObjects",
@@ -1262,7 +1416,11 @@
                                     "value": "id"
                                 }
                             ],
-                            "expected_error_codes": [{"status": 403, "code": "Forbidden"}, {"status": 404, "code": "NotFound"}]
+                            "expected_error_codes": [
+                                {"status": 403, "code": "Forbidden"}, 
+                                {"status": 404, "code": "NotFound"}, 
+                                {"status": 400, "code": "AuthenticationError"}
+                            ]
                         }
                     ]
                 }
@@ -1480,7 +1638,8 @@
                                             "name": "[1]",
                                             "value": "serviceMemberId"
                                         }
-                                    ]
+                                    ],
+                                    "expected_error_codes": [{"status": 404, "code": "MissingSubscription"}]
                                 },
                                 {
                                     "name": "serviceconfiguration",
@@ -1496,7 +1655,8 @@
                                             "name": "[1]",
                                             "value": "serviceMemberId"
                                         }
-                                    ]
+                                    ],
+                                    "expected_error_codes": [{"status": 404, "code": "MissingSubscription"}]
                                 },
                                 {
                                     "name": "alerts",
@@ -1512,7 +1672,8 @@
                                             "name": "[1]",
                                             "value": "serviceMemberId"
                                         }
-                                    ]
+                                    ],
+                                    "expected_error_codes": [{"status": 404, "code": "MissingSubscription"}]
                                 }
                             ]
                         }

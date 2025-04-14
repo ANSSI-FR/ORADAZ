@@ -289,7 +289,8 @@ impl Dumper {
         // Wait response and send new urls if any
         while counter > 0 {
             // Timeout after 5 minutes in case of missing message to decrease counter
-            match r3.recv_timeout(Duration::from_secs(300)) {
+            // match r3.recv_timeout(Duration::from_secs(300)) {
+            match r3.recv() {
                 Ok(msg) => match msg {
                     MainMsg::Finished(i) => {
                         // A URL has been processed correctly

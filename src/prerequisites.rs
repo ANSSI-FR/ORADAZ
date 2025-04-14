@@ -36,6 +36,10 @@ lazy_static! {
             "1b6ff35f-31df-4332-8571-d31ea5a4893f",
             "APIConnectors.Read.All",
         ),
+        (
+            "af281d3a-030d-4122-886e-146fb30a0413",
+            "AppCertTrustConfiguration.Read.All",
+        ),
         ("e4c9e354-4dc5-45b8-9e7c-e1393b0b1a20", "AuditLog.Read.All"),
         (
             "b46ffa80-fe3d-4822-9a1a-c200932d54d0",
@@ -92,6 +96,10 @@ lazy_static! {
             "IdentityUserFlow.Read.All",
         ),
         (
+            "526aa72a-5878-49fe-bf4e-357973af9b06",
+            "MultiTenantOrganization.Read.All",
+        ),
+        (
             "f6609722-4100-44eb-b747-e6ca0536989d",
             "OnPremDirectorySynchronization.Read.All",
         ),
@@ -115,6 +123,10 @@ lazy_static! {
         (
             "1d89d70c-dcac-4248-b214-903c457af83a",
             "PrivilegedAccess.Read.AzureResources",
+        ),
+        (
+            "04a4b2a2-3f26-4fc8-87ee-9c46e68db175",
+            "PublicKeyInfrastructure.Read.All",
         ),
         ("02e97553-ed7b-43d0-ab3c-f8bace0d040c", "Reports.Read.All"),
         (
