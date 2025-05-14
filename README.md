@@ -1,4 +1,4 @@
-# ORADAZ
+# ORADAZ [BETA]
 
 ~~ Outil de Récupération Automatique des Données AZure ~~
 
