@@ -125,6 +125,14 @@ lazy_static! {
             "PrivilegedAccess.Read.AzureResources",
         ),
         (
+            "02a32cc4-7ab5-4b58-879a-0586e0f7c495",
+            "PrivilegedAssignmentSchedule.Read.AzureADGroup"
+        ),
+        (
+            "8f44f93d-ecef-46ae-a9bf-338508d44d6b",
+            "PrivilegedEligibilitySchedule.Read.AzureADGroup"
+        ),
+        (
             "04a4b2a2-3f26-4fc8-87ee-9c46e68db175",
             "PublicKeyInfrastructure.Read.All",
         ),
@@ -144,6 +152,10 @@ lazy_static! {
         (
             "48fec646-b2ba-4019-8681-8eb31435aded",
             "RoleManagement.Read.All",
+        ),
+        (
+            "7e26fdff-9cb1-4e56-bede-211fe0e420e8",
+            "RoleManagementPolicy.Read.AzureADGroup"
         ),
         (
             "64733abd-851e-478a-bffb-e47a14b18235",

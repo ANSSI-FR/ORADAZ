@@ -1,6 +1,6 @@
 {
-    "oradaz_version": "2.0.04.14",
-    "schema_version": "2.0.04.14",
+    "oradaz_version": "2.0.05.26",
+    "schema_version": "2.0.05.26",
     "services": [
         {
             "name": "graph",
@@ -500,6 +500,54 @@
                             ]
                         },
                         {
+                            "name": "assignmentScheduleInstances",
+                            "uri": "identityGovernance/privilegedAccess/group/assignmentScheduleInstances?$filter=groupId eq '[1]'",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "ResourceTypeNotSupported"}]
+                        },
+                        {
+                            "name": "assignmentSchedules",
+                            "uri": "identityGovernance/privilegedAccess/group/assignmentSchedules?$filter=groupId eq '[1]'",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "ResourceTypeNotSupported"}]
+                        },
+                        {
+                            "name": "eligibilityScheduleInstances",
+                            "uri": "identityGovernance/privilegedAccess/group/eligibilityScheduleInstances?$filter=groupId eq '[1]'",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "ResourceTypeNotSupported"}]
+                        },
+                        {
+                            "name": "eligibilitySchedules",
+                            "uri": "identityGovernance/privilegedAccess/group/eligibilitySchedules?$filter=groupId eq '[1]'",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "ResourceTypeNotSupported"}]
+                        },
+                        {
                             "name": "memberOf",
                             "uri": "groups/[1]/memberOf",
                             "keys": [
@@ -557,6 +605,30 @@
                                     "conditions": ["UnifiedGroup"]
                                 }
                             ]
+                        },
+                        {
+                            "name": "roleManagementPolicyAssignments",
+                            "uri": "policies/roleManagementPolicyAssignments?$filter=scopeId eq '[1]' and scopeType eq 'Group'",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "ResourceTypeNotSupported"}]
+                        },
+                        {
+                            "name": "roleManagementPolicies",
+                            "uri": "policies/roleManagementPolicies?$filter=scopeId eq '[1]' and scopeType eq 'Group'&$expand=rules",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "ResourceTypeNotSupported"}]
                         },
                         {
                             "name": "settings",
@@ -1212,6 +1284,17 @@
                 {
                     "name": "roleEligibilitySchedules",
                     "uri": "roleManagement/directory/roleEligibilitySchedules",
+                    "conditions": ["P2"]
+                },
+                {
+                    "name": "roleManagementPolicies",
+                    "uri": "policies/roleManagementPolicies",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$filter=scopeId eq '/' and scopeType eq 'Directory'&$expand=rules"
+                        }
+                    ],
                     "conditions": ["P2"]
                 },
                 {
