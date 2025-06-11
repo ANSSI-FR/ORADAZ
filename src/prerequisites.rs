@@ -352,7 +352,7 @@ impl Prerequisites {
                 return Err(Error::UrlCreation);
             }
         };
-        let response = match client
+        let res = match client
             .get(url)
             .header(
                 reqwest::header::AUTHORIZATION,
@@ -373,9 +373,21 @@ impl Prerequisites {
             }
             Ok(res) => res,
         };
+        let status = res.status();
+        let response: String = match res.text() {
+            Ok(s) => s,
+            Err(err) => {
+                Prerequisites::print_error(silent, format!(
+                    "{:FL$}Error getting text response from request retrieve custom application to check permissions",
+                    "Prerequisites"
+                ));
+                debug!("{}", err);
+                return Err(Error::CannotRetrieveApp);
+            }
+        };
 
         // Check if permitions match required ones
-        match response.json::<ApplicationResponse>() {
+        match serde_json::from_str::<ApplicationResponse>(&response) {
             Ok(application) => match &application.value {
                 None => {
                     Prerequisites::print_error(silent, format!(
@@ -415,6 +427,7 @@ impl Prerequisites {
                                             Vec::new(),
                                             |mut acc3, perm| {
                                                 let perm_id: String = perm.id.to_string();
+                                                debug!("{:FL$}\t{}", "Prerequisites", perm_id);
                                                 if GRAPH_API_PERMISSIONS
                                                     .contains_key(perm_id.as_str())
                                                 {
@@ -456,6 +469,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
+                debug!("{} - {}", status, response);
                 debug!("{}", err);
                 return Err(Error::CannotRetrieveApp);
             }
@@ -496,7 +510,7 @@ impl Prerequisites {
                 return Err(Error::UrlCreation);
             }
         };
-        let response = match client
+        let res = match client
             .get(url)
             .header(
                 reqwest::header::AUTHORIZATION,
@@ -514,8 +528,20 @@ impl Prerequisites {
             }
             Ok(res) => res,
         };
+        let status = res.status();
+        let response: String = match res.text() {
+            Ok(s) => s,
+            Err(err) => {
+                Prerequisites::print_error(silent, format!(
+                    "{:FL$}Error getting text response from request to retrieve PIM active assignments for current user",
+                    "Prerequisites"
+                ));
+                debug!("{}", err);
+                return Err(Error::CannotRetrieveCurrentUserPIMEntraRoles);
+            }
+        };
 
-        match response.json::<PIMRoleAssignmentScheduleInstancesResponse>() {
+        match serde_json::from_str::<PIMRoleAssignmentScheduleInstancesResponse>(&response) {
             Ok(role_assignments) => {
                 let mut min_expiration: i64 = 0;
                 if !REQUIRED_ENTRA_ROLES.clone().into_iter().any(|requirement| {
@@ -579,6 +605,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
+                debug!("{} - {}", status, response);
                 debug!("{}", err);
                 return Err(Error::CannotRetrieveCurrentUserPIMEntraRoles);
             }
@@ -629,7 +656,7 @@ impl Prerequisites {
                 return Err(Error::UrlCreation);
             }
         };
-        let response = match client
+        let res = match client
             .get(url)
             .header(
                 reqwest::header::AUTHORIZATION,
@@ -650,8 +677,20 @@ impl Prerequisites {
             }
             Ok(res) => res,
         };
+        let status = res.status();
+        let response: String = match res.text() {
+            Ok(s) => s,
+            Err(err) => {
+                Prerequisites::print_error(silent, format!(
+                    "{:FL$}Error getting text response from request to retrieve Entra role assignments for current user",
+                    "Prerequisites"
+                ));
+                debug!("{}", err);
+                return Err(Error::CannotRetrieveCurrentUserEntraRoles);
+            }
+        };
 
-        match response.json::<RoleAssignmentResponse>() {
+        match serde_json::from_str::<RoleAssignmentResponse>(&response) {
             Ok(role_assignments) => {
                 if !REQUIRED_ENTRA_ROLES.clone().into_iter().any(|requirement| {
                     requirement.iter().all(|&x| {
@@ -676,6 +715,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
+                debug!("{} - {}", status, response);
                 debug!("{}", err);
                 return Err(Error::CannotRetrieveCurrentUserEntraRoles);
             }
@@ -711,7 +751,7 @@ impl Prerequisites {
                 return Err(Error::UrlCreation);
             }
         };
-        let response = match client
+        let res = match client
             .get(url)
             .header(
                 reqwest::header::AUTHORIZATION,
@@ -732,8 +772,20 @@ impl Prerequisites {
             }
             Ok(res) => res,
         };
+        let status = res.status();
+        let response: String = match res.text() {
+            Ok(s) => s,
+            Err(err) => {
+                Prerequisites::print_error(silent, format!(
+                    "{:FL$}Error getting text response from request to retrieve organization to check PIM status",
+                    "Prerequisites"
+                ));
+                debug!("{}", err);
+                return Err(Error::CannotRetrieveOrganization);
+            }
+        };
 
-        match response.json::<OrganizationResponse>() {
+        match serde_json::from_str::<OrganizationResponse>(&response) {
             Ok(organization) => {
                 if organization.value.into_iter().any(|org| {
                     org.assigned_plans.iter().any(|x| {
@@ -752,6 +804,7 @@ impl Prerequisites {
                     silent,
                     format!("{:FL$}Error parsing organization", "Prerequisites"),
                 );
+                debug!("{} - {}", status, response);
                 debug!("{}", err);
                 Err(Error::CannotRetrieveOrganization)
             }
@@ -789,7 +842,7 @@ impl Prerequisites {
                 return Err(Error::UrlCreation);
             }
         };
-        let response = match client
+        let res = match client
             .get(url)
             .header(
                 reqwest::header::AUTHORIZATION,
@@ -810,8 +863,20 @@ impl Prerequisites {
             }
             Ok(res) => res,
         };
+        let status = res.status();
+        let response: String = match res.text() {
+            Ok(s) => s,
+            Err(err) => {
+                Prerequisites::print_error(silent, format!(
+                    "{:FL$}Error getting text response from request to retrieve Entra role assignments for current user",
+                    "Prerequisites"
+                ));
+                debug!("{}", err);
+                return Err(Error::CannotRetrieveCurrentUserEntraRoles);
+            }
+        };
 
-        match response.json::<InternalRoleAssignmentResponse>() {
+        match serde_json::from_str::<InternalRoleAssignmentResponse>(&response) {
             Ok(role_assignments) => {
                 if !REQUIRED_ENTRA_ROLES.clone().into_iter().any(|requirement| {
                     requirement.iter().all(|&x| {
@@ -843,6 +908,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
+                debug!("{} - {}", status, response);
                 debug!("{}", err);
                 return Err(Error::CannotRetrieveCurrentUserEntraRoles);
             }
@@ -882,7 +948,7 @@ impl Prerequisites {
                 return Err(Error::UrlCreation);
             }
         };
-        let response = match client
+        let res = match client
             .get(url)
             .header(
                 reqwest::header::AUTHORIZATION,
@@ -903,8 +969,20 @@ impl Prerequisites {
             }
             Ok(res) => res,
         };
+        let status = res.status();
+        let response: String = match res.text() {
+            Ok(s) => s,
+            Err(err) => {
+                Prerequisites::print_error(silent, format!(
+                    "{:FL$}Error getting text response from request to retrieve available subscriptions",
+                    "Prerequisites"
+                ));
+                debug!("{}", err);
+                return Err(Error::CannotRetrieveSubscriptions);
+            }
+        };
 
-        match response.json::<SubscriptionResponse>() {
+        match serde_json::from_str::<SubscriptionResponse>(&response) {
             Ok(subscriptions) => match &subscriptions.value {
                 None => {
                     Prerequisites::print_error(
@@ -944,6 +1022,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
+                debug!("{} - {}", status, response);
                 debug!("{}", err);
                 return Err(Error::CannotRetrieveSubscriptions);
             }
@@ -978,7 +1057,7 @@ impl Prerequisites {
                 return Err(Error::UrlCreation);
             }
         };
-        let response = match client
+        let res = match client
             .get(url)
             .header(
                 reqwest::header::AUTHORIZATION,
@@ -999,8 +1078,20 @@ impl Prerequisites {
             }
             Ok(res) => res,
         };
+        let status = res.status();
+        let response: String = match res.text() {
+            Ok(s) => s,
+            Err(err) => {
+                Prerequisites::print_error(silent, format!(
+                    "{:FL$}Error getting text response from request to retrieve available subscriptions",
+                    "Prerequisites"
+                ));
+                debug!("{}", err);
+                return Err(Error::CannotRetrieveMailboxes);
+            }
+        };
 
-        match response.json::<MailboxResponse>() {
+        match serde_json::from_str::<MailboxResponse>(&response) {
             Ok(mailboxes) => match &mailboxes.value {
                 None => {
                     Prerequisites::print_error(silent, format!(
@@ -1031,7 +1122,7 @@ impl Prerequisites {
                                 return Err(Error::UrlCreation);
                             }
                         };
-                        let response = match client
+                        let res2 = match client
                             .get(url)
                             .header(
                                 reqwest::header::AUTHORIZATION,
@@ -1052,20 +1143,36 @@ impl Prerequisites {
                             }
                             Ok(res) => res,
                         };
-                        match response.json::<RecipientPermissionResponse>() {
+                        let status2 = res2.status();
+                        let response2: String = match res2.text() {
+                            Ok(s) => s,
+                            Err(err) => {
+                                Prerequisites::print_error(silent, format!(
+                                    "{:FL$}Error getting text response from request to retrieve available subscriptions",
+                                    "Prerequisites"
+                                ));
+                                debug!("{}", err);
+                                return Err(Error::CannotRetrieveMailboxesRecipients);
+                            }
+                        };
+
+                        match serde_json::from_str::<RecipientPermissionResponse>(&response2) {
                             Ok(permissions) => match &permissions.id {
                                 None => {
-                                    Prerequisites::print_error(silent, format!(
-                                                "{:FL$}Missing permission to retrieve mailbox recipients",
-                                                "Prerequisites"
-                                            ));
+                                    Prerequisites::print_error(
+                                        silent,
+                                        format!(
+                                        "{:FL$}Missing permission to retrieve mailbox recipients",
+                                        "Prerequisites"
+                                    ),
+                                    );
                                     return Err(Error::MissingExchangeOnlinePermissions);
                                 }
                                 Some(_e) => {
                                     debug!(
-                                                "{:FL$}Current user has correct permissions to audit Exchange Online",
-                                                "Prerequisites"
-                                            );
+                                        "{:FL$}Current user has correct permissions to audit Exchange Online",
+                                        "Prerequisites"
+                                    );
                                 }
                             },
                             Err(err) => {
@@ -1076,6 +1183,7 @@ impl Prerequisites {
                                         "Prerequisites"
                                     ),
                                 );
+                                debug!("{} - {}", status2, response2);
                                 debug!("{}", err);
                                 return Err(Error::CannotRetrieveMailboxesRecipients);
                             }
@@ -1088,6 +1196,7 @@ impl Prerequisites {
                     silent,
                     format!("{:FL$}Error parsing mailboxes", "Prerequisites"),
                 );
+                debug!("{} - {}", status, response);
                 debug!("{}", err);
                 return Err(Error::CannotRetrieveMailboxes);
             }
