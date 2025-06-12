@@ -386,98 +386,115 @@ impl Prerequisites {
             }
         };
 
-        // Check if permitions match required ones
-        match serde_json::from_str::<ApplicationResponse>(&response) {
-            Ok(application) => match &application.value {
-                None => {
-                    Prerequisites::print_error(silent, format!(
-                        "{:FL$}Missing required permission for Microsoft Graph API to read application",
-                        "Prerequisites"
-                    ));
-                    return Err(Error::MissingAppPermission);
-                }
-                Some(value) => {
-                    if !(skip_resources
-                        || value.iter().any(|app| {
-                            app.required_resource_access.iter().any(|access| {
-                                // Azure Service Management
-                                access.resource_app_id == "797f4846-ba00-4fd7-ba43-dac1f8f63013"
-                                    && access.resource_access.iter().any(|perm| {
-                                        // user_impersonation
-                                        perm.id == "41094075-9dad-400e-a0bd-54e686782033"
-                                    })
-                            })
-                        }))
-                    {
-                        Prerequisites::print_error(silent, format!(
-                            "{:FL$}Missing user_impersonation permission for Azure Service Management API",
-                            "Prerequisites"
-                        ));
-                        return Err(Error::MissingAppPermission);
-                    }
-
-                    let matched: Vec<String> = value.iter().fold(Vec::new(), |mut acc, app| {
-                        acc.extend(app.required_resource_access.iter().fold(
-                            Vec::new(),
-                            |mut acc2, access| {
-                                match &access.resource_app_id {
-                                    // Microsoft Graph
-                                    x if x == "00000003-0000-0000-c000-000000000000" => {
-                                        acc2.extend(access.resource_access.iter().fold(
-                                            Vec::new(),
-                                            |mut acc3, perm| {
-                                                let perm_id: String = perm.id.to_string();
-                                                debug!("{:FL$}\t{}", "Prerequisites", perm_id);
-                                                if GRAPH_API_PERMISSIONS
-                                                    .contains_key(perm_id.as_str())
-                                                {
-                                                    acc3.push(perm_id)
-                                                }
-                                                acc3
-                                            },
-                                        ));
-                                    }
-                                    _ => {}
+        match status.as_u16() {
+            429 => {
+                debug!(
+                    "{:FL$}Too many requests while checking prerequisites",
+                    "Prerequisites"
+                );
+                return Err(Error::TooManyRequestsDuringPrerequisites);
+            }
+            _ => {
+                // Check if permitions match required ones
+                match serde_json::from_str::<ApplicationResponse>(&response) {
+                    Ok(application) => {
+                        match &application.value {
+                            None => {
+                                Prerequisites::print_error(silent, format!(
+                                "{:FL$}Missing required permission for Microsoft Graph API to read application",
+                                "Prerequisites"
+                            ));
+                                return Err(Error::MissingAppPermission);
+                            }
+                            Some(value) => {
+                                if !(skip_resources
+                                    || value.iter().any(|app| {
+                                        app.required_resource_access.iter().any(|access| {
+                                            // Azure Service Management
+                                            access.resource_app_id
+                                                == "797f4846-ba00-4fd7-ba43-dac1f8f63013"
+                                                && access.resource_access.iter().any(|perm| {
+                                                    // user_impersonation
+                                                    perm.id
+                                                        == "41094075-9dad-400e-a0bd-54e686782033"
+                                                })
+                                        })
+                                    }))
+                                {
+                                    Prerequisites::print_error(silent, format!(
+                                    "{:FL$}Missing user_impersonation permission for Azure Service Management API",
+                                    "Prerequisites"
+                                ));
+                                    return Err(Error::MissingAppPermission);
                                 }
-                                acc2
-                            },
-                        ));
-                        acc
-                    });
-                    if GRAPH_API_PERMISSIONS.keys().len() != matched.len() {
-                        Prerequisites::print_error(silent, format!(
-                            "{:FL$}Missing required delegated permission(s) for Microsoft Graph API:",
-                            "Prerequisites"
-                        ));
-                        for (perm_id, perm_name) in GRAPH_API_PERMISSIONS.clone().into_iter() {
-                            if !matched.contains(&(&perm_id).to_string()) {
-                                Prerequisites::print_error(
-                                    silent,
-                                    format!("{:FL$}\t- {}", "", perm_name),
-                                );
+
+                                let matched: Vec<String> = value.iter().fold(Vec::new(), |mut acc, app| {
+                                acc.extend(app.required_resource_access.iter().fold(
+                                    Vec::new(),
+                                    |mut acc2, access| {
+                                        match &access.resource_app_id {
+                                            // Microsoft Graph
+                                            x if x == "00000003-0000-0000-c000-000000000000" => {
+                                                acc2.extend(access.resource_access.iter().fold(
+                                                    Vec::new(),
+                                                    |mut acc3, perm| {
+                                                        let perm_id: String = perm.id.to_string();
+                                                        debug!("{:FL$}\t{}", "Prerequisites", perm_id);
+                                                        if GRAPH_API_PERMISSIONS
+                                                            .contains_key(perm_id.as_str())
+                                                        {
+                                                            acc3.push(perm_id)
+                                                        }
+                                                        acc3
+                                                    },
+                                                ));
+                                            }
+                                            _ => {}
+                                        }
+                                        acc2
+                                    },
+                                ));
+                                acc
+                            });
+                                if GRAPH_API_PERMISSIONS.keys().len() != matched.len() {
+                                    Prerequisites::print_error(silent, format!(
+                                    "{:FL$}Missing required delegated permission(s) for Microsoft Graph API:",
+                                    "Prerequisites"
+                                ));
+                                    for (perm_id, perm_name) in
+                                        GRAPH_API_PERMISSIONS.clone().into_iter()
+                                    {
+                                        if !matched.contains(&(&perm_id).to_string()) {
+                                            Prerequisites::print_error(
+                                                silent,
+                                                format!("{:FL$}\t- {}", "", perm_name),
+                                            );
+                                        }
+                                    }
+                                    return Err(Error::MissingAppPermission);
+                                }
                             }
                         }
-                        return Err(Error::MissingAppPermission);
+                    }
+                    Err(err) => {
+                        Prerequisites::print_error(
+                            silent,
+                            format!(
+                                "{:FL$}Error parsing application to check for app permissions",
+                                "Prerequisites"
+                            ),
+                        );
+                        debug!("{} - {}", status, response);
+                        debug!("{}", err);
+                        return Err(Error::CannotRetrieveApp);
                     }
                 }
-            },
-            Err(err) => {
-                Prerequisites::print_error(
-                    silent,
-                    format!(
-                        "{:FL$}Error parsing application to check for app permissions",
-                        "Prerequisites"
-                    ),
+                debug!(
+                    "{:FL$}Custom application permissions match required ones",
+                    "Prerequisites"
                 );
-                debug!("{} - {}", status, response);
-                debug!("{}", err);
-                return Err(Error::CannotRetrieveApp);
             }
         }
-        debug!(
-            "{:FL$}Custom application permissions match required ones",
-            "Prerequisites"
-        );
         Ok(())
     }
 
@@ -541,80 +558,94 @@ impl Prerequisites {
             }
         };
 
-        match serde_json::from_str::<PIMRoleAssignmentScheduleInstancesResponse>(&response) {
-            Ok(role_assignments) => {
-                let mut min_expiration: i64 = 0;
-                if !REQUIRED_ENTRA_ROLES.clone().into_iter().any(|requirement| {
-                    // Get the first expiration between token and roles in combination
-                    let mut min_expiration_for_group_combination: i64 = token.expires_on;
-                    let resp: bool = requirement.iter().all(|&x| {
-                        for role in role_assignments.value.iter() {
-                            if role.role_definition.template_id == x {
-                                match &role.end_date_time {
-                                    None => return true,
-                                    Some(end_date_time) => {
-                                        match end_date_time.parse::<DateTime<Utc>>() {
-                                            Err(err) => {
-                                                Prerequisites::print_error(silent, format!(
-                                                    "{:FL$}Error parsing endDateTime value for PIM role assignments for current user",
-                                                    "Prerequisites"
-                                                ));
-                                                debug!("{} - {}", end_date_time, err);
-                                                return false
-                                            }
-                                            Ok(d) => {
-                                                if d.timestamp() > Utc::now().timestamp() + REFRESH_TOKEN_PIM_DELAY {
-                                                    min_expiration_for_group_combination =
-                                                        min(d.timestamp(), min_expiration_for_group_combination);
-                                                    return true
+        match status.as_u16() {
+            429 => {
+                debug!(
+                    "{:FL$}Too many requests while checking prerequisites",
+                    "Prerequisites"
+                );
+                return Err(Error::TooManyRequestsDuringPrerequisites);
+            }
+            _ => {
+                match serde_json::from_str::<PIMRoleAssignmentScheduleInstancesResponse>(&response)
+                {
+                    Ok(role_assignments) => {
+                        let mut min_expiration: i64 = 0;
+                        if !REQUIRED_ENTRA_ROLES.clone().into_iter().any(|requirement| {
+                            // Get the first expiration between token and roles in combination
+                            let mut min_expiration_for_group_combination: i64 = token.expires_on;
+                            let resp: bool = requirement.iter().all(|&x| {
+                                for role in role_assignments.value.iter() {
+                                    if role.role_definition.template_id == x {
+                                        match &role.end_date_time {
+                                            None => return true,
+                                            Some(end_date_time) => {
+                                                match end_date_time.parse::<DateTime<Utc>>() {
+                                                    Err(err) => {
+                                                        Prerequisites::print_error(silent, format!(
+                                                            "{:FL$}Error parsing endDateTime value for PIM role assignments for current user",
+                                                            "Prerequisites"
+                                                        ));
+                                                        debug!("{} - {}", end_date_time, err);
+                                                        return false
+                                                    }
+                                                    Ok(d) => {
+                                                        if d.timestamp() > Utc::now().timestamp() + REFRESH_TOKEN_PIM_DELAY {
+                                                            min_expiration_for_group_combination =
+                                                                min(d.timestamp(), min_expiration_for_group_combination);
+                                                            return true
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
+                                false
+                            });
+                            if resp {
+                                // Expiration will be set to the maximum of possible role combination
+                                min_expiration =
+                                    max(min_expiration, min_expiration_for_group_combination);
                             }
+                            resp
+                        }) {
+                            Prerequisites::print_error(silent, format!(
+                                "{:FL$}User is missing a required Entra role (Security Reader or Global Reader)",
+                                "Prerequisites"
+                            ));
+                            return Err(Error::MissingEntraRoles);
                         }
-                        false
-                    });
-                    if resp {
-                        // Expiration will be set to the maximum of possible role combination
-                        min_expiration =
-                            max(min_expiration, min_expiration_for_group_combination);
+
+                        if min_expiration < token.expires_on {
+                            debug!(
+                                "PIM role assignment will expire before token, updating expires_on"
+                            );
+                            // Add REFRESH_TOKEN_EXPIRATION_THRESHOLD to renew token at time of expiration (with REFRESH_TOKEN_PIM_DELAY delay)
+                            token.expires_on = min_expiration + REFRESH_TOKEN_EXPIRATION_THRESHOLD
+                                - REFRESH_TOKEN_PIM_DELAY;
+                        }
                     }
-                    resp
-                }) {
-                    Prerequisites::print_error(silent, format!(
-                        "{:FL$}User is missing a required Entra role (Security Reader or Global Reader)",
-                        "Prerequisites"
-                    ));
-                    return Err(Error::MissingEntraRoles);
+                    Err(err) => {
+                        Prerequisites::print_error(
+                            silent,
+                            format!(
+                                "{:FL$}Error parsing PIM role assignments for current user",
+                                "Prerequisites"
+                            ),
+                        );
+                        debug!("{} - {}", status, response);
+                        debug!("{}", err);
+                        return Err(Error::CannotRetrieveCurrentUserPIMEntraRoles);
+                    }
                 }
 
-                if min_expiration < token.expires_on {
-                    debug!("PIM role assignment will expire before token, updating expires_on");
-                    // Add REFRESH_TOKEN_EXPIRATION_THRESHOLD to renew token at time of expiration (with REFRESH_TOKEN_PIM_DELAY delay)
-                    token.expires_on = min_expiration + REFRESH_TOKEN_EXPIRATION_THRESHOLD
-                        - REFRESH_TOKEN_PIM_DELAY;
-                }
-            }
-            Err(err) => {
-                Prerequisites::print_error(
-                    silent,
-                    format!(
-                        "{:FL$}Error parsing PIM role assignments for current user",
-                        "Prerequisites"
-                    ),
+                debug!(
+                    "{:FL$}Current user has required Entra roles",
+                    "Prerequisites"
                 );
-                debug!("{} - {}", status, response);
-                debug!("{}", err);
-                return Err(Error::CannotRetrieveCurrentUserPIMEntraRoles);
             }
         }
-
-        debug!(
-            "{:FL$}Current user has required Entra roles",
-            "Prerequisites"
-        );
         Ok(())
     }
 
@@ -690,40 +721,51 @@ impl Prerequisites {
             }
         };
 
-        match serde_json::from_str::<RoleAssignmentResponse>(&response) {
-            Ok(role_assignments) => {
-                if !REQUIRED_ENTRA_ROLES.clone().into_iter().any(|requirement| {
-                    requirement.iter().all(|&x| {
-                        role_assignments
-                            .value
-                            .iter()
-                            .any(|role| role.role_definition.template_id == x)
-                    })
-                }) {
-                    Prerequisites::print_error(silent, format!(
-                        "{:FL$}User is missing a required Entra role (Security Reader or Global Reader)",
-                        "Prerequisites"
-                    ));
-                    return Err(Error::MissingEntraRoles);
-                }
-            }
-            Err(err) => {
-                Prerequisites::print_error(
-                    silent,
-                    format!(
-                        "{:FL$}Error parsing role assignments for current user",
-                        "Prerequisites"
-                    ),
+        match status.as_u16() {
+            429 => {
+                debug!(
+                    "{:FL$}Too many requests while checking prerequisites",
+                    "Prerequisites"
                 );
-                debug!("{} - {}", status, response);
-                debug!("{}", err);
-                return Err(Error::CannotRetrieveCurrentUserEntraRoles);
+                return Err(Error::TooManyRequestsDuringPrerequisites);
+            }
+            _ => {
+                match serde_json::from_str::<RoleAssignmentResponse>(&response) {
+                    Ok(role_assignments) => {
+                        if !REQUIRED_ENTRA_ROLES.clone().into_iter().any(|requirement| {
+                            requirement.iter().all(|&x| {
+                                role_assignments
+                                    .value
+                                    .iter()
+                                    .any(|role| role.role_definition.template_id == x)
+                            })
+                        }) {
+                            Prerequisites::print_error(silent, format!(
+                                "{:FL$}User is missing a required Entra role (Security Reader or Global Reader)",
+                                "Prerequisites"
+                            ));
+                            return Err(Error::MissingEntraRoles);
+                        }
+                    }
+                    Err(err) => {
+                        Prerequisites::print_error(
+                            silent,
+                            format!(
+                                "{:FL$}Error parsing role assignments for current user",
+                                "Prerequisites"
+                            ),
+                        );
+                        debug!("{} - {}", status, response);
+                        debug!("{}", err);
+                        return Err(Error::CannotRetrieveCurrentUserEntraRoles);
+                    }
+                }
+                debug!(
+                    "{:FL$}Current user has required Entra roles",
+                    "Prerequisites"
+                );
             }
         }
-        debug!(
-            "{:FL$}Current user has required Entra roles",
-            "Prerequisites"
-        );
         Ok(())
     }
 
@@ -785,28 +827,43 @@ impl Prerequisites {
             }
         };
 
-        match serde_json::from_str::<OrganizationResponse>(&response) {
-            Ok(organization) => {
-                if organization.value.into_iter().any(|org| {
-                    org.assigned_plans.iter().any(|x| {
-                        // Tenant has Entra ID Premium P2 licence, meaning PIM is enabled
-                        &x.capability_status == "Enabled"
-                            && &x.service_plan_id == "eec0eb4f-6444-4f95-aba0-50c24d67f998"
-                    })
-                }) {
-                    Prerequisites::check_entra_roles_for_graph_with_pim(client, token, silent)
-                } else {
-                    Prerequisites::check_entra_roles_for_graph_without_pim(client, token, silent)
-                }
-            }
-            Err(err) => {
-                Prerequisites::print_error(
-                    silent,
-                    format!("{:FL$}Error parsing organization", "Prerequisites"),
+        match status.as_u16() {
+            429 => {
+                debug!(
+                    "{:FL$}Too many requests while checking prerequisites",
+                    "Prerequisites"
                 );
-                debug!("{} - {}", status, response);
-                debug!("{}", err);
-                Err(Error::CannotRetrieveOrganization)
+                Err(Error::TooManyRequestsDuringPrerequisites)
+            }
+            _ => {
+                match serde_json::from_str::<OrganizationResponse>(&response) {
+                    Ok(organization) => {
+                        if organization.value.into_iter().any(|org| {
+                            org.assigned_plans.iter().any(|x| {
+                                // Tenant has Entra ID Premium P2 licence, meaning PIM is enabled
+                                &x.capability_status == "Enabled"
+                                    && &x.service_plan_id == "eec0eb4f-6444-4f95-aba0-50c24d67f998"
+                            })
+                        }) {
+                            Prerequisites::check_entra_roles_for_graph_with_pim(
+                                client, token, silent,
+                            )
+                        } else {
+                            Prerequisites::check_entra_roles_for_graph_without_pim(
+                                client, token, silent,
+                            )
+                        }
+                    }
+                    Err(err) => {
+                        Prerequisites::print_error(
+                            silent,
+                            format!("{:FL$}Error parsing organization", "Prerequisites"),
+                        );
+                        debug!("{} - {}", status, response);
+                        debug!("{}", err);
+                        Err(Error::CannotRetrieveOrganization)
+                    }
+                }
             }
         }
     }
@@ -876,47 +933,59 @@ impl Prerequisites {
             }
         };
 
-        match serde_json::from_str::<InternalRoleAssignmentResponse>(&response) {
-            Ok(role_assignments) => {
-                if !REQUIRED_ENTRA_ROLES.clone().into_iter().any(|requirement| {
-                    requirement.iter().all(|&x| {
-                        role_assignments.value.iter().any(|role| {
-                            if let Some(role_template_id) = role.pointer("/roleTemplateId") {
-                                match role_template_id.as_str() {
-                                    Some(f) => return f == x,
-                                    None => {
-                                        return false;
-                                    }
-                                }
-                            };
-                            false
-                        })
-                    })
-                }) {
-                    Prerequisites::print_error(silent, format!(
-                        "{:FL$}User is missing a required Entra role (Security Reader or Global Reader)",
-                        "Prerequisites"
-                    ));
-                    return Err(Error::MissingEntraRoles);
-                }
-            }
-            Err(err) => {
-                Prerequisites::print_error(
-                    silent,
-                    format!(
-                        "{:FL$}Error parsing role assignments for current user using internal API",
-                        "Prerequisites"
-                    ),
+        match status.as_u16() {
+            429 => {
+                debug!(
+                    "{:FL$}Too many requests while checking prerequisites",
+                    "Prerequisites"
                 );
-                debug!("{} - {}", status, response);
-                debug!("{}", err);
-                return Err(Error::CannotRetrieveCurrentUserEntraRoles);
+                return Err(Error::TooManyRequestsDuringPrerequisites);
+            }
+            _ => {
+                match serde_json::from_str::<InternalRoleAssignmentResponse>(&response) {
+                    Ok(role_assignments) => {
+                        if !REQUIRED_ENTRA_ROLES.clone().into_iter().any(|requirement| {
+                            requirement.iter().all(|&x| {
+                                role_assignments.value.iter().any(|role| {
+                                    if let Some(role_template_id) = role.pointer("/roleTemplateId")
+                                    {
+                                        match role_template_id.as_str() {
+                                            Some(f) => return f == x,
+                                            None => {
+                                                return false;
+                                            }
+                                        }
+                                    };
+                                    false
+                                })
+                            })
+                        }) {
+                            Prerequisites::print_error(silent, format!(
+                                "{:FL$}User is missing a required Entra role (Security Reader or Global Reader)",
+                                "Prerequisites"
+                            ));
+                            return Err(Error::MissingEntraRoles);
+                        }
+                    }
+                    Err(err) => {
+                        Prerequisites::print_error(
+                            silent,
+                            format!(
+                                "{:FL$}Error parsing role assignments for current user using internal API",
+                                "Prerequisites"
+                            ),
+                        );
+                        debug!("{} - {}", status, response);
+                        debug!("{}", err);
+                        return Err(Error::CannotRetrieveCurrentUserEntraRoles);
+                    }
+                }
+                debug!(
+                    "{:FL$}Current user has required Entra roles",
+                    "Prerequisites"
+                );
             }
         }
-        debug!(
-            "{:FL$}Current user has required Entra roles",
-            "Prerequisites"
-        );
         Ok(())
     }
 
@@ -982,50 +1051,59 @@ impl Prerequisites {
             }
         };
 
-        match serde_json::from_str::<SubscriptionResponse>(&response) {
-            Ok(subscriptions) => match &subscriptions.value {
-                None => {
-                    Prerequisites::print_error(
-                        silent,
-                        format!("{:FL$}Cannot retrieve subscriptions", "Prerequisites"),
-                    );
-                    return Err(Error::CannotRetrieveSubscriptions);
-                }
-                Some(subs) => {
-                    if subs.is_empty() {
+        match status.as_u16() {
+            429 => {
+                debug!(
+                    "{:FL$}Too many requests while checking prerequisites",
+                    "Prerequisites"
+                );
+                return Err(Error::TooManyRequestsDuringPrerequisites);
+            }
+            _ => match serde_json::from_str::<SubscriptionResponse>(&response) {
+                Ok(subscriptions) => match &subscriptions.value {
+                    None => {
                         Prerequisites::print_error(
                             silent,
-                            format!(
-                                "{:FL$}User has no read permission on any subscription",
-                                "Prerequisites"
-                            ),
+                            format!("{:FL$}Cannot retrieve subscriptions", "Prerequisites"),
                         );
-                        return Err(Error::NoAvailableSubscription);
-                    } else {
-                        Prerequisites::print_info(silent, format!(
-                                "{:FL$}Reader role has been provided to the following subscriptions which will be audited:", "Prerequisites"
-                            ));
-                        for sub in subs {
-                            Prerequisites::print_info(
+                        return Err(Error::CannotRetrieveSubscriptions);
+                    }
+                    Some(subs) => {
+                        if subs.is_empty() {
+                            Prerequisites::print_error(
                                 silent,
-                                format!("{:FL$}\t- {}", "", sub.display_name),
+                                format!(
+                                    "{:FL$}User has no read permission on any subscription",
+                                    "Prerequisites"
+                                ),
                             );
+                            return Err(Error::NoAvailableSubscription);
+                        } else {
+                            Prerequisites::print_info(silent, format!(
+                                        "{:FL$}Reader role has been provided to the following subscriptions which will be audited:", "Prerequisites"
+                                    ));
+                            for sub in subs {
+                                Prerequisites::print_info(
+                                    silent,
+                                    format!("{:FL$}\t- {}", "", sub.display_name),
+                                );
+                            }
                         }
                     }
+                },
+                Err(err) => {
+                    Prerequisites::print_error(
+                        silent,
+                        format!(
+                            "{:FL$}Error parsing available subscriptions",
+                            "Prerequisites"
+                        ),
+                    );
+                    debug!("{} - {}", status, response);
+                    debug!("{}", err);
+                    return Err(Error::CannotRetrieveSubscriptions);
                 }
             },
-            Err(err) => {
-                Prerequisites::print_error(
-                    silent,
-                    format!(
-                        "{:FL$}Error parsing available subscriptions",
-                        "Prerequisites"
-                    ),
-                );
-                debug!("{} - {}", status, response);
-                debug!("{}", err);
-                return Err(Error::CannotRetrieveSubscriptions);
-            }
         }
         Ok(())
     }
@@ -1091,115 +1169,139 @@ impl Prerequisites {
             }
         };
 
-        match serde_json::from_str::<MailboxResponse>(&response) {
-            Ok(mailboxes) => match &mailboxes.value {
-                None => {
-                    Prerequisites::print_error(silent, format!(
-                            "{:FL$}Cannot retrieve Exchange Online mailbox to check ability to retrieve recipients", "Prerequisites"
-                        ));
-                    return Err(Error::CannotRetrieveMailboxes);
-                }
-                Some(mails) => {
-                    if mails.is_empty() {
-                        Prerequisites::print_error(
-                            silent,
-                            format!("{:FL$}No mailbox could be found", "Prerequisites"),
-                        );
-                        return Err(Error::CannotRetrieveMailboxes);
-                    } else if let Some(mailbox) = mails.iter().next() {
-                        let username: &str = &mailbox.user_principal_name;
-                        let string_url = format!(
-                                "https://outlook.office365.com/adminapi/beta/{}/Recipient('{}')?$expand=RecipientPermission", token.tenant_id, &username
-                            );
-                        let url: Url = match Url::parse(&string_url) {
-                            Ok(u) => u,
-                            Err(err) => {
-                                Prerequisites::print_error(silent, format!(
-                                        "{:FL$}Cannot create url to retrieve Exchange Online mailbox recipients to check permissions",
-                                        "Prerequisites"
-                                    ));
-                                debug!("{}", err);
-                                return Err(Error::UrlCreation);
-                            }
-                        };
-                        let res2 = match client
-                            .get(url)
-                            .header(
-                                reqwest::header::AUTHORIZATION,
-                                &format!("Bearer {}", token.access_token.secret()),
-                            )
-                            .send()
-                        {
-                            Err(err) => {
-                                Prerequisites::print_error(
-                                    silent,
-                                    format!(
-                                        "{:FL$}Cannot retrieve Exchange Online mailbox recipients",
-                                        "Prerequisites"
-                                    ),
-                                );
-                                debug!("{}", err);
-                                return Err(Error::CannotRetrieveMailboxesRecipients);
-                            }
-                            Ok(res) => res,
-                        };
-                        let status2 = res2.status();
-                        let response2: String = match res2.text() {
-                            Ok(s) => s,
-                            Err(err) => {
-                                Prerequisites::print_error(silent, format!(
-                                    "{:FL$}Error getting text response from request to retrieve available subscriptions",
-                                    "Prerequisites"
+        match status.as_u16() {
+            429 => {
+                debug!(
+                    "{:FL$}Too many requests while checking prerequisites",
+                    "Prerequisites"
+                );
+                return Err(Error::TooManyRequestsDuringPrerequisites);
+            }
+            _ => match serde_json::from_str::<MailboxResponse>(&response) {
+                Ok(mailboxes) => match &mailboxes.value {
+                    None => {
+                        Prerequisites::print_error(silent, format!(
+                                    "{:FL$}Cannot retrieve Exchange Online mailbox to check ability to retrieve recipients", "Prerequisites"
                                 ));
-                                debug!("{}", err);
-                                return Err(Error::CannotRetrieveMailboxesRecipients);
-                            }
-                        };
-
-                        match serde_json::from_str::<RecipientPermissionResponse>(&response2) {
-                            Ok(permissions) => match &permissions.id {
-                                None => {
+                        return Err(Error::CannotRetrieveMailboxes);
+                    }
+                    Some(mails) => {
+                        if mails.is_empty() {
+                            Prerequisites::print_error(
+                                silent,
+                                format!("{:FL$}No mailbox could be found", "Prerequisites"),
+                            );
+                            return Err(Error::CannotRetrieveMailboxes);
+                        } else if let Some(mailbox) = mails.iter().next() {
+                            let username: &str = &mailbox.user_principal_name;
+                            let string_url = format!(
+                                        "https://outlook.office365.com/adminapi/beta/{}/Recipient('{}')?$expand=RecipientPermission", token.tenant_id, &username
+                                    );
+                            let url: Url = match Url::parse(&string_url) {
+                                Ok(u) => u,
+                                Err(err) => {
+                                    Prerequisites::print_error(silent, format!(
+                                                "{:FL$}Cannot create url to retrieve Exchange Online mailbox recipients to check permissions",
+                                                "Prerequisites"
+                                            ));
+                                    debug!("{}", err);
+                                    return Err(Error::UrlCreation);
+                                }
+                            };
+                            let res2 = match client
+                                .get(url)
+                                .header(
+                                    reqwest::header::AUTHORIZATION,
+                                    &format!("Bearer {}", token.access_token.secret()),
+                                )
+                                .send()
+                            {
+                                Err(err) => {
                                     Prerequisites::print_error(
-                                        silent,
-                                        format!(
-                                        "{:FL$}Missing permission to retrieve mailbox recipients",
-                                        "Prerequisites"
-                                    ),
-                                    );
-                                    return Err(Error::MissingExchangeOnlinePermissions);
+                                            silent,
+                                            format!(
+                                                "{:FL$}Cannot retrieve Exchange Online mailbox recipients",
+                                                "Prerequisites"
+                                            ),
+                                        );
+                                    debug!("{}", err);
+                                    return Err(Error::CannotRetrieveMailboxesRecipients);
                                 }
-                                Some(_e) => {
+                                Ok(res) => res,
+                            };
+                            let status2 = res2.status();
+                            let response2: String = match res2.text() {
+                                Ok(s) => s,
+                                Err(err) => {
+                                    Prerequisites::print_error(silent, format!(
+                                            "{:FL$}Error getting text response from request to retrieve available subscriptions",
+                                            "Prerequisites"
+                                        ));
+                                    debug!("{}", err);
+                                    return Err(Error::CannotRetrieveMailboxesRecipients);
+                                }
+                            };
+
+                            match status2.as_u16() {
+                                429 => {
                                     debug!(
-                                        "{:FL$}Current user has correct permissions to audit Exchange Online",
+                                        "{:FL$}Too many requests while checking prerequisites",
                                         "Prerequisites"
                                     );
+                                    return Err(Error::TooManyRequestsDuringPrerequisites);
                                 }
-                            },
-                            Err(err) => {
-                                Prerequisites::print_error(
-                                    silent,
-                                    format!(
-                                        "{:FL$}Error parsing mailbox recipients",
-                                        "Prerequisites"
-                                    ),
-                                );
-                                debug!("{} - {}", status2, response2);
-                                debug!("{}", err);
-                                return Err(Error::CannotRetrieveMailboxesRecipients);
+                                _ => {
+                                    match serde_json::from_str::<RecipientPermissionResponse>(
+                                        &response2,
+                                    ) {
+                                        Ok(permissions) => match &permissions.id {
+                                            None => {
+                                                Prerequisites::print_error(
+                                                        silent,
+                                                        format!(
+                                                        "{:FL$}Missing permission to retrieve mailbox recipients",
+                                                        "Prerequisites"
+                                                    ),
+                                                    );
+                                                return Err(
+                                                    Error::MissingExchangeOnlinePermissions,
+                                                );
+                                            }
+                                            Some(_e) => {
+                                                debug!(
+                                                        "{:FL$}Current user has correct permissions to audit Exchange Online",
+                                                        "Prerequisites"
+                                                    );
+                                            }
+                                        },
+                                        Err(err) => {
+                                            Prerequisites::print_error(
+                                                silent,
+                                                format!(
+                                                    "{:FL$}Error parsing mailbox recipients",
+                                                    "Prerequisites"
+                                                ),
+                                            );
+                                            debug!("{} - {}", status2, response2);
+                                            debug!("{}", err);
+                                            return Err(Error::CannotRetrieveMailboxesRecipients);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
+                },
+                Err(err) => {
+                    Prerequisites::print_error(
+                        silent,
+                        format!("{:FL$}Error parsing mailboxes", "Prerequisites"),
+                    );
+                    debug!("{} - {}", status, response);
+                    debug!("{}", err);
+                    return Err(Error::CannotRetrieveMailboxes);
                 }
             },
-            Err(err) => {
-                Prerequisites::print_error(
-                    silent,
-                    format!("{:FL$}Error parsing mailboxes", "Prerequisites"),
-                );
-                debug!("{} - {}", status, response);
-                debug!("{}", err);
-                return Err(Error::CannotRetrieveMailboxes);
-            }
         }
         Ok(())
     }

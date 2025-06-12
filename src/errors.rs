@@ -100,6 +100,8 @@ pub enum Error {
     CannotRetrieveMailboxesRecipients,
     /// The current user cannot retrieve mailbox recipients
     MissingExchangeOnlinePermissions,
+    /// Too many requests while checking preresites
+    TooManyRequestsDuringPrerequisites,
 
     /// Writer errors
     /// Error writing file to result

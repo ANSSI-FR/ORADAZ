@@ -521,28 +521,41 @@ impl RequestsThread {
                                 t.user_id = j.user_id;
                                 t.user_principal_name = j.user_principal_name;
                                 Ok(())
-                            } else if Prerequisites::check(&self.client, &mut j, true, false)
-                                .is_err()
-                            {
-                                println!("\n\n");
-                                error!(
-                                    "{}{}{}",
-                                    White
-                                        .on(Red)
-                                        .paint("Please fix the above error in prerequisite check for service '"),
-                                    White.on(Red).paint(&t.service),
-                                    White.on(Red).paint("' and press Enter to continue dump")
-                                );
-                                let _ = std::io::stdin().read_line(&mut String::new());
-                                Err(Error::DeviceCodeFlowUnexpectedEnd)
                             } else {
-                                t.expires_on = j.expires_on;
-                                t.access_token = j.access_token;
-                                t.refresh_token = j.refresh_token;
-                                t.token_type = j.token_type;
-                                t.user_id = j.user_id;
-                                t.user_principal_name = j.user_principal_name;
-                                Ok(())
+                                let mut retry: bool = true;
+                                let mut res: Result<(), Error> = Ok(());
+                                while retry {
+                                    match Prerequisites::check(&self.client, &mut j, true, false) {
+                                        Err(Error::TooManyRequestsDuringPrerequisites) => {
+                                            // Too many requests, sleep for 2 seconds and retry
+                                            thread::sleep(Duration::from_secs(2));
+                                        }
+                                        Err(_) => {
+                                            retry = false;
+                                            println!("\n\n");
+                                            error!(
+                                                "{}{}{}",
+                                                White
+                                                    .on(Red)
+                                                    .paint("Please fix the above error in prerequisite check for service '"),
+                                                White.on(Red).paint(&t.service),
+                                                White.on(Red).paint("' and press Enter to continue dump")
+                                            );
+                                            let _ = std::io::stdin().read_line(&mut String::new());
+                                            res = Err(Error::DeviceCodeFlowUnexpectedEnd);
+                                        }
+                                        Ok(()) => {
+                                            retry = false;
+                                            t.expires_on = j.expires_on;
+                                            t.access_token = j.access_token.clone();
+                                            t.refresh_token = j.refresh_token.clone();
+                                            t.token_type = j.token_type.clone();
+                                            t.user_id = j.user_id.clone();
+                                            t.user_principal_name = j.user_principal_name.clone();
+                                        }
+                                    }
+                                }
+                                res
                             }
                         }
                         Err(err) => Err(err),
@@ -590,30 +603,41 @@ impl RequestsThread {
                 return Err(Error::Reprocess);
             }
             Ok(mut new_token) => {
-                if self.config.no_check != Some(true)
-                    && Prerequisites::check(&self.client, &mut new_token, true, false).is_err()
-                {
-                    println!("\n\n");
-                    error!(
-                        "{}{}{}",
-                        White.on(Red).paint(
-                            "Please fix the above error in prerequisite check for service '"
-                        ),
-                        White.on(Red).paint(&t.service),
-                        White.on(Red).paint("' and press Enter to continue dump")
-                    );
-                    let _ = std::io::stdin().read_line(&mut String::new());
-                    self.send_to_request(RequestMsg::Url(self.url.clone()));
-                    return Err(Error::Reprocess);
+                if self.config.no_check != Some(true) {
+                    loop {
+                        match Prerequisites::check(&self.client, &mut new_token, true, false) {
+                            Err(Error::TooManyRequestsDuringPrerequisites) => {
+                                // Too many requests, sleep for 2 seconds and retry
+                                thread::sleep(Duration::from_secs(2));
+                            }
+                            Err(_) => {
+                                println!("\n\n");
+                                error!(
+                                    "{}{}{}",
+                                    White.on(Red).paint(
+                                        "Please fix the above error in prerequisite check for service '"
+                                    ),
+                                    White.on(Red).paint(&t.service),
+                                    White.on(Red).paint("' and press Enter to continue dump")
+                                );
+                                let _ = std::io::stdin().read_line(&mut String::new());
+                                self.send_to_request(RequestMsg::Url(self.url.clone()));
+                                return Err(Error::Reprocess);
+                            }
+                            Ok(()) => {
+                                t.tenant_id = new_token.tenant_id.clone();
+                                t.client_id = new_token.client_id.clone();
+                                t.expires_on = new_token.expires_on;
+                                t.access_token = new_token.access_token.clone();
+                                t.refresh_token = new_token.refresh_token.clone();
+                                t.token_type = new_token.token_type.clone();
+                                t.user_id = new_token.user_id.clone();
+                                t.user_principal_name = new_token.user_principal_name.clone();
+                                return Ok(());
+                            }
+                        }
+                    }
                 }
-                t.tenant_id = new_token.tenant_id;
-                t.client_id = new_token.client_id;
-                t.expires_on = new_token.expires_on;
-                t.access_token = new_token.access_token;
-                t.refresh_token = new_token.refresh_token;
-                t.token_type = new_token.token_type;
-                t.user_id = new_token.user_id;
-                t.user_principal_name = new_token.user_principal_name;
             }
         }
         Ok(())
