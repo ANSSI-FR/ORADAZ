@@ -1,6 +1,6 @@
 {
     "oradaz_version": "2.0.06.12",
-    "schema_version": "2.0.05.26",
+    "schema_version": "2.0.06.19",
     "services": [
         {
             "name": "graph",
@@ -1664,6 +1664,42 @@
                             ]
                         },
                         {
+                            "name": "roleAssignmentScheduleInstances",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentScheduleInstances",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                }
+                            ], 
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                        },
+                        {
+                            "name": "roleAssignmentSchedules",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentSchedules",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                }
+                            ], 
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                        },
+                        {
                             "name": "roleDefinitions",
                             "uri": "providers/Microsoft.Management/managementGroups/[1]/providers/Microsoft.Authorization/roleDefinitions",
                             "parameters": [
@@ -1678,6 +1714,60 @@
                                     "value": "name"
                                 }
                             ]
+                        },
+                        {
+                            "name": "roleEligibilityScheduleInstances",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleEligibilityScheduleInstances",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                }
+                            ], 
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                        },
+                        {
+                            "name": "roleEligibilitySchedules",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleEligibilitySchedules",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                }
+                            ], 
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                        },
+                        {
+                            "name": "roleManagementPolicies",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleManagementPolicies",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                }
+                            ], 
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
                         }
                     ]
                 },
@@ -2324,40 +2414,6 @@
                             ]
                         },
                         {
-                            "name": "mediaservices",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Media/mediaservices",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2021-06-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ], 
-                            "relationships": [
-                                {
-                                    "name": "streamingEndpoints",
-                                    "uri": "[1]/streamingEndpoints",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2021-06-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ]
-                                }
-                            ]
-                        },
-                        {
                             "name": "networkInterfaces",
                             "uri": "subscriptions/[1]/providers/Microsoft.Network/networkInterfaces",
                             "parameters": [
@@ -2534,12 +2590,12 @@
                                     ]
                                 },
                                 {
-                                    "name": "virtualNetworkGateways",
-                                    "uri": "[1]/providers/Microsoft.Network/virtualNetworkGateways",
+                                    "name": "roleAssignments",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignments",
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
-                                            "value": "2024-05-01"
+                                            "value": "2022-04-01"
                                         }
                                     ], 
                                     "keys": [
@@ -2550,12 +2606,105 @@
                                     ]
                                 },
                                 {
-                                    "name": "roleAssignments",
-                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignments",
+                                    "name": "roleAssignmentScheduleInstances",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentScheduleInstances",
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
-                                            "value": "2022-04-01"
+                                            "value": "2020-10-01"
+                                        }
+                                    ], 
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "conditions": ["P2"],
+                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                                },
+                                {
+                                    "name": "roleAssignmentSchedules",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentSchedules",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ], 
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "conditions": ["P2"],
+                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                                },
+                                {
+                                    "name": "roleEligibilityScheduleInstances",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleEligibilityScheduleInstances",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ], 
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "conditions": ["P2"],
+                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                                },
+                                {
+                                    "name": "roleEligibilitySchedules",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleEligibilitySchedules",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ], 
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "conditions": ["P2"],
+                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                                },
+                                {
+                                    "name": "roleManagementPolicies",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleManagementPolicies",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ], 
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "conditions": ["P2"],
+                                    "expected_error_codes": [
+                                        {"status": 400, "code": "AadPremiumLicenseRequired"}, 
+                                        {"status": 400, "code": "TenantNotOnboarded"}
+                                    ]
+                                },
+                                {
+                                    "name": "virtualNetworkGateways",
+                                    "uri": "[1]/providers/Microsoft.Network/virtualNetworkGateways",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2024-05-01"
                                         }
                                     ], 
                                     "keys": [
@@ -2597,6 +2746,99 @@
                                             "name": "[1]",
                                             "value": "id"
                                         }
+                                    ]
+                                },
+                                {
+                                    "name": "roleAssignmentScheduleInstances",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentScheduleInstances",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ], 
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "conditions": ["P2"],
+                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                                },
+                                {
+                                    "name": "roleAssignmentSchedules",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentSchedules",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ], 
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "conditions": ["P2"],
+                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                                },
+                                {
+                                    "name": "roleEligibilityScheduleInstances",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleEligibilityScheduleInstances",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ], 
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "conditions": ["P2"],
+                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                                },
+                                {
+                                    "name": "roleEligibilitySchedules",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleEligibilitySchedules",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ], 
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "conditions": ["P2"],
+                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                                },
+                                {
+                                    "name": "roleManagementPolicies",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleManagementPolicies",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ], 
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "conditions": ["P2"],
+                                    "expected_error_codes": [
+                                        {"status": 400, "code": "AadPremiumLicenseRequired"}, 
+                                        {"status": 400, "code": "TenantNotOnboarded"}
                                     ]
                                 }
                             ]
@@ -2650,6 +2892,42 @@
                             ]
                         },
                         {
+                            "name": "roleAssignmentScheduleInstances",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentScheduleInstances",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                }
+                            ], 
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                        },
+                        {
+                            "name": "roleAssignmentSchedules",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentSchedules",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                }
+                            ], 
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                        },
+                        {
                             "name": "roleDefinitions",
                             "uri": "subscriptions/[1]/providers/Microsoft.Authorization/roleDefinitions",
                             "parameters": [
@@ -2664,6 +2942,60 @@
                                     "value": "subscriptionId"
                                 }
                             ]
+                        },
+                        {
+                            "name": "roleEligibilityScheduleInstances",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleEligibilityScheduleInstances",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                }
+                            ], 
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                        },
+                        {
+                            "name": "roleEligibilitySchedules",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleEligibilitySchedules",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                }
+                            ], 
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                        },
+                        {
+                            "name": "roleManagementPolicies",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleManagementPolicies",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                }
+                            ], 
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "conditions": ["P2"],
+                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
                         },
                         {
                             "name": "securityContacts",
