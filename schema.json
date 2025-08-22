@@ -1,11 +1,14 @@
 {
     "oradaz_version": "2.0.06.12",
-    "schema_version": "2.0.06.19",
+    "schema_version": "2.0.08.22",
     "services": [
         {
             "name": "graph",
             "description": "Microsoft Graph",
-            "scopes": ["offline_access", "https://graph.microsoft.com/.default"],
+            "scopes": [
+                "offline_access",
+                "https://graph.microsoft.com/.default"
+            ],
             "mandatory_auth": true,
             "url_scheme": "https://graph.microsoft.com/[API_VERSION]/[URI][PARAMS]",
             "default_api_behavior": {
@@ -32,7 +35,7 @@
                 },
                 {
                     "name": "administrativeUnits",
-                    "uri": "directory/administrativeUnits", 
+                    "uri": "directory/administrativeUnits",
                     "relationships": [
                         {
                             "name": "members",
@@ -64,7 +67,7 @@
                 },
                 {
                     "name": "applications",
-                    "uri": "applications", 
+                    "uri": "applications",
                     "relationships": [
                         {
                             "name": "appManagementPolicies",
@@ -117,8 +120,15 @@
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 504, "code": "UnknownError"}]
+                            "conditions": [
+                                "P2"
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 504,
+                                    "code": "UnknownError"
+                                }
+                            ]
                         }
                     ]
                 },
@@ -151,7 +161,12 @@
                             "value": "beta"
                         }
                     ],
-                    "expected_error_codes": [{"status": 403, "code": "AADB2C"}]
+                    "expected_error_codes": [
+                        {
+                            "status": 403,
+                            "code": "AADB2C"
+                        }
+                    ]
                 },
                 {
                     "name": "certificateBasedApplicationConfigurations",
@@ -161,7 +176,7 @@
                             "name": "[API_VERSION]",
                             "value": "beta"
                         }
-                    ], 
+                    ],
                     "relationships": [
                         {
                             "name": "trustedCertificateAuthorities",
@@ -201,7 +216,7 @@
                 },
                 {
                     "name": "contacts",
-                    "uri": "contacts", 
+                    "uri": "contacts",
                     "relationships": [
                         {
                             "name": "memberOf",
@@ -231,7 +246,7 @@
                 },
                 {
                     "name": "crossTenantAccessPolicyPartners",
-                    "uri": "policies/crossTenantAccessPolicy/partners", 
+                    "uri": "policies/crossTenantAccessPolicy/partners",
                     "relationships": [
                         {
                             "name": "identitySynchronization",
@@ -242,7 +257,12 @@
                                     "value": "tenantId"
                                 }
                             ],
-                            "expected_error_codes": [{"status": 404, "code": "Directory_ObjectNotFound"}]
+                            "expected_error_codes": [
+                                {
+                                    "status": 404,
+                                    "code": "Directory_ObjectNotFound"
+                                }
+                            ]
                         }
                     ]
                 },
@@ -291,12 +311,16 @@
                         {
                             "name": "[PARAMS]",
                             "value": "?$select=accountEnabled,ageGroup,assignedLicenses,assignedPlans,businessPhones,city,companyName,consentProvidedForMinor,country,createdDateTime,creationType,customSecurityAttributes,deletedDateTime,department,displayName,employeeHireDate,employeeId,employeeLeaveDateTime,employeeOrgData,employeeType,externalUserState,externalUserStateChangeDateTime,faxNumber,givenName,id,identities,imAddresses,infoCatalogs,isResourceAccount,jobTitle,lastPasswordChangeDateTime,legalAgeGroupClassification,licenseAssignmentStates,mail,mailNickname,mobilePhone,officeLocation,onPremisesDistinguishedName,onPremisesDomainName,onPremisesExtensionAttributes,onPremisesImmutableId,onPremisesLastSyncDateTime,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,onPremisesUserPrincipalName,otherMails,passwordPolicies,passwordProfile,postalCode,preferredDataLocation,preferredLanguage,provisionedPlans,proxyAddresses,refreshTokensValidFromDateTime,securityIdentifier,serviceProvisioningErrors,showInAddressList,signInSessionsValidFromDateTime,state,streetAddress,surname,usageLocation,userPrincipalName,userType",
-                            "conditions": ["NotP1"]
+                            "conditions": [
+                                "NotP1"
+                            ]
                         },
                         {
                             "name": "[PARAMS]",
                             "value": "?$select=accountEnabled,ageGroup,assignedLicenses,assignedPlans,businessPhones,city,companyName,consentProvidedForMinor,country,createdDateTime,creationType,customSecurityAttributes,deletedDateTime,department,displayName,employeeHireDate,employeeId,employeeLeaveDateTime,employeeOrgData,employeeType,externalUserState,externalUserStateChangeDateTime,faxNumber,givenName,id,identities,imAddresses,infoCatalogs,isResourceAccount,jobTitle,lastPasswordChangeDateTime,legalAgeGroupClassification,licenseAssignmentStates,mail,mailNickname,mobilePhone,officeLocation,onPremisesDistinguishedName,onPremisesDomainName,onPremisesExtensionAttributes,onPremisesImmutableId,onPremisesLastSyncDateTime,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,onPremisesUserPrincipalName,otherMails,passwordPolicies,passwordProfile,postalCode,preferredDataLocation,preferredLanguage,provisionedPlans,proxyAddresses,refreshTokensValidFromDateTime,securityIdentifier,serviceProvisioningErrors,showInAddressList,signInActivity,signInSessionsValidFromDateTime,state,streetAddress,surname,usageLocation,userPrincipalName,userType",
-                            "conditions": ["P1"]
+                            "conditions": [
+                                "P1"
+                            ]
                         }
                     ]
                 },
@@ -312,7 +336,13 @@
                 },
                 {
                     "name": "devices",
-                    "uri": "devices", 
+                    "uri": "devices",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$select=accountEnabled,alternativeNames,alternativeSecurityIds,approximateLastSignInDateTime,complianceExpirationDateTime,createdDateTime,deletedDateTime,deviceCategory,deviceId,deviceMetadata,deviceOwnership,deviceVersion,displayName,domainName,enrollmentProfileName,enrollmentType,extensionAttributes,externalSourceName,hostnames,id,isCompliant,isManaged,isManagementRestricted,isRooted,kind,managementType,manufacturer,mdmAppId,model,name,onPremisesLastSyncDateTime,onPremisesSecurityIdentifier,onPremisesSyncEnabled,operatingSystem,operatingSystemVersion,physicalIds,platform,profileType,registrationDateTime,sourceType,status,systemLabels,trustType"
+                        }
+                    ],
                     "relationships": [
                         {
                             "name": "registeredOwners",
@@ -350,7 +380,7 @@
                 },
                 {
                     "name": "directoryRoles",
-                    "uri": "directoryRoles", 
+                    "uri": "directoryRoles",
                     "relationships": [
                         {
                             "name": "members",
@@ -391,7 +421,12 @@
                         {
                             "name": "domainNameReferences",
                             "uri": "/domains/[1]/domainNameReferences",
-                            "expected_error_codes": [{"status": 400, "code": "Request_UnsupportedQuery"}],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "Request_UnsupportedQuery"
+                                }
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
@@ -402,7 +437,12 @@
                         {
                             "name": "federationConfiguration",
                             "uri": "/domains/[1]/federationConfiguration",
-                            "expected_error_codes": [{"status": 404, "code": "Request_ResourceNotFound"}],
+                            "expected_error_codes": [
+                                {
+                                    "status": 404,
+                                    "code": "Request_ResourceNotFound"
+                                }
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
@@ -433,6 +473,14 @@
                     ]
                 },
                 {
+                    "name": "entitlementManagementRoleDefinitions",
+                    "uri": "roleManagement/entitlementManagement/roleDefinitions"
+                },
+                {
+                    "name": "entitlementManagementRoleAssignments",
+                    "uri": "roleManagement/entitlementManagement/roleAssignments"
+                },
+                {
                     "name": "externalAuthorizationSystems",
                     "uri": "external/authorizationSystems",
                     "parameters": [
@@ -441,11 +489,16 @@
                             "value": "beta"
                         }
                     ],
-                    "expected_error_codes": [{"status": 403, "code": "INVALID_TENANT_ROUTING"}]
+                    "expected_error_codes": [
+                        {
+                            "status": 403,
+                            "code": "INVALID_TENANT_ROUTING"
+                        }
+                    ]
                 },
                 {
                     "name": "externalIdentitiesPolicy",
-                    "uri": "policies/externalIdentitiesPolicy", 
+                    "uri": "policies/externalIdentitiesPolicy",
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -455,7 +508,7 @@
                 },
                 {
                     "name": "featureRolloutPolicies",
-                    "uri": "policies/featureRolloutPolicies", 
+                    "uri": "policies/featureRolloutPolicies",
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -465,7 +518,7 @@
                 },
                 {
                     "name": "globalAdmins",
-                    "uri": "directoryRoles/roleTemplateId=62e90394-69f5-4237-9190-012177145e10/members", 
+                    "uri": "directoryRoles/roleTemplateId=62e90394-69f5-4237-9190-012177145e10/members",
                     "relationships": [
                         {
                             "name": "signIns",
@@ -487,7 +540,7 @@
                             "name": "[PARAMS]",
                             "value": "?$select=assignedLabels,assignedLicenses,classification,createdByAppId,createdDateTime,deletedDateTime,description,displayName,expirationDateTime,groupTypes,id,infoCatalogs,isAssignableToRole,licenseProcessingState,mail,mailEnabled,mailNickname,membershipRule,membershipRuleProcessingState,membershipRuleProcessingStatus,onPremisesDomainName,onPremisesLastSyncDateTime,onPremisesNetBiosName,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,preferredDataLocation,preferredLanguage,proxyAddresses,renewedDateTime,resourceBehaviorOptions,resourceProvisioningOptions,securityEnabled,securityIdentifier,theme,uniqueName,unseenConversationsCount,unseenMessagesCount,visibility"
                         }
-                    ], 
+                    ],
                     "relationships": [
                         {
                             "name": "appRoleAssignments",
@@ -508,8 +561,15 @@
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "ResourceTypeNotSupported"}]
+                            "conditions": [
+                                "P2"
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "ResourceTypeNotSupported"
+                                }
+                            ]
                         },
                         {
                             "name": "assignmentSchedules",
@@ -520,8 +580,15 @@
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "ResourceTypeNotSupported"}]
+                            "conditions": [
+                                "P2"
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "ResourceTypeNotSupported"
+                                }
+                            ]
                         },
                         {
                             "name": "eligibilityScheduleInstances",
@@ -532,8 +599,15 @@
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "ResourceTypeNotSupported"}]
+                            "conditions": [
+                                "P2"
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "ResourceTypeNotSupported"
+                                }
+                            ]
                         },
                         {
                             "name": "eligibilitySchedules",
@@ -544,8 +618,15 @@
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "ResourceTypeNotSupported"}]
+                            "conditions": [
+                                "P2"
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "ResourceTypeNotSupported"
+                                }
+                            ]
                         },
                         {
                             "name": "memberOf",
@@ -602,7 +683,9 @@
                                 {
                                     "name": "[1]",
                                     "value": "id",
-                                    "conditions": ["UnifiedGroup"]
+                                    "conditions": [
+                                        "UnifiedGroup"
+                                    ]
                                 }
                             ]
                         },
@@ -615,8 +698,15 @@
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "ResourceTypeNotSupported"}]
+                            "conditions": [
+                                "P2"
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "ResourceTypeNotSupported"
+                                }
+                            ]
                         },
                         {
                             "name": "roleManagementPolicies",
@@ -627,8 +717,15 @@
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "ResourceTypeNotSupported"}]
+                            "conditions": [
+                                "P2"
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "ResourceTypeNotSupported"
+                                }
+                            ]
                         },
                         {
                             "name": "settings",
@@ -703,17 +800,23 @@
                 {
                     "name": "intuneDetectedApps",
                     "uri": "deviceManagement/detectedApps",
-                    "conditions": ["Intune"]
+                    "conditions": [
+                        "Intune"
+                    ]
                 },
                 {
                     "name": "intuneManagedDeviceOverview",
                     "uri": "deviceManagement/managedDeviceOverview",
-                    "conditions": ["Intune"]
+                    "conditions": [
+                        "Intune"
+                    ]
                 },
                 {
                     "name": "intuneManagedDevices",
                     "uri": "deviceManagement/managedDevices",
-                    "conditions": ["Intune"]
+                    "conditions": [
+                        "Intune"
+                    ]
                 },
                 {
                     "name": "intuneOperationApprovalPolicies",
@@ -724,8 +827,15 @@
                             "value": "beta"
                         }
                     ],
-                    "conditions": ["Intune"],
-                    "expected_error_codes": [{"status": 403, "code": "Forbidden"}]
+                    "conditions": [
+                        "Intune"
+                    ],
+                    "expected_error_codes": [
+                        {
+                            "status": 403,
+                            "code": "Forbidden"
+                        }
+                    ]
                 },
                 {
                     "name": "intuneOperationApprovalRequests",
@@ -736,17 +846,23 @@
                             "value": "beta"
                         }
                     ],
-                    "conditions": ["Intune"]
+                    "conditions": [
+                        "Intune"
+                    ]
                 },
                 {
                     "name": "intuneResourceOperations",
                     "uri": "deviceManagement/resourceOperations",
-                    "conditions": ["Intune"]
+                    "conditions": [
+                        "Intune"
+                    ]
                 },
                 {
                     "name": "intuneRoleAssignments",
                     "uri": "deviceManagement/roleAssignments",
-                    "conditions": ["Intune"]
+                    "conditions": [
+                        "Intune"
+                    ]
                 },
                 {
                     "name": "intuneRoleDefinitions",
@@ -763,7 +879,9 @@
                             ]
                         }
                     ],
-                    "conditions": ["Intune"]
+                    "conditions": [
+                        "Intune"
+                    ]
                 },
                 {
                     "name": "intuneRoleScopeTags",
@@ -774,12 +892,16 @@
                             "value": "beta"
                         }
                     ],
-                    "conditions": ["Intune"]
+                    "conditions": [
+                        "Intune"
+                    ]
                 },
                 {
                     "name": "intuneWindowsMalwareInformation",
                     "uri": "deviceManagement/windowsMalwareInformation",
-                    "conditions": ["Intune"]
+                    "conditions": [
+                        "Intune"
+                    ]
                 },
                 {
                     "name": "multiTenantOrganization",
@@ -804,7 +926,12 @@
                 {
                     "name": "onPremisesPublishingProfiles_adAdministration",
                     "uri": "onPremisesPublishingProfiles/adAdministration",
-                    "expected_error_codes": [{"status": 500, "code": "UnknownError"}],
+                    "expected_error_codes": [
+                        {
+                            "status": 500,
+                            "code": "UnknownError"
+                        }
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -845,7 +972,11 @@
                 {
                     "name": "onPremisesPublishingProfiles_applicationProxy",
                     "uri": "onPremisesPublishingProfiles/applicationProxy",
-                    "expected_error_codes": [{"status": 404}],
+                    "expected_error_codes": [
+                        {
+                            "status": 404
+                        }
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -856,7 +987,11 @@
                 {
                     "name": "onPremisesPublishingProfiles_applicationProxy_agentGroups",
                     "uri": "onPremisesPublishingProfiles/applicationProxy/agentGroups",
-                    "expected_error_codes": [{"status": 404}],
+                    "expected_error_codes": [
+                        {
+                            "status": 404
+                        }
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -867,7 +1002,11 @@
                 {
                     "name": "onPremisesPublishingProfiles_applicationProxy_agents",
                     "uri": "onPremisesPublishingProfiles/applicationProxy/agents",
-                    "expected_error_codes": [{"status": 404}],
+                    "expected_error_codes": [
+                        {
+                            "status": 404
+                        }
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -878,7 +1017,11 @@
                 {
                     "name": "onPremisesPublishingProfiles_applicationProxy_publishedResources",
                     "uri": "onPremisesPublishingProfiles/applicationProxy/publishedResources",
-                    "expected_error_codes": [{"status": 404}],
+                    "expected_error_codes": [
+                        {
+                            "status": 404
+                        }
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -927,7 +1070,12 @@
                         {
                             "name": "members",
                             "uri": "onPremisesPublishingProfiles/applicationProxy/connectorGroups/[1]/members",
-                            "expected_error_codes": [{"status": 404, "code": "ConnectorGroup_NotFound"}],
+                            "expected_error_codes": [
+                                {
+                                    "status": 404,
+                                    "code": "ConnectorGroup_NotFound"
+                                }
+                            ],
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
@@ -944,7 +1092,12 @@
                         {
                             "name": "applications",
                             "uri": "onPremisesPublishingProfiles/applicationProxy/connectorGroups/[1]/applications",
-                            "expected_error_codes": [{"status": 404, "code": "ApplicationsForGroup_NotFound"}],
+                            "expected_error_codes": [
+                                {
+                                    "status": 404,
+                                    "code": "ApplicationsForGroup_NotFound"
+                                }
+                            ],
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
@@ -1003,7 +1156,12 @@
                 {
                     "name": "onPremisesPublishingProfiles_exchangeOnline",
                     "uri": "onPremisesPublishingProfiles/exchangeOnline",
-                    "expected_error_codes": [{"status": 500, "code": "UnknownError"}],
+                    "expected_error_codes": [
+                        {
+                            "status": 500,
+                            "code": "UnknownError"
+                        }
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -1084,12 +1242,19 @@
                 {
                     "name": "onPremisesSynchronization",
                     "uri": "directory/onPremisesSynchronization",
-                    "conditions": ["GA"]
+                    "conditions": [
+                        "GA"
+                    ]
                 },
                 {
                     "name": "onPremisesSynchronizationBeta",
                     "uri": "directory/onPremisesSynchronization",
-                    "expected_error_codes": [{"status": 403, "code": "Authorization_RequestDenied"}],
+                    "expected_error_codes": [
+                        {
+                            "status": 403,
+                            "code": "Authorization_RequestDenied"
+                        }
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -1132,7 +1297,9 @@
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"]
+                            "conditions": [
+                                "P2"
+                            ]
                         },
                         {
                             "name": "pimRoleDefinitions",
@@ -1149,7 +1316,9 @@
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"]
+                            "conditions": [
+                                "P2"
+                            ]
                         },
                         {
                             "name": "pimRoleSettings",
@@ -1166,7 +1335,9 @@
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"]
+                            "conditions": [
+                                "P2"
+                            ]
                         }
                     ]
                 },
@@ -1221,22 +1392,30 @@
                             "value": "beta"
                         }
                     ],
-                    "conditions": ["P1"]
+                    "conditions": [
+                        "P1"
+                    ]
                 },
                 {
                     "name": "riskDetections",
                     "uri": "identityProtection/riskDetections",
-                    "conditions": ["P1"]
+                    "conditions": [
+                        "P1"
+                    ]
                 },
                 {
                     "name": "riskyServicePrincipals",
                     "uri": "identityProtection/riskyServicePrincipals",
-                    "conditions": ["P1"]
+                    "conditions": [
+                        "P1"
+                    ]
                 },
                 {
                     "name": "riskyUsers",
                     "uri": "identityProtection/riskyUsers",
-                    "conditions": ["P1"],
+                    "conditions": [
+                        "P1"
+                    ],
                     "relationships": [
                         {
                             "name": "history",
@@ -1253,12 +1432,16 @@
                 {
                     "name": "roleAssignmentScheduleInstances",
                     "uri": "roleManagement/directory/roleAssignmentScheduleInstances",
-                    "conditions": ["P2"]
+                    "conditions": [
+                        "P2"
+                    ]
                 },
                 {
                     "name": "roleAssignmentSchedules",
                     "uri": "roleManagement/directory/roleAssignmentSchedules",
-                    "conditions": ["P2"]
+                    "conditions": [
+                        "P2"
+                    ]
                 },
                 {
                     "name": "roleDefinitions",
@@ -1279,12 +1462,16 @@
                 {
                     "name": "roleEligibilityScheduleInstances",
                     "uri": "roleManagement/directory/roleEligibilityScheduleInstances",
-                    "conditions": ["P2"]
+                    "conditions": [
+                        "P2"
+                    ]
                 },
                 {
                     "name": "roleEligibilitySchedules",
                     "uri": "roleManagement/directory/roleEligibilitySchedules",
-                    "conditions": ["P2"]
+                    "conditions": [
+                        "P2"
+                    ]
                 },
                 {
                     "name": "roleManagementPolicies",
@@ -1295,7 +1482,9 @@
                             "value": "?$filter=scopeId eq '/' and scopeType eq 'Directory'&$expand=rules"
                         }
                     ],
-                    "conditions": ["P2"]
+                    "conditions": [
+                        "P2"
+                    ]
                 },
                 {
                     "name": "roleManagementPolicyAssignmentsDirectory",
@@ -1306,7 +1495,9 @@
                             "value": "?$filter=scopeId eq '/' and scopeType eq 'Directory'&$expand=policy($expand=rules)"
                         }
                     ],
-                    "conditions": ["P2"]
+                    "conditions": [
+                        "P2"
+                    ]
                 },
                 {
                     "name": "roleManagementPolicyAssignmentsDirectoryRole",
@@ -1317,7 +1508,9 @@
                             "value": "?$filter=scopeId eq '/' and scopeType eq 'DirectoryRole'&$expand=policy($expand=rules)"
                         }
                     ],
-                    "conditions": ["P2"]
+                    "conditions": [
+                        "P2"
+                    ]
                 },
                 {
                     "name": "samlOrWsFedExternalDomainFederation",
@@ -1400,8 +1593,15 @@
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 504, "code": "UnknownError"}]
+                            "conditions": [
+                                "P2"
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 504,
+                                    "code": "UnknownError"
+                                }
+                            ]
                         }
                     ]
                 },
@@ -1430,14 +1630,18 @@
                         {
                             "name": "[PARAMS]",
                             "value": "?$select=accountEnabled,ageGroup,assignedLicenses,assignedPlans,businessPhones,city,companyName,consentProvidedForMinor,country,createdDateTime,creationType,customSecurityAttributes,deletedDateTime,department,displayName,employeeHireDate,employeeId,employeeLeaveDateTime,employeeOrgData,employeeType,externalUserState,externalUserStateChangeDateTime,faxNumber,givenName,id,identities,imAddresses,infoCatalogs,isResourceAccount,jobTitle,lastPasswordChangeDateTime,legalAgeGroupClassification,licenseAssignmentStates,mail,mailNickname,mobilePhone,officeLocation,onPremisesDistinguishedName,onPremisesDomainName,onPremisesExtensionAttributes,onPremisesImmutableId,onPremisesLastSyncDateTime,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,onPremisesUserPrincipalName,otherMails,passwordPolicies,passwordProfile,postalCode,preferredDataLocation,preferredLanguage,provisionedPlans,proxyAddresses,refreshTokensValidFromDateTime,securityIdentifier,serviceProvisioningErrors,showInAddressList,signInSessionsValidFromDateTime,state,streetAddress,surname,usageLocation,userPrincipalName,userType",
-                            "conditions": ["NotP1"]
+                            "conditions": [
+                                "NotP1"
+                            ]
                         },
                         {
                             "name": "[PARAMS]",
                             "value": "?$select=accountEnabled,ageGroup,assignedLicenses,assignedPlans,businessPhones,city,companyName,consentProvidedForMinor,country,createdDateTime,creationType,customSecurityAttributes,deletedDateTime,department,displayName,employeeHireDate,employeeId,employeeLeaveDateTime,employeeOrgData,employeeType,externalUserState,externalUserStateChangeDateTime,faxNumber,givenName,id,identities,imAddresses,infoCatalogs,isResourceAccount,jobTitle,lastPasswordChangeDateTime,legalAgeGroupClassification,licenseAssignmentStates,mail,mailNickname,mobilePhone,officeLocation,onPremisesDistinguishedName,onPremisesDomainName,onPremisesExtensionAttributes,onPremisesImmutableId,onPremisesLastSyncDateTime,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,onPremisesUserPrincipalName,otherMails,passwordPolicies,passwordProfile,postalCode,preferredDataLocation,preferredLanguage,provisionedPlans,proxyAddresses,refreshTokensValidFromDateTime,securityIdentifier,serviceProvisioningErrors,showInAddressList,signInActivity,signInSessionsValidFromDateTime,state,streetAddress,surname,usageLocation,userPrincipalName,userType",
-                            "conditions": ["P1"]
+                            "conditions": [
+                                "P1"
+                            ]
                         }
-                    ], 
+                    ],
                     "relationships": [
                         {
                             "name": "appRoleAssignments",
@@ -1458,7 +1662,12 @@
                                     "value": "id"
                                 }
                             ],
-                            "expected_error_codes": [{"status": 502, "code": "UnknownError"}]
+                            "expected_error_codes": [
+                                {
+                                    "status": 502,
+                                    "code": "UnknownError"
+                                }
+                            ]
                         },
                         {
                             "name": "createdObjects",
@@ -1500,9 +1709,18 @@
                                 }
                             ],
                             "expected_error_codes": [
-                                {"status": 403, "code": "Forbidden"}, 
-                                {"status": 404, "code": "NotFound"}, 
-                                {"status": 400, "code": "AuthenticationError"}
+                                {
+                                    "status": 403,
+                                    "code": "Forbidden"
+                                },
+                                {
+                                    "status": 404,
+                                    "code": "NotFound"
+                                },
+                                {
+                                    "status": 400,
+                                    "code": "AuthenticationError"
+                                }
                             ]
                         }
                     ]
@@ -1513,7 +1731,10 @@
             "name": "internal",
             "description": "Microsoft Graph Internal",
             "client_id": "1950a258-227b-4e31-a9cf-717495945fc2",
-            "scopes": ["offline_access", "https://graph.windows.net/.default"],
+            "scopes": [
+                "offline_access",
+                "https://graph.windows.net/.default"
+            ],
             "mandatory_auth": true,
             "url_scheme": "https://graph.windows.net/[TENANT]/[URI]?api-version=[API_VERSION][PARAMS]",
             "default_api_behavior": {
@@ -1543,7 +1764,10 @@
         {
             "name": "resources",
             "description": "Microsoft Azure Management",
-            "scopes": ["offline_access", "https://management.azure.com/.default"],
+            "scopes": [
+                "offline_access",
+                "https://management.azure.com/.default"
+            ],
             "mandatory_auth": false,
             "url_scheme": "https://management.azure.com/[URI]?api-version=[API_VERSION][PARAMS]",
             "default_api_behavior": {
@@ -1567,13 +1791,18 @@
                 {
                     "name": "managementGroups",
                     "uri": "providers/Microsoft.Management/managementGroups",
-                    "expected_error_codes": [{"status": 403, "code": "AuthorizationFailed"}],
+                    "expected_error_codes": [
+                        {
+                            "status": 403,
+                            "code": "AuthorizationFailed"
+                        }
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
                             "value": "2020-10-01"
                         }
-                    ], 
+                    ],
                     "relationships": [
                         {
                             "name": "descendants",
@@ -1583,7 +1812,7 @@
                                     "name": "[API_VERSION]",
                                     "value": "2021-04-01"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
@@ -1603,7 +1832,7 @@
                                     "name": "[PARAMS]",
                                     "value": "&$filter=atScope()"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
@@ -1619,7 +1848,7 @@
                                     "name": "[API_VERSION]",
                                     "value": "2023-04-01"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
@@ -1639,7 +1868,7 @@
                                     "name": "[PARAMS]",
                                     "value": "&$filter=atScope()"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
@@ -1655,7 +1884,7 @@
                                     "name": "[API_VERSION]",
                                     "value": "2022-04-01"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
@@ -1671,15 +1900,19 @@
                                     "name": "[API_VERSION]",
                                     "value": "2020-10-01"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
                         },
                         {
                             "name": "roleAssignmentSchedules",
@@ -1689,15 +1922,19 @@
                                     "name": "[API_VERSION]",
                                     "value": "2020-10-01"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
                         },
                         {
                             "name": "roleDefinitions",
@@ -1707,7 +1944,7 @@
                                     "name": "[API_VERSION]",
                                     "value": "2022-04-01"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
@@ -1723,15 +1960,19 @@
                                     "name": "[API_VERSION]",
                                     "value": "2020-10-01"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
                         },
                         {
                             "name": "roleEligibilitySchedules",
@@ -1741,15 +1982,19 @@
                                     "name": "[API_VERSION]",
                                     "value": "2020-10-01"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
                         },
                         {
                             "name": "roleManagementPolicies",
@@ -1759,15 +2004,19 @@
                                     "name": "[API_VERSION]",
                                     "value": "2020-10-01"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
                                     "value": "id"
                                 }
                             ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
                         }
                     ]
                 },
@@ -1779,7 +2028,7 @@
                             "name": "[API_VERSION]",
                             "value": "2014-01-01"
                         }
-                    ], 
+                    ],
                     "relationships": [
                         {
                             "name": "servicemembers",
@@ -1789,13 +2038,13 @@
                                     "name": "[API_VERSION]",
                                     "value": "2014-01-01"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
                                     "value": "serviceName"
                                 }
-                            ], 
+                            ],
                             "relationships": [
                                 {
                                     "name": "details",
@@ -1805,14 +2054,19 @@
                                             "name": "[API_VERSION]",
                                             "value": "2014-01-01"
                                         }
-                                    ], 
+                                    ],
                                     "keys": [
                                         {
                                             "name": "[1]",
                                             "value": "serviceMemberId"
                                         }
                                     ],
-                                    "expected_error_codes": [{"status": 404, "code": "MissingSubscription"}]
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 404,
+                                            "code": "MissingSubscription"
+                                        }
+                                    ]
                                 },
                                 {
                                     "name": "serviceconfiguration",
@@ -1822,14 +2076,19 @@
                                             "name": "[API_VERSION]",
                                             "value": "2014-01-01"
                                         }
-                                    ], 
+                                    ],
                                     "keys": [
                                         {
                                             "name": "[1]",
                                             "value": "serviceMemberId"
                                         }
                                     ],
-                                    "expected_error_codes": [{"status": 404, "code": "MissingSubscription"}]
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 404,
+                                            "code": "MissingSubscription"
+                                        }
+                                    ]
                                 },
                                 {
                                     "name": "alerts",
@@ -1839,14 +2098,19 @@
                                             "name": "[API_VERSION]",
                                             "value": "2014-01-01"
                                         }
-                                    ], 
+                                    ],
                                     "keys": [
                                         {
                                             "name": "[1]",
                                             "value": "serviceMemberId"
                                         }
                                     ],
-                                    "expected_error_codes": [{"status": 404, "code": "MissingSubscription"}]
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 404,
+                                            "code": "MissingSubscription"
+                                        }
+                                    ]
                                 }
                             ]
                         }
@@ -1864,7 +2128,7 @@
                             "name": "[PARAMS]",
                             "value": "&serviceType=AdDomainService"
                         }
-                    ], 
+                    ],
                     "relationships": [
                         {
                             "name": "servicemembers",
@@ -1874,24 +2138,29 @@
                                     "name": "[API_VERSION]",
                                     "value": "2014-01-01"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
                                     "value": "serviceName"
                                 }
-                            ], 
+                            ],
                             "relationships": [
                                 {
                                     "name": "details",
                                     "uri": "[KEEP_URL]/[1]",
-                                    "expected_error_codes": [{"status": 404, "code": "MissingSubscription"}],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 404,
+                                            "code": "MissingSubscription"
+                                        }
+                                    ],
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2014-01-01"
                                         }
-                                    ], 
+                                    ],
                                     "keys": [
                                         {
                                             "name": "[1]",
@@ -1902,13 +2171,18 @@
                                 {
                                     "name": "serviceconfiguration",
                                     "uri": "[KEEP_URL]/[1]/serviceconfiguration",
-                                    "expected_error_codes": [{"status": 404, "code": "MissingSubscription"}],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 404,
+                                            "code": "MissingSubscription"
+                                        }
+                                    ],
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2014-01-01"
                                         }
-                                    ], 
+                                    ],
                                     "keys": [
                                         {
                                             "name": "[1]",
@@ -1919,13 +2193,18 @@
                                 {
                                     "name": "alerts",
                                     "uri": "[KEEP_URL]/[1]/alerts",
-                                    "expected_error_codes": [{"status": 404, "code": "MissingSubscription"}],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 404,
+                                            "code": "MissingSubscription"
+                                        }
+                                    ],
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2014-01-01"
                                         }
-                                    ], 
+                                    ],
                                     "keys": [
                                         {
                                             "name": "[1]",
@@ -1949,7 +2228,7 @@
                             "name": "[PARAMS]",
                             "value": "&serviceType=AdFederationService"
                         }
-                    ], 
+                    ],
                     "relationships": [
                         {
                             "name": "servicemembers",
@@ -1959,13 +2238,13 @@
                                     "name": "[API_VERSION]",
                                     "value": "2014-01-01"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
                                     "value": "serviceName"
                                 }
-                            ], 
+                            ],
                             "relationships": [
                                 {
                                     "name": "details",
@@ -1975,7 +2254,7 @@
                                             "name": "[API_VERSION]",
                                             "value": "2014-01-01"
                                         }
-                                    ], 
+                                    ],
                                     "keys": [
                                         {
                                             "name": "[1]",
@@ -1991,7 +2270,7 @@
                                             "name": "[API_VERSION]",
                                             "value": "2014-01-01"
                                         }
-                                    ], 
+                                    ],
                                     "keys": [
                                         {
                                             "name": "[1]",
@@ -2007,13 +2286,1353 @@
                                             "name": "[API_VERSION]",
                                             "value": "2014-01-01"
                                         }
-                                    ], 
+                                    ],
                                     "keys": [
                                         {
                                             "name": "[1]",
                                             "value": "serviceMemberId"
                                         }
                                     ]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "subscriptions",
+                    "uri": "subscriptions",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "2020-08-01"
+                        },
+                        {
+                            "name": "[PARAMS]",
+                            "value": "&serviceType=AdFederationService"
+                        }
+                    ],
+                    "relationships": [
+                        {
+                            "name": "applications",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Solutions/applications",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2019-07-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "applicationSecurityGroups",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Network/applicationSecurityGroups",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-05-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "automationAccounts",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Automation/automationAccounts",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2023-11-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ],
+                            "relationships": [
+                                {
+                                    "name": "runbooks",
+                                    "uri": "[1]/runbooks",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2023-11-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "name": "availabilitySets",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Compute/availabilitySets",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-07-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "azureFirewalls",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Network/azureFirewalls",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-05-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "bastionHosts",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Network/bastionHosts",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-05-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "cdnProfiles",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Cdn/profiles",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-02-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ],
+                            "relationships": [
+                                {
+                                    "name": "endpoints",
+                                    "uri": "[1]/endpoints",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2024-02-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "name": "classicAdministrators",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/classicAdministrators",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2015-07-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 404,
+                                    "code": "ClassicAdministratorListFailed"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "deployments",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Resources/deployments",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2021-04-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "disks",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Compute/disks",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-03-02"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "eventHubNamespaces",
+                            "uri": "subscriptions/[1]/providers/Microsoft.EventHub/namespaces",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-01-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "features",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Features/features",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2021-07-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "images",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Compute/images",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-07-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "insightsComponents",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Insights/components",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2015-05-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "iotApps",
+                            "uri": "subscriptions/[1]/providers/Microsoft.IoTCentral/iotApps",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2021-06-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "iotHubs",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Devices/IotHubs",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2023-06-30"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "loadBalancers",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Network/loadBalancers",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-05-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "locks",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/locks",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-05-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "networkInterfaces",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Network/networkInterfaces",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-05-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "networkSecurityGroups",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Network/networkSecurityGroups",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-05-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "networkWatchers",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Network/networkWatchers",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-05-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "policyAssignments",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/policyAssignments",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2023-04-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "policyDefinitions",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/policyDefinitions",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2023-04-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "policyExemptions",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/policyExemptions",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2022-07-01-preview"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "providers",
+                            "uri": "subscriptions/[1]/providers",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-08-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "publicIPAddresses",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Network/publicIPAddresses",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-05-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "recoveryVaults",
+                            "uri": "subscriptions/[1]/providers/Microsoft.RecoveryServices/vaults",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-10-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "resourceGroups",
+                            "uri": "subscriptions/[1]/resourcegroups",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2021-04-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ],
+                            "relationships": [
+                                {
+                                    "name": "resources",
+                                    "uri": "[1]/resources",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2021-04-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleAssignments",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignments",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2022-04-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleAssignmentScheduleInstances",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentScheduleInstances",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 400,
+                                            "code": "AadPremiumLicenseRequired"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleAssignmentSchedules",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentSchedules",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 400,
+                                            "code": "AadPremiumLicenseRequired"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleDefinitions",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleDefinitions",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2022-04-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleEligibilityScheduleInstances",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleEligibilityScheduleInstances",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 400,
+                                            "code": "AadPremiumLicenseRequired"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleEligibilitySchedules",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleEligibilitySchedules",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 400,
+                                            "code": "AadPremiumLicenseRequired"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleManagementPolicies",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleManagementPolicies",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 400,
+                                            "code": "AadPremiumLicenseRequired"
+                                        },
+                                        {
+                                            "status": 400,
+                                            "code": "TenantNotOnboarded"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "virtualNetworkGateways",
+                                    "uri": "[1]/providers/Microsoft.Network/virtualNetworkGateways",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2024-05-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "name": "resources",
+                            "uri": "subscriptions/[1]/resources",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2021-04-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ],
+                            "relationships": [
+                                {
+                                    "name": "roleAssignments",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignments",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2022-04-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleAssignmentScheduleInstances",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentScheduleInstances",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 400,
+                                            "code": "AadPremiumLicenseRequired"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleAssignmentSchedules",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentSchedules",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 400,
+                                            "code": "AadPremiumLicenseRequired"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleDefinitions",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleDefinitions",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2022-04-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleEligibilityScheduleInstances",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleEligibilityScheduleInstances",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 400,
+                                            "code": "AadPremiumLicenseRequired"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleEligibilitySchedules",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleEligibilitySchedules",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 400,
+                                            "code": "AadPremiumLicenseRequired"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleManagementPolicies",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleManagementPolicies",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 400,
+                                            "code": "AadPremiumLicenseRequired"
+                                        },
+                                        {
+                                            "status": 400,
+                                            "code": "TenantNotOnboarded"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "name": "resourceLinks",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Resources/links",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-08-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "restorePointCollections",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Compute/restorePointCollections",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-07-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleAssignments",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/roleAssignments",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2022-04-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleAssignmentScheduleInstances",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentScheduleInstances",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleAssignmentSchedules",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentSchedules",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleDefinitions",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/roleDefinitions",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2022-04-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleEligibilityScheduleInstances",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleEligibilityScheduleInstances",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleEligibilitySchedules",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleEligibilitySchedules",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleManagementPolicies",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleManagementPolicies",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "securityContacts",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Security/securityContacts",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2023-12-01-preview"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "servers",
+                            "uri": "subscriptions/[1]/providers/Microsoft.AnalysisServices/servers",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2017-08-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "sqlServers",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Sql/servers",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2021-11-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ],
+                            "relationships": [
+                                {
+                                    "name": "databases",
+                                    "uri": "[1]/databases",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2021-11-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "name": "sqlVirtualMachines",
+                            "uri": "subscriptions/[1]/providers/Microsoft.SqlVirtualMachine/sqlVirtualMachines",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2023-10-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "snapshots",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Compute/snapshots",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-03-02"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "storageAccounts",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Storage/storageAccounts",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2023-05-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ],
+                            "relationships": [
+                                {
+                                    "name": "blobContainers",
+                                    "uri": "[1]/blobServices/default/containers",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2023-05-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "blobServices",
+                                    "uri": "[1]/blobServices",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2023-05-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "name": "systemTopics",
+                            "uri": "subscriptions/[1]/providers/Microsoft.EventGrid/systemTopics",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2022-06-15"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "trafficmanagerprofiles",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Network/trafficmanagerprofiles",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2022-04-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "userAssignedIdentities",
+                            "uri": "subscriptions/[1]/providers/Microsoft.ManagedIdentity/userAssignedIdentities",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2023-01-31"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "vaults",
+                            "uri": "subscriptions/[1]/providers/Microsoft.KeyVault/vaults",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2022-07-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "virtualMachines",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Compute/virtualMachines",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-07-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ],
+                            "relationships": [
+                                {
+                                    "name": "extensions",
+                                    "uri": "[1]/extensions",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2024-07-01"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "systemAssignedIdentities",
+                                    "uri": "[1]/providers/Microsoft.ManagedIdentity/identities/default",
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 404,
+                                            "code": "NotFound"
+                                        }
+                                    ],
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2023-01-31"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "name": "virtualNetworks",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Network/virtualNetworks",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2024-05-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "webapps",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Web/sites",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2021-02-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "workspaces",
+                            "uri": "subscriptions/[1]/providers/Microsoft.OperationalInsights/workspaces",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2023-09-01"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
                                 }
                             ]
                         }
@@ -2032,7 +3651,11 @@
                             "value": "&serviceType=AdDomainService"
                         }
                     ],
-                    "expected_error_codes": [{"status": 401}]
+                    "expected_error_codes": [
+                        {
+                            "status": 401
+                        }
+                    ]
                 },
                 {
                     "name": "sync_adfs",
@@ -2047,7 +3670,11 @@
                             "value": "&serviceType=AdFederationService"
                         }
                     ],
-                    "expected_error_codes": [{"status": 401}]
+                    "expected_error_codes": [
+                        {
+                            "status": 401
+                        }
+                    ]
                 },
                 {
                     "name": "sync_ad",
@@ -2062,7 +3689,11 @@
                             "value": "&serviceType=AadSyncService"
                         }
                     ],
-                    "expected_error_codes": [{"status": 401}]
+                    "expected_error_codes": [
+                        {
+                            "status": 401
+                        }
+                    ]
                 },
                 {
                     "name": "sync_config",
@@ -2071,1242 +3702,6 @@
                         {
                             "name": "[API_VERSION]",
                             "value": "2014-01-01"
-                        }
-                    ]
-                },
-                {
-                    "name": "subscriptions",
-                    "uri": "subscriptions",
-                    "parameters": [
-                        {
-                            "name": "[API_VERSION]",
-                            "value": "2020-08-01"
-                        },
-                        {
-                            "name": "[PARAMS]",
-                            "value": "&serviceType=AdFederationService"
-                        }
-                    ], 
-                    "relationships": [
-                        {
-                            "name": "applications",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Solutions/applications",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2019-07-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "applicationSecurityGroups",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Network/applicationSecurityGroups",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "automationAccounts",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Automation/automationAccounts",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2023-11-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ], 
-                            "relationships": [
-                                {
-                                    "name": "runbooks",
-                                    "uri": "[1]/runbooks",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2023-11-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ]
-                                }
-                            ]
-                        },
-                        {
-                            "name": "availabilitySets",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Compute/availabilitySets",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-07-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "azureFirewalls",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Network/azureFirewalls",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "bastionHosts",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Network/bastionHosts",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "cdnProfiles",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Cdn/profiles",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-02-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ], 
-                            "relationships": [
-                                {
-                                    "name": "endpoints",
-                                    "uri": "[1]/endpoints",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2024-02-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ]
-                                }
-                            ]
-                        },
-                        {
-                            "name": "classicAdministrators",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/classicAdministrators",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2015-07-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ],
-                            "expected_error_codes": [{"status": 404, "code": "ClassicAdministratorListFailed"}]
-                        },
-                        {
-                            "name": "deployments",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Resources/deployments",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2021-04-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "disks",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Compute/disks",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-03-02"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "eventHubNamespaces",
-                            "uri": "subscriptions/[1]/providers/Microsoft.EventHub/namespaces",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-01-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "features",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Features/features",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2021-07-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "images",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Compute/images",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-07-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "insightsComponents",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Insights/components",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2015-05-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "iotApps",
-                            "uri": "subscriptions/[1]/providers/Microsoft.IoTCentral/iotApps",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2021-06-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "iotHubs",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Devices/IotHubs",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2023-06-30"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "loadBalancers",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Network/loadBalancers",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "locks",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/locks",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2020-05-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "networkInterfaces",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Network/networkInterfaces",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "networkSecurityGroups",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Network/networkSecurityGroups",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "networkWatchers",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Network/networkWatchers",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "policyAssignments",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/policyAssignments",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2023-04-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "policyDefinitions",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/policyDefinitions",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2023-04-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "policyExemptions",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/policyExemptions",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2022-07-01-preview"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "providers",
-                            "uri": "subscriptions/[1]/providers",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-08-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "publicIPAddresses",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Network/publicIPAddresses",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "recoveryVaults",
-                            "uri": "subscriptions/[1]/providers/Microsoft.RecoveryServices/vaults",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-10-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "resourceGroups",
-                            "uri": "subscriptions/[1]/resourcegroups",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2021-04-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ], 
-                            "relationships": [
-                                {
-                                    "name": "resources",
-                                    "uri": "[1]/resources",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2021-04-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ]
-                                },
-                                {
-                                    "name": "roleAssignments",
-                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignments",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2022-04-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ]
-                                },
-                                {
-                                    "name": "roleAssignmentScheduleInstances",
-                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentScheduleInstances",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2020-10-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ],
-                                    "conditions": ["P2"],
-                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
-                                },
-                                {
-                                    "name": "roleAssignmentSchedules",
-                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentSchedules",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2020-10-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ],
-                                    "conditions": ["P2"],
-                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
-                                },
-                                {
-                                    "name": "roleEligibilityScheduleInstances",
-                                    "uri": "[1]/providers/Microsoft.Authorization/roleEligibilityScheduleInstances",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2020-10-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ],
-                                    "conditions": ["P2"],
-                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
-                                },
-                                {
-                                    "name": "roleEligibilitySchedules",
-                                    "uri": "[1]/providers/Microsoft.Authorization/roleEligibilitySchedules",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2020-10-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ],
-                                    "conditions": ["P2"],
-                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
-                                },
-                                {
-                                    "name": "roleManagementPolicies",
-                                    "uri": "[1]/providers/Microsoft.Authorization/roleManagementPolicies",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2020-10-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ],
-                                    "conditions": ["P2"],
-                                    "expected_error_codes": [
-                                        {"status": 400, "code": "AadPremiumLicenseRequired"}, 
-                                        {"status": 400, "code": "TenantNotOnboarded"}
-                                    ]
-                                },
-                                {
-                                    "name": "virtualNetworkGateways",
-                                    "uri": "[1]/providers/Microsoft.Network/virtualNetworkGateways",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2024-05-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ]
-                                }
-                            ]
-                        },
-                        {
-                            "name": "resources",
-                            "uri": "subscriptions/[1]/resources",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2021-04-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ], 
-                            "relationships": [
-                                {
-                                    "name": "roleAssignments",
-                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignments",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2022-04-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ]
-                                },
-                                {
-                                    "name": "roleAssignmentScheduleInstances",
-                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentScheduleInstances",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2020-10-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ],
-                                    "conditions": ["P2"],
-                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
-                                },
-                                {
-                                    "name": "roleAssignmentSchedules",
-                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentSchedules",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2020-10-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ],
-                                    "conditions": ["P2"],
-                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
-                                },
-                                {
-                                    "name": "roleEligibilityScheduleInstances",
-                                    "uri": "[1]/providers/Microsoft.Authorization/roleEligibilityScheduleInstances",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2020-10-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ],
-                                    "conditions": ["P2"],
-                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
-                                },
-                                {
-                                    "name": "roleEligibilitySchedules",
-                                    "uri": "[1]/providers/Microsoft.Authorization/roleEligibilitySchedules",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2020-10-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ],
-                                    "conditions": ["P2"],
-                                    "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
-                                },
-                                {
-                                    "name": "roleManagementPolicies",
-                                    "uri": "[1]/providers/Microsoft.Authorization/roleManagementPolicies",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2020-10-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ],
-                                    "conditions": ["P2"],
-                                    "expected_error_codes": [
-                                        {"status": 400, "code": "AadPremiumLicenseRequired"}, 
-                                        {"status": 400, "code": "TenantNotOnboarded"}
-                                    ]
-                                }
-                            ]
-                        },
-                        {
-                            "name": "resourceLinks",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Resources/links",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-08-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "restorePointCollections",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Compute/restorePointCollections",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-07-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "roleAssignments",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/roleAssignments",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2022-04-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "roleAssignmentScheduleInstances",
-                            "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentScheduleInstances",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2020-10-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
-                        },
-                        {
-                            "name": "roleAssignmentSchedules",
-                            "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentSchedules",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2020-10-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
-                        },
-                        {
-                            "name": "roleDefinitions",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/roleDefinitions",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2022-04-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "roleEligibilityScheduleInstances",
-                            "uri": "[1]/providers/Microsoft.Authorization/roleEligibilityScheduleInstances",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2020-10-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
-                        },
-                        {
-                            "name": "roleEligibilitySchedules",
-                            "uri": "[1]/providers/Microsoft.Authorization/roleEligibilitySchedules",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2020-10-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
-                        },
-                        {
-                            "name": "roleManagementPolicies",
-                            "uri": "[1]/providers/Microsoft.Authorization/roleManagementPolicies",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2020-10-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "conditions": ["P2"],
-                            "expected_error_codes": [{"status": 400, "code": "AadPremiumLicenseRequired"}]
-                        },
-                        {
-                            "name": "securityContacts",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Security/securityContacts",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2023-12-01-preview"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "servers",
-                            "uri": "subscriptions/[1]/providers/Microsoft.AnalysisServices/servers",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2017-08-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "sqlServers",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Sql/servers",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2021-11-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ], 
-                            "relationships": [
-                                {
-                                    "name": "databases",
-                                    "uri": "[1]/databases",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2021-11-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ]
-                                }
-                            ]
-                        },
-                        {
-                            "name": "sqlVirtualMachines",
-                            "uri": "subscriptions/[1]/providers/Microsoft.SqlVirtualMachine/sqlVirtualMachines",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2023-10-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "snapshots",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Compute/snapshots",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-03-02"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "storageAccounts",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Storage/storageAccounts",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2023-05-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ], 
-                            "relationships": [
-                                {
-                                    "name": "blobContainers",
-                                    "uri": "[1]/blobServices/default/containers",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2023-05-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ]
-                                },
-                                {
-                                    "name": "blobServices",
-                                    "uri": "[1]/blobServices",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2023-05-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ]
-                                }
-                            ]
-                        },
-                        {
-                            "name": "systemTopics",
-                            "uri": "subscriptions/[1]/providers/Microsoft.EventGrid/systemTopics",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2022-06-15"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "trafficmanagerprofiles",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Network/trafficmanagerprofiles",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2022-04-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "userAssignedIdentities",
-                            "uri": "subscriptions/[1]/providers/Microsoft.ManagedIdentity/userAssignedIdentities",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2023-01-31"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "vaults",
-                            "uri": "subscriptions/[1]/providers/Microsoft.KeyVault/vaults",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2022-07-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "virtualMachines",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Compute/virtualMachines",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-07-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ], 
-                            "relationships": [
-                                {
-                                    "name": "extensions",
-                                    "uri": "[1]/extensions",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2024-07-01"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ]
-                                },
-                                {
-                                    "name": "systemAssignedIdentities",
-                                    "uri": "[1]/providers/Microsoft.ManagedIdentity/identities/default",
-                                    "expected_error_codes": [{"status": 404, "code": "NotFound"}],
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2023-01-31"
-                                        }
-                                    ], 
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ]
-                                }
-                            ]
-                        },
-                        {
-                            "name": "virtualNetworks",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Network/virtualNetworks",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "webapps",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Web/sites",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2021-02-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "workspaces",
-                            "uri": "subscriptions/[1]/providers/Microsoft.OperationalInsights/workspaces",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2023-09-01"
-                                }
-                            ], 
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
                         }
                     ]
                 },
@@ -3325,7 +3720,10 @@
         {
             "name": "exchange",
             "description": "Microsoft Exchange Online",
-            "scopes": ["offline_access", "https://outlook.office365.com/.default"],
+            "scopes": [
+                "offline_access",
+                "https://outlook.office365.com/.default"
+            ],
             "client_id": "fb78d390-0c51-40cd-8e17-fdbfab77341b",
             "mandatory_auth": false,
             "url_scheme": "https://outlook.office365.com/[API_VERSION]/[TENANT]/[URI][PARAMS]",
@@ -3365,7 +3763,7 @@
                                     "name": "[PARAMS]",
                                     "value": "?isEncoded=true"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
@@ -3382,7 +3780,7 @@
                                     "name": "[PARAMS]",
                                     "value": "?$expand=RecipientPermission&isEncoded=true"
                                 }
-                            ], 
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
