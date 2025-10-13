@@ -25,6 +25,14 @@ lazy_static! {
             "f2ef992c-3afb-46b9-b7cf-a126ee74c451",
             "5d6b6bb7-de71-4623-b4af-96380a352509",
         ], // Global Reader & Security Reader
+        vec![
+            "f2ef992c-3afb-46b9-b7cf-a126ee74c451",
+            "5f2222b1-57c3-48ba-8ad5-d4759f1fde6f",
+        ], // Global Reader & Security Operator
+        vec![
+            "f2ef992c-3afb-46b9-b7cf-a126ee74c451",
+            "194ae4cb-b126-40b2-bd5b-6091b380977d",
+        ], // Global Reader & Security Administrator
     ];
 
     static ref GRAPH_API_PERMISSIONS: HashMap<&'static str, &'static str> = vec![
