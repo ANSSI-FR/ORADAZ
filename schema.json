@@ -1,6 +1,6 @@
 {
     "oradaz_version": "2.0.10.13",
-    "schema_version": "2.0.10.13",
+    "schema_version": "2.0.11.10",
     "services": [
         {
             "name": "graph",
@@ -102,31 +102,6 @@
                                 {
                                     "name": "[PARAMS]",
                                     "value": "?$select=id,displayName"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "pimRoleAssignments",
-                            "uri": "privilegedAccess/aadroles/resources/[1]/roleAssignments?$expand=roleDefinition($select=id,type,displayName,templateId)&$filter=resourceId eq '[1]'",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "beta"
-                                }
-                            ],
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "conditions": [
-                                "P2"
-                            ],
-                            "expected_error_codes": [
-                                {
-                                    "status": 504,
-                                    "code": "UnknownError"
                                 }
                             ]
                         }
@@ -1281,63 +1256,6 @@
                                     "value": "id"
                                 }
                             ]
-                        },
-                        {
-                            "name": "pimRoleAssignments",
-                            "uri": "privilegedAccess/aadroles/resources/[1]/roleAssignments?$expand=roleDefinition($select=id,type,displayName,templateId)&$filter=resourceId eq '[1]'",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "beta"
-                                }
-                            ],
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "conditions": [
-                                "P2"
-                            ]
-                        },
-                        {
-                            "name": "pimRoleDefinitions",
-                            "uri": "privilegedAccess/aadroles/resources/[1]/roleDefinitions",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "beta"
-                                }
-                            ],
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "conditions": [
-                                "P2"
-                            ]
-                        },
-                        {
-                            "name": "pimRoleSettings",
-                            "uri": "privilegedAccess/aadroles/resources/[1]/roleSettings",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "beta"
-                                }
-                            ],
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "conditions": [
-                                "P2"
-                            ]
                         }
                     ]
                 },
@@ -1575,31 +1493,6 @@
                                 {
                                     "name": "[PARAMS]",
                                     "value": "?$select=id,displayName"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "pimRoleAssignments",
-                            "uri": "privilegedAccess/aadroles/resources/[1]/roleAssignments?$expand=roleDefinition($select=id,type,displayName,templateId)&$filter=resourceId eq '[1]'",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "beta"
-                                }
-                            ],
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "conditions": [
-                                "P2"
-                            ],
-                            "expected_error_codes": [
-                                {
-                                    "status": 504,
-                                    "code": "UnknownError"
                                 }
                             ]
                         }
