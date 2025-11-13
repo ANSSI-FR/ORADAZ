@@ -29,7 +29,7 @@ use std::process;
 use std::sync::{Arc, Mutex};
 
 pub const FL: usize = 25;
-pub const VERSION: &str = "2.0.10.13";
+pub const VERSION: &str = "2.0.11.13";
 pub const SCHEMA_URL: &str = "https://raw.githubusercontent.com/ANSSI-FR/ORADAZ/master/schema.json";
 
 #[derive(Parser)]
@@ -142,7 +142,7 @@ fn main() {
         Some(t) => t.to_string(),
         None => {
             if !&config.tenant.is_empty() {
-                config.app_id.clone()
+                config.tenant.clone()
             } else {
                 let mut tid: String = String::new();
                 println!("Enter your tenant ID :");

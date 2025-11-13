@@ -1,6 +1,6 @@
 {
-    "oradaz_version": "2.0.10.13",
-    "schema_version": "2.0.11.10",
+    "oradaz_version": "2.0.11.13",
+    "schema_version": "2.0.11.13",
     "services": [
         {
             "name": "graph",
