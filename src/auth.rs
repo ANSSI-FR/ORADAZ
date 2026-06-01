@@ -60,7 +60,7 @@ impl Auth {
                 Ok(a) => a,
                 Err(err) => {
                     error!("{:FL$}Error starting device code flow", "Auth");
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::DeviceCodeFlowCreation);
                 }
             };
@@ -77,7 +77,7 @@ impl Auth {
                             "{:FL$}Error while logging: {}",
                             "Auth", error_rsp.error_description
                         );
-                        debug!("{}", error_rsp.error);
+                        debug!("{:?}", error_rsp.error);
                         return Err(Error::DeviceCodeFlowAuthentication);
                     }
                 }
@@ -130,7 +130,7 @@ impl Auth {
                             "{:FL$}Error while parsing new access token for service {:?}",
                             "Auth", service
                         );
-                        debug!("{}", err);
+                        debug!("{err:?}");
                         Err(Error::AccessTokenParsing)
                     }
                 }
@@ -140,7 +140,7 @@ impl Auth {
                     "{:FL$}Error while decoding new access token for service {:?}",
                     "Auth", service
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 Err(Error::AccessTokenParsing)
             }
         }
@@ -199,7 +199,7 @@ impl Token {
                     "{:FL$}Error while refreshing token for service {:?}",
                     "Token", token.service
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 // TODO: try to send real error depending on refresh error ?
                 return Err(Error::NewAuthRequired);
             }
@@ -288,7 +288,7 @@ impl Tokens {
                 match serde_json::to_string(&error) {
                     Err(err) => {
                         error!("{:FL$}Could not convert auth_errors to json", "Tokens");
-                        debug!("{}", err);
+                        debug!("{err:?}");
                         return Err(Error::AuthErrorsToJSON);
                     }
                     Ok(j) => multiline_string = format!("{}{}\n", multiline_string, j),
@@ -307,7 +307,7 @@ impl Tokens {
                         "{:FL$}Error while locking Writer to write auth errors",
                         "Tokens"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::WriterLock);
                 }
             }

@@ -46,7 +46,7 @@ impl Conditions {
                     "{:FL$}Cannot create url to retrieve current organization",
                     "Conditions"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return false;
             }
         };
@@ -63,7 +63,7 @@ impl Conditions {
                     "{:FL$}Cannot retrieve organization to check P1 licence",
                     "Conditions"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return false;
             }
             Ok(res) => res,
@@ -85,7 +85,7 @@ impl Conditions {
             }
             Err(err) => {
                 debug!("{:FL$}Error parsing organization", "Conditions");
-                debug!("{}", err);
+                debug!("{err:?}");
                 false
             }
         }
@@ -107,7 +107,7 @@ impl Conditions {
                     "{:FL$}Cannot create url to retrieve current organization",
                     "Conditions"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return false;
             }
         };
@@ -124,7 +124,7 @@ impl Conditions {
                     "{:FL$}Cannot retrieve organization to check P2 licence",
                     "Conditions"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return false;
             }
             Ok(res) => res,
@@ -146,7 +146,7 @@ impl Conditions {
             }
             Err(err) => {
                 debug!("{:FL$}Error parsing organization", "Conditions");
-                debug!("{}", err);
+                debug!("{err:?}");
                 false
             }
         }
@@ -168,7 +168,7 @@ impl Conditions {
                     "{:FL$}Cannot create url to retrieve current organization",
                     "Conditions"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return false;
             }
         };
@@ -185,7 +185,7 @@ impl Conditions {
                     "{:FL$}Cannot retrieve organization to check Intune licence",
                     "Conditions"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return false;
             }
             Ok(res) => res,
@@ -207,7 +207,7 @@ impl Conditions {
             }
             Err(err) => {
                 debug!("{:FL$}Error parsing organization", "Conditions");
-                debug!("{}", err);
+                debug!("{err:?}");
                 false
             }
         }
@@ -231,7 +231,7 @@ impl Conditions {
                         "{:FL$}Cannot create url to retrieve current user PIM role assignments",
                         "Conditions"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return false;
                 }
             };
@@ -248,7 +248,7 @@ impl Conditions {
                         "{:FL$}Cannot retrieve current user PIM role assignments",
                         "Conditions"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return false;
                 }
                 Ok(res) => res,
@@ -269,7 +269,7 @@ impl Conditions {
                                                 "{:FL$}Error parsing endDateTime value for PIM role assignments for current user",
                                                 "Conditions"
                                             );
-                                            debug!("{} - {}", end_date_time, err);
+                                            debug!("{} - {:?}", end_date_time, err);
                                             return false;
                                         }
                                         Ok(d) => {
@@ -289,7 +289,7 @@ impl Conditions {
                         "{:FL$}Error parsing current user PIM role assignments",
                         "Conditions"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     false
                 }
             }
@@ -305,7 +305,7 @@ impl Conditions {
                         "{:FL$}Cannot create url to retrieve current user role assignments",
                         "Conditions"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return false;
                 }
             };
@@ -322,7 +322,7 @@ impl Conditions {
                         "{:FL$}Cannot retrieve current user role assignments",
                         "Conditions"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return false;
                 }
                 Ok(res) => res,
@@ -343,7 +343,7 @@ impl Conditions {
                         "{:FL$}Error parsing current user role assignments",
                         "Conditions"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     false
                 }
             }

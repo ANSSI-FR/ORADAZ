@@ -613,7 +613,7 @@ impl Schema {
             match fs::read_to_string(&schema_file) {
                 Err(err) => {
                     error!("{:FL$}Cannot open schema file {}.", "Schema", &schema_file);
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::IOError(err));
                 }
                 Ok(res) => res,
@@ -625,7 +625,7 @@ impl Schema {
                         "{:FL$}Cannot retrieve schema file from {}",
                         "Schema", SCHEMA_URL
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::CannotDownloadSchemaFile);
                 }
                 Ok(res) => match res.text() {
@@ -635,7 +635,7 @@ impl Schema {
                             "{:FL$}Cannot parse read while retrieving schema file from {}",
                             "Schema", SCHEMA_URL
                         );
-                        debug!("{}", err);
+                        debug!("{err:?}");
                         return Err(Error::CannotDownloadSchemaFile);
                     }
                 },
@@ -654,7 +654,7 @@ impl Schema {
                     "{:FL$}Error while locking Writer to write schema",
                     "Schema"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::WriterLock);
             }
         }
@@ -681,7 +681,7 @@ impl Schema {
             }
             Err(err) => {
                 error!("{:FL$}Could not parse schema file", "Schema");
-                debug!("{}", err);
+                debug!("{err:?}");
                 Err(Error::SchemaFileParsing)
             }
         }

@@ -125,7 +125,7 @@ impl RequestsHandler {
                     "{:FL$}Cannot create multithread pool to perform the dump",
                     "RequestsHandler"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::ThreadPoolBuilderCreation);
             }
         };
@@ -186,7 +186,7 @@ impl RequestsHandler {
                     "{:FL$}Could not lock receiver while starting multithread pool loop to perform the dump",
                     "RequestsHandler"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::ReceiverLock);
             }
         }
@@ -248,7 +248,7 @@ impl RequestsThread {
                         "{:FL$}Error sending data to Dumper, exiting",
                         "RequestThread"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     exit();
                 };
             }
@@ -258,7 +258,7 @@ impl RequestsThread {
                     "RequestThread"
                 );
                 error!("{:FL$}{}", "RequestThread", Error::SenderLock);
-                debug!("{}", err);
+                debug!("{err:?}");
                 exit();
             }
         }
@@ -275,7 +275,7 @@ impl RequestsThread {
                         "{:FL$}Error sending data to RequestHandler",
                         "RequestThread"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     self.send_to_dumper(MainMsg::ThreadError(ThreadError::BlockingError(
                         Error::ChannelError,
                     )));
@@ -287,7 +287,7 @@ impl RequestsThread {
                     "RequestThread"
                 );
                 error!("{:FL$}{}", "RequestThread", Error::SenderLock);
-                debug!("{}", err);
+                debug!("{err:?}");
                 self.send_to_dumper(MainMsg::ThreadError(ThreadError::BlockingError(
                     Error::ChannelError,
                 )));
@@ -303,7 +303,7 @@ impl RequestsThread {
             Ok(sender) => {
                 if let Err(err) = sender.send(msg) {
                     error!("{:FL$}Error sending data to WriterHandler", "RequestThread");
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     self.send_to_dumper(MainMsg::ThreadError(ThreadError::BlockingError(
                         Error::ChannelError,
                     )));
@@ -315,7 +315,7 @@ impl RequestsThread {
                     "RequestThread"
                 );
                 error!("{:FL$}{}", "RequestThread", Error::SenderLock);
-                debug!("{}", err);
+                debug!("{err:?}");
                 self.send_to_dumper(MainMsg::ThreadError(ThreadError::BlockingError(
                     Error::ChannelError,
                 )));
@@ -356,7 +356,7 @@ impl RequestsThread {
                                     "{:FL$}Could not lock tokens to update while processing api request {:?} for service {:?}, retrying later",
                                     "RequestThread", self.url.api, self.url.service_name
                                 );
-                                debug!("{}", err);
+                                debug!("{err:?}");
                                 // Send the URL to be processed again
                                 self.send_to_request(RequestMsg::Url(self.url.clone()));
                                 return;
@@ -383,7 +383,7 @@ impl RequestsThread {
                     "{:FL$}Could not lock tokens while processing api request {:?} for service {:?}, retrying later",
                     "RequestThread", self.url.api, self.url.service_name
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 // Send the URL to be processed again
                 self.send_to_request(RequestMsg::Url(self.url.clone()));
                 return;
@@ -434,7 +434,7 @@ impl RequestsThread {
                         "{:FL$}Could not increase request counts due to lock failure. Displayed requests count will not be accurate.", 
                         "RequestThread"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                 }
             }
             match self
@@ -462,7 +462,7 @@ impl RequestsThread {
                             "{:FL$}Error performing request to url {:?}, retrying.",
                             "RequestThread", &self.url.url
                         );
-                        debug!("{}", err);
+                        debug!("{err:?}");
                     }
                     // Send the URL to be processed again
                     self.send_to_request(RequestMsg::Url(self.url.clone()));
@@ -660,7 +660,7 @@ impl RequestsThread {
                         "{:FL$}Error converting success_http_code value {:?} to int, using 200",
                         "RequestThread", field
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     200
                 }
             },
@@ -689,7 +689,7 @@ impl RequestsThread {
                             "{:FL$}Error parsing response for request to url {:?}, trying again",
                             "RequestThread", &self.url.url
                         );
-                        debug!("{}", err);
+                        debug!("{err:?}");
                         // Indicate to RequestHandler to do the Url again and stop here
                         self.send_to_request(RequestMsg::Url(self.url.clone()));
                         return Ok(());
@@ -837,7 +837,7 @@ impl RequestsThread {
                             self.url.api.clone(),
                             self.url.service_name.clone()
                         );
-                        debug!("{}", err);
+                        debug!("{err:?}");
                     }
                 };
 
@@ -983,7 +983,7 @@ impl WriterHandler {
                     "{:FL$}Cannot create multithread pool to perform the dump",
                     "WriterHandler"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::ThreadPoolBuilderCreation);
             }
         };
@@ -1035,7 +1035,7 @@ impl WriterHandler {
                     "{:FL$}Could not lock receiver while starting multithread pool loop to perform the dump",
                     "WriterHandler"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::ReceiverLock);
             }
         }
@@ -1094,7 +1094,7 @@ impl WriterThread {
                         "{:FL$}Error sending data to Dumper, exiting",
                         "WriterThread"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     exit();
                 };
             }
@@ -1104,7 +1104,7 @@ impl WriterThread {
                     "WriterThread"
                 );
                 error!("{:FL$}{}", "WriterThread", Error::SenderLock);
-                debug!("{}", err);
+                debug!("{err:?}");
                 exit();
             }
         }
@@ -1118,7 +1118,7 @@ impl WriterThread {
             Ok(sender) => {
                 if let Err(err) = sender.send(msg) {
                     error!("{:FL$}Error sending data to RequestHandler", "WriterThread");
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     self.send_to_dumper(MainMsg::ThreadError(ThreadError::BlockingError(
                         Error::ChannelError,
                     )));
@@ -1130,7 +1130,7 @@ impl WriterThread {
                     "WriterThread"
                 );
                 error!("{:FL$}{}", "WriterThread", Error::SenderLock);
-                debug!("{}", err);
+                debug!("{err:?}");
                 self.send_to_dumper(MainMsg::ThreadError(ThreadError::BlockingError(
                     Error::ChannelError,
                 )));
@@ -1171,7 +1171,7 @@ impl WriterThread {
                             "{:FL$}Error writing response to file {:?} in folder {:?}, trying to process the URL again",
                             "WriterThread", self.resp.file, self.resp.folder
                         );
-                        debug!("{}", err);
+                        debug!("{err:?}");
                         // Indicate to RequestHandler to do the Url again
                         return self.send_to_request(RequestMsg::Url(self.resp.url.clone()));
                     };
@@ -1181,7 +1181,7 @@ impl WriterThread {
                         "{:FL$}Error while locking Writer to write response to file {:?} in folder {:?}, trying to process the URL again",
                         "WriterThread", self.resp.file, self.resp.folder
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     // Indicate to RequestHandler to do the Url again
                     return self.send_to_request(RequestMsg::Url(self.resp.url.clone()));
                 }
@@ -1213,7 +1213,7 @@ impl WriterThread {
                         "WriterThread"
                     );
                     error!("{:FL$}{}", "WriterThread", Error::MetadataLock);
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     exit();
                 }
             }
@@ -1231,7 +1231,7 @@ impl WriterThread {
                         "{:FL$}Error locking tokens to get relationships URLs",
                         "WriterThread"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     None
                 }
             };

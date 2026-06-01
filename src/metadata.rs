@@ -83,7 +83,7 @@ impl Metadata {
         let metadata_str = match serde_json::to_string(&self) {
             Err(err) => {
                 error!("{:FL$}Could not convert metadata to json", "Metadata");
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::MetadataToJSON);
             }
             Ok(j) => j,
@@ -97,7 +97,7 @@ impl Metadata {
                     "{:FL$}Error while locking Writer to write metadata",
                     "Metadata"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::WriterLock);
             }
         }

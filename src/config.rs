@@ -100,7 +100,7 @@ impl Config {
         let config_str = match serde_json::to_string(&config) {
             Err(err) => {
                 error!("{:FL$}Could not convert config to json", "Config");
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::ConfigToJSON);
             }
             Ok(j) => j,
@@ -111,7 +111,7 @@ impl Config {
             }
             Err(err) => {
                 error!("{:FL$}Error while locking Writer to write config", "Config");
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::WriterLock);
             }
         }
@@ -148,7 +148,7 @@ impl ConfigParser {
                     "{:FL$}Cannot open config file {}.",
                     "ConfigParser", &self.config_file
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::IOError(err));
             }
             Ok(res) => res,
@@ -157,7 +157,7 @@ impl ConfigParser {
             Ok(config) => Ok(config),
             Err(err) => {
                 error!("{:FL$}Could not parse config file", "ConfigParser");
-                debug!("{}", err);
+                debug!("{err:?}");
                 Err(Error::InvalidConfigXMLStructure)
             }
         }

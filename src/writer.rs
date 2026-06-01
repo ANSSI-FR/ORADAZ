@@ -74,7 +74,7 @@ impl OradazWriter {
                         "{:FL$}Could not compute regex to validate archive name.",
                         "OradazWriter"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::RegexError);
                 }
             };
@@ -86,7 +86,7 @@ impl OradazWriter {
                         "{:FL$}Could not remove '.tmp' extension to MLA file. Please remove it yourself before submitting the file.",
                         "OradazWriter"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::ArchiveRenaming);
                 }
             } else {
@@ -116,7 +116,7 @@ impl OradazWriter {
                         "{:FL$}Could not compute regex to validate archive name.",
                         "OradazWriter"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::RegexError);
                 }
             };
@@ -128,7 +128,7 @@ impl OradazWriter {
                         "{:FL$}Could not replace '.tmp' extension with '.broken' one in MLA file.",
                         "OradazWriter"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::ArchiveRenaming);
                 }
             } else {
@@ -197,7 +197,7 @@ impl MlaWriter {
         let mla_file: File = match File::create(&mla_path) {
             Err(err) => {
                 error!("{:FL$}Could not create output archive", "MlaWriter");
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::MLACreateFile);
             }
             Ok(f) => f,
@@ -205,7 +205,7 @@ impl MlaWriter {
         let public_key: curve25519_parser::PublicKey = match parse_openssl_25519_pubkey(PUB_KEY) {
             Err(err) => {
                 error!("{:FL$}Invalid public key", "MlaWriter");
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::MLAInvalidPubKey);
             }
             Ok(p) => p,
@@ -220,7 +220,7 @@ impl MlaWriter {
                         "{:FL$}Could not create output archive from config",
                         "MlaWriter"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::MLACreateArchive);
                 }
             };
@@ -230,7 +230,7 @@ impl MlaWriter {
                     "{:FL$}Could not create log file in MLA archive",
                     "MlaWriter"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::MLACreateLogFile);
             }
             Ok(f) => f,
@@ -250,7 +250,7 @@ impl MlaWriter {
         */
         if let Err(err) = self.mla_archive.end_file(self.log_file_id) {
             error!("{:FL$}Could finalize log file in mla archive", "MlaWriter");
-            debug!("{}", err);
+            debug!("{err:?}");
             return Err(Error::MLAEndLogFile);
         };
         for (filename, file_id) in self.file_ids.clone() {
@@ -259,13 +259,13 @@ impl MlaWriter {
                     "{:FL$}Could finalize file {:?} in mla archive",
                     "MlaWriter", filename
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::MLAEndFile);
             };
         }
         if let Err(err) = self.mla_archive.finalize() {
             error!("{:FL$}Could not finalize mla archive", "MlaWriter");
-            debug!("{}", err);
+            debug!("{err:?}");
             return Err(Error::MLAFinalizeArchive);
         };
         logger::remove_writer();
@@ -281,7 +281,7 @@ impl MlaWriter {
             record.len() as u64,
             record.as_bytes(),
         ) {
-            debug!("{}", err);
+            debug!("{err:?}");
             return Err(Error::MLAWriteLog);
         };
         Ok(())
@@ -298,7 +298,7 @@ impl MlaWriter {
                         "{:FL$}Could not create file '{}' to archive",
                         "MlaWriter", filepath
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::MLAError(err));
                 }
                 Ok(file_id) => {
@@ -325,7 +325,7 @@ impl MlaWriter {
                         "{:FL$}Could not add data to file '{}' in archive",
                         "MlaWriter", filepath
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::MLAError(err));
                 };
             }
@@ -349,7 +349,7 @@ impl FileWriter {
         let path = format!("{}", output.join(name).display());
         if let Err(err) = fs::create_dir(&path) {
             error!("{:FL$}Cannot create directory {}", "FileWriter", path);
-            debug!("{}", err);
+            debug!("{err:?}");
             return Err(Error::FolderCreation);
         };
         let log_file = match File::create(format!("{}/oradaz.log", path)) {
@@ -358,7 +358,7 @@ impl FileWriter {
                     "{:FL$}Could not create log file in unencrypted folder",
                     "FileWriter"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::FolderCreateLogFile);
             }
             Ok(f) => f,
@@ -371,7 +371,7 @@ impl FileWriter {
         Add a log entry in the "oradaz.log" file
         */
         if let Err(err) = self.log_file.write_all(record.as_bytes()) {
-            debug!("{}", err);
+            debug!("{err:?}");
             return Err(Error::FolderWriteLog);
         };
         Ok(())
@@ -389,7 +389,7 @@ impl FileWriter {
                             "{:FL$}Could not create folder '{}' to unencrypted folder",
                             "FileWriter", folder
                         );
-                        debug!("{}", err);
+                        debug!("{err:?}");
                         return Err(Error::IOError(err));
                     }
                 }
@@ -408,7 +408,7 @@ impl FileWriter {
                                 "{:FL$}Could not write to file {:?} in folder {:?} to unencrypted folder",
                                 "FileWriter", filepath, folder
                             );
-                        debug!("{}", err);
+                        debug!("{err:?}");
                         return Err(Error::IOError(err));
                     };
                 }
@@ -417,7 +417,7 @@ impl FileWriter {
                         "{:FL$}Could not open file {:?} in folder {:?} to unencrypted folder",
                         "FileWriter", filepath, folder
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::IOError(err));
                 }
             },

@@ -29,7 +29,7 @@ use std::process;
 use std::sync::{Arc, Mutex};
 
 pub const FL: usize = 25;
-pub const VERSION: &str = "2.0.11.13";
+pub const VERSION: &str = "2.1.06.01";
 pub const SCHEMA_URL: &str = "https://raw.githubusercontent.com/ANSSI-FR/ORADAZ/master/schema.json";
 
 #[derive(Parser)]
@@ -167,7 +167,7 @@ fn main() {
                     "main"
                 );
                 error!("{:FL$}{}", "main", Error::RegexError);
-                debug!("{}", err);
+                debug!("{err:?}");
                 return exit();
             }
         };
@@ -311,7 +311,7 @@ fn main() {
                         "main"
                     );
                     error!("{:FL$}{}", "main", Error::WriterLock);
-                    debug!("{}", err);
+                    debug!("{err:?}");
                 }
             }
             return exit();
@@ -348,7 +348,7 @@ fn main() {
                         "main"
                     );
                     error!("{:FL$}{}", "main", Error::WriterLock);
-                    debug!("{}", err);
+                    debug!("{err:?}");
                 }
             }
             return exit();
@@ -396,7 +396,7 @@ fn main() {
                         "main"
                     );
                     error!("{:FL$}{}", "main", Error::WriterLock);
-                    debug!("{}", err);
+                    debug!("{err:?}");
                 }
             }
             return exit();
@@ -418,7 +418,7 @@ fn main() {
                 "main"
             );
             error!("{:FL$}{}", "main", Error::WriterLock);
-            debug!("{}", err);
+            debug!("{err:?}");
             exit();
         }
     }

@@ -124,7 +124,7 @@ impl Dumper {
         let string_error: String = match serde_json::to_string(&dump_error) {
             Err(err) => {
                 error!("{:FL$}Could not convert dump_error to json", "Dumper");
-                debug!("{}", err);
+                debug!("{err:?}");
                 match self.writer.lock() {
                     Ok(mut w) => {
                         if let Err(error) = w.set_broken() {
@@ -137,7 +137,7 @@ impl Dumper {
                             "Dumper"
                         );
                         error!("{:FL$}{}", "Dumper", Error::WriterLock);
-                        debug!("{}", err);
+                        debug!("{err:?}");
                     }
                 }
                 exit();
@@ -157,7 +157,7 @@ impl Dumper {
             Err(err) => {
                 error!("{:FL$}Error while locking Writer to write errors", "Dumper");
                 error!("{:FL$}{}", "Dumper", Error::WriterLock);
-                debug!("{}", err);
+                debug!("{err:?}");
                 exit()
             }
         }
@@ -269,7 +269,7 @@ impl Dumper {
                             "Skipping data for service {:?}: {:?} - {:?}",
                             url.service_name, url.api, url.url
                         );
-                        debug!("{}", err);
+                        debug!("{err:?}");
                         self.write_dump_error(err.to_string(), url);
                         counter -= 1;
                     };
@@ -280,7 +280,7 @@ impl Dumper {
                         "Dumper"
                     );
                     error!("{:FL$}{}", "Dumper", Error::SenderLock);
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     exit()
                 }
             }
@@ -307,7 +307,7 @@ impl Dumper {
                                         "Skipping data for service {:?}: {:?} - {:?}",
                                         url.service_name, url.api, url.url
                                     );
-                                    debug!("{}", err);
+                                    debug!("{err:?}");
                                     self.write_dump_error(err.to_string(), url);
                                     counter -= 1;
                                 };
@@ -318,7 +318,7 @@ impl Dumper {
                                     "Dumper"
                                 );
                                 error!("{:FL$}{}", "Dumper", Error::SenderLock);
-                                debug!("{}", err);
+                                debug!("{err:?}");
                                 exit()
                             }
                         }
@@ -330,7 +330,7 @@ impl Dumper {
                             let string_error: String = match serde_json::to_string(&auth_error) {
                                 Err(err) => {
                                     error!("{:FL$}Could not convert auth_error to json", "Dumper");
-                                    debug!("{}", err);
+                                    debug!("{err:?}");
                                     match self.writer.lock() {
                                         Ok(mut w) => {
                                             if let Err(error) = w.set_broken() {
@@ -340,7 +340,7 @@ impl Dumper {
                                         Err(err) => {
                                             error!("{:FL$}Error while locking Writer, could not treat archive as broken", "Dumper");
                                             error!("{:FL$}{}", "Dumper", Error::WriterLock);
-                                            debug!("{}", err);
+                                            debug!("{err:?}");
                                         }
                                     }
                                     exit();
@@ -365,7 +365,7 @@ impl Dumper {
                                         "Dumper"
                                     );
                                     error!("{:FL$}{}", "Dumper", Error::WriterLock);
-                                    debug!("{}", err);
+                                    debug!("{err:?}");
                                     exit()
                                 }
                             }
@@ -376,7 +376,7 @@ impl Dumper {
                             let string_error: String = match serde_json::to_string(&dump_error) {
                                 Err(err) => {
                                     error!("{:FL$}Could not convert dump_error to json", "Dumper");
-                                    debug!("{}", err);
+                                    debug!("{err:?}");
                                     match self.writer.lock() {
                                         Ok(mut w) => {
                                             if let Err(error) = w.set_broken() {
@@ -386,7 +386,7 @@ impl Dumper {
                                         Err(err) => {
                                             error!("{:FL$}Error while locking Writer, could not treat archive as broken", "Dumper");
                                             error!("{:FL$}{}", "Dumper", Error::WriterLock);
-                                            debug!("{}", err);
+                                            debug!("{err:?}");
                                         }
                                     }
                                     exit();
@@ -411,7 +411,7 @@ impl Dumper {
                                         "Dumper"
                                     );
                                     error!("{:FL$}{}", "Dumper", Error::WriterLock);
-                                    debug!("{}", err);
+                                    debug!("{err:?}");
                                     exit()
                                 }
                             }
@@ -426,7 +426,7 @@ impl Dumper {
                                         "{:FL$}Could not convert condition_error to json",
                                         "Dumper"
                                     );
-                                    debug!("{}", err);
+                                    debug!("{err:?}");
                                     match self.writer.lock() {
                                         Ok(mut w) => {
                                             if let Err(error) = w.set_broken() {
@@ -436,7 +436,7 @@ impl Dumper {
                                         Err(err) => {
                                             error!("{:FL$}Error while locking Writer, could not treat archive as broken", "Dumper");
                                             error!("{:FL$}{}", "Dumper", Error::WriterLock);
-                                            debug!("{}", err);
+                                            debug!("{err:?}");
                                         }
                                     }
                                     exit();
@@ -461,7 +461,7 @@ impl Dumper {
                                         "Dumper"
                                     );
                                     error!("{:FL$}{}", "Dumper", Error::WriterLock);
-                                    debug!("{}", err);
+                                    debug!("{err:?}");
                                     exit()
                                 }
                             }
@@ -478,7 +478,7 @@ impl Dumper {
                                 Err(err) => {
                                     error!("{:FL$}Error while locking Writer, could not treat archive as broken", "Dumper");
                                     error!("{:FL$}{}", "Dumper", Error::WriterLock);
-                                    debug!("{}", err);
+                                    debug!("{err:?}");
                                 }
                             }
                             exit()
@@ -490,7 +490,7 @@ impl Dumper {
                         "{:FL$}Timeout while waiting data from WriterThread",
                         "Dumper"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     debug!("Counter is still {}", counter);
                     match self.writer.lock() {
                         Ok(mut w) => {
@@ -501,7 +501,7 @@ impl Dumper {
                         Err(err) => {
                             error!("{:FL$}Error while locking Writer, could not treat archive as broken", "Dumper");
                             error!("{:FL$}{}", "Dumper", Error::WriterLock);
-                            debug!("{}", err);
+                            debug!("{err:?}");
                         }
                     }
                     exit()
@@ -519,7 +519,7 @@ impl Dumper {
                             "{:FL$}Error sending finish request to RequestThread",
                             "Dumper"
                         );
-                        debug!("{}", err);
+                        debug!("{err:?}");
                     };
                 }
                 Err(err) => {
@@ -528,7 +528,7 @@ impl Dumper {
                         "Dumper"
                     );
                     error!("{:FL$}{}", "Dumper", Error::SenderLock);
-                    debug!("{}", err);
+                    debug!("{err:?}");
                 }
             }
         }
@@ -541,7 +541,7 @@ impl Dumper {
                             "{:FL$}Error sending finish request to WriterThread",
                             "Dumper"
                         );
-                        debug!("{}", err);
+                        debug!("{err:?}");
                     };
                 }
                 Err(err) => {
@@ -550,7 +550,7 @@ impl Dumper {
                         "Dumper"
                     );
                     error!("{:FL$}{}", "Dumper", Error::SenderLock);
-                    debug!("{}", err);
+                    debug!("{err:?}");
                 }
             }
         }
@@ -577,7 +577,7 @@ impl Dumper {
                     "{:FL$}Could not lock tables for later write, exiting",
                     "Dumper"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 exit();
             }
         }
@@ -589,7 +589,7 @@ impl Dumper {
                     "{:FL$}Could not return requests counts, returning 0 instead",
                     "Dumper"
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 Ok(0)
             }
         }

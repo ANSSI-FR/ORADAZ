@@ -356,7 +356,7 @@ impl Prerequisites {
                     "Prerequisites"
                 ),
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::UrlCreation);
             }
         };
@@ -376,7 +376,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::CannotRetrieveApp);
             }
             Ok(res) => res,
@@ -389,7 +389,7 @@ impl Prerequisites {
                     "{:FL$}Error getting text response from request retrieve custom application to check permissions",
                     "Prerequisites"
                 ));
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::CannotRetrieveApp);
             }
         };
@@ -449,7 +449,10 @@ impl Prerequisites {
                                                         let perm_id: String = perm.id.to_string();
                                                         debug!("{:FL$}\t{}", "Prerequisites", perm_id);
                                                         if GRAPH_API_PERMISSIONS
-                                                            .contains_key(perm_id.as_str())
+                                                            .contains_key(perm_id.as_str()) 
+                                                            && !acc3.contains(&perm_id)
+                                                            && !acc2.contains(&perm_id)
+                                                            && !acc.contains(&perm_id)
                                                         {
                                                             acc3.push(perm_id)
                                                         }
@@ -493,7 +496,7 @@ impl Prerequisites {
                             ),
                         );
                         debug!("{} - {}", status, response);
-                        debug!("{}", err);
+                        debug!("{err:?}");
                         return Err(Error::CannotRetrieveApp);
                     }
                 }
@@ -531,7 +534,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::UrlCreation);
             }
         };
@@ -548,7 +551,7 @@ impl Prerequisites {
                     "{:FL$}Error performing request to retrieve PIM active assignments for current user",
                     "Prerequisites"
                 ));
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::CannotRetrieveCurrentUserPIMEntraRoles);
             }
             Ok(res) => res,
@@ -561,7 +564,7 @@ impl Prerequisites {
                     "{:FL$}Error getting text response from request to retrieve PIM active assignments for current user",
                     "Prerequisites"
                 ));
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::CannotRetrieveCurrentUserPIMEntraRoles);
             }
         };
@@ -594,7 +597,7 @@ impl Prerequisites {
                                                             "{:FL$}Error parsing endDateTime value for PIM role assignments for current user",
                                                             "Prerequisites"
                                                         ));
-                                                        debug!("{} - {}", end_date_time, err);
+                                                        debug!("{} - {:?}", end_date_time, err);
                                                         return false
                                                     }
                                                     Ok(d) => {
@@ -643,7 +646,7 @@ impl Prerequisites {
                             ),
                         );
                         debug!("{} - {}", status, response);
-                        debug!("{}", err);
+                        debug!("{err:?}");
                         return Err(Error::CannotRetrieveCurrentUserPIMEntraRoles);
                     }
                 }
@@ -691,7 +694,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::UrlCreation);
             }
         };
@@ -711,7 +714,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::CannotRetrieveCurrentUserEntraRoles);
             }
             Ok(res) => res,
@@ -724,7 +727,7 @@ impl Prerequisites {
                     "{:FL$}Error getting text response from request to retrieve Entra role assignments for current user",
                     "Prerequisites"
                 ));
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::CannotRetrieveCurrentUserEntraRoles);
             }
         };
@@ -764,7 +767,7 @@ impl Prerequisites {
                             ),
                         );
                         debug!("{} - {}", status, response);
-                        debug!("{}", err);
+                        debug!("{err:?}");
                         return Err(Error::CannotRetrieveCurrentUserEntraRoles);
                     }
                 }
@@ -797,7 +800,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::UrlCreation);
             }
         };
@@ -817,7 +820,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::CannotRetrieveOrganization);
             }
             Ok(res) => res,
@@ -830,7 +833,7 @@ impl Prerequisites {
                     "{:FL$}Error getting text response from request to retrieve organization to check PIM status",
                     "Prerequisites"
                 ));
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::CannotRetrieveOrganization);
             }
         };
@@ -868,7 +871,7 @@ impl Prerequisites {
                             format!("{:FL$}Error parsing organization", "Prerequisites"),
                         );
                         debug!("{} - {}", status, response);
-                        debug!("{}", err);
+                        debug!("{err:?}");
                         Err(Error::CannotRetrieveOrganization)
                     }
                 }
@@ -903,7 +906,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::UrlCreation);
             }
         };
@@ -923,7 +926,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::CannotRetrieveCurrentUserEntraRoles);
             }
             Ok(res) => res,
@@ -936,7 +939,7 @@ impl Prerequisites {
                     "{:FL$}Error getting text response from request to retrieve Entra role assignments for current user",
                     "Prerequisites"
                 ));
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::CannotRetrieveCurrentUserEntraRoles);
             }
         };
@@ -984,7 +987,7 @@ impl Prerequisites {
                             ),
                         );
                         debug!("{} - {}", status, response);
-                        debug!("{}", err);
+                        debug!("{err:?}");
                         return Err(Error::CannotRetrieveCurrentUserEntraRoles);
                     }
                 }
@@ -1021,7 +1024,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::UrlCreation);
             }
         };
@@ -1041,7 +1044,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::CannotRetrieveSubscriptions);
             }
             Ok(res) => res,
@@ -1054,7 +1057,7 @@ impl Prerequisites {
                     "{:FL$}Error getting text response from request to retrieve available subscriptions",
                     "Prerequisites"
                 ));
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::CannotRetrieveSubscriptions);
             }
         };
@@ -1108,7 +1111,7 @@ impl Prerequisites {
                         ),
                     );
                     debug!("{} - {}", status, response);
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::CannotRetrieveSubscriptions);
                 }
             },
@@ -1139,7 +1142,7 @@ impl Prerequisites {
                     "{:FL$}Cannot create url to retrieve Exchange Online mailbox to check permissions",
                     "Prerequisites"
                 ));
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::UrlCreation);
             }
         };
@@ -1159,7 +1162,7 @@ impl Prerequisites {
                         "Prerequisites"
                     ),
                 );
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::CannotRetrieveMailboxes);
             }
             Ok(res) => res,
@@ -1172,7 +1175,7 @@ impl Prerequisites {
                     "{:FL$}Error getting text response from request to retrieve available subscriptions",
                     "Prerequisites"
                 ));
-                debug!("{}", err);
+                debug!("{err:?}");
                 return Err(Error::CannotRetrieveMailboxes);
             }
         };
@@ -1212,7 +1215,7 @@ impl Prerequisites {
                                                 "{:FL$}Cannot create url to retrieve Exchange Online mailbox recipients to check permissions",
                                                 "Prerequisites"
                                             ));
-                                    debug!("{}", err);
+                                    debug!("{err:?}");
                                     return Err(Error::UrlCreation);
                                 }
                             };
@@ -1232,7 +1235,7 @@ impl Prerequisites {
                                                 "Prerequisites"
                                             ),
                                         );
-                                    debug!("{}", err);
+                                    debug!("{err:?}");
                                     return Err(Error::CannotRetrieveMailboxesRecipients);
                                 }
                                 Ok(res) => res,
@@ -1245,7 +1248,7 @@ impl Prerequisites {
                                             "{:FL$}Error getting text response from request to retrieve available subscriptions",
                                             "Prerequisites"
                                         ));
-                                    debug!("{}", err);
+                                    debug!("{err:?}");
                                     return Err(Error::CannotRetrieveMailboxesRecipients);
                                 }
                             };
@@ -1291,7 +1294,7 @@ impl Prerequisites {
                                                 ),
                                             );
                                             debug!("{} - {}", status2, response2);
-                                            debug!("{}", err);
+                                            debug!("{err:?}");
                                             return Err(Error::CannotRetrieveMailboxesRecipients);
                                         }
                                     }
@@ -1306,7 +1309,7 @@ impl Prerequisites {
                         format!("{:FL$}Error parsing mailboxes", "Prerequisites"),
                     );
                     debug!("{} - {}", status, response);
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::CannotRetrieveMailboxes);
                 }
             },
@@ -1489,7 +1492,7 @@ impl Prerequisites {
                         "{:FL$}Could not convert prerequisites_errors to json",
                         "Prerequisites"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::PrerequisitesErrorsToJSON);
                 }
                 Ok(j) => j,
@@ -1507,7 +1510,7 @@ impl Prerequisites {
                         "{:FL$}Error while locking Writer to write prerequisites errors",
                         "Prerequisites"
                     );
-                    debug!("{}", err);
+                    debug!("{err:?}");
                     return Err(Error::WriterLock);
                 }
             }
