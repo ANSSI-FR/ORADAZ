@@ -1,6 +1,6 @@
 {
-    "oradaz_version": "2.1.06.01",
-    "schema_version": "2.1.06.01",
+    "oradaz_version": "3.0.06.07",
+    "schema_version": "3.0.06.07",
     "services": [
         {
             "name": "graph",
@@ -31,11 +31,23 @@
             "apis": [
                 {
                     "name": "activityBasedTimeoutPolicies",
-                    "uri": "policies/activityBasedTimeoutPolicies"
+                    "uri": "policies/activityBasedTimeoutPolicies",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
+                    ]
                 },
                 {
                     "name": "administrativeUnits",
                     "uri": "directory/administrativeUnits",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$count=true"
+                        }
+                    ],
                     "relationships": [
                         {
                             "name": "members",
@@ -49,7 +61,7 @@
                             "parameters": [
                                 {
                                     "name": "[PARAMS]",
-                                    "value": "?$select=id,displayName"
+                                    "value": "?$top=999&$select=id,displayName"
                                 }
                             ]
                         },
@@ -61,13 +73,39 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "?$top=999"
+                                }
                             ]
+                        }
+                    ]
+                },
+                {
+                    "name": "adminConsentRequestPolicy",
+                    "uri": "policies/adminConsentRequestPolicy"
+                },
+                {
+                    "name": "appConsentRequests",
+                    "uri": "identityGovernance/appConsent/appConsentRequests",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=100"
                         }
                     ]
                 },
                 {
                     "name": "applications",
                     "uri": "applications",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$count=true"
+                        }
+                    ],
                     "relationships": [
                         {
                             "name": "appManagementPolicies",
@@ -76,6 +114,12 @@
                                 {
                                     "name": "[1]",
                                     "value": "id"
+                                }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "?$top=999"
                                 }
                             ]
                         },
@@ -86,6 +130,12 @@
                                 {
                                     "name": "[1]",
                                     "value": "id"
+                                }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "?$top=999"
                                 }
                             ]
                         },
@@ -101,7 +151,7 @@
                             "parameters": [
                                 {
                                     "name": "[PARAMS]",
-                                    "value": "?$select=id,displayName"
+                                    "value": "?$top=999&$select=id,displayName"
                                 }
                             ]
                         }
@@ -109,11 +159,21 @@
                 },
                 {
                     "name": "appManagementPolicies",
-                    "uri": "policies/appManagementPolicies"
+                    "uri": "policies/appManagementPolicies",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$select=id,displayName"
+                        }
+                    ]
                 },
                 {
                     "name": "authenticationFlowsPolicy",
                     "uri": "policies/authenticationFlowsPolicy"
+                },
+                {
+                    "name": "authenticationMethodsPolicy",
+                    "uri": "policies/authenticationMethodsPolicy"
                 },
                 {
                     "name": "authenticationStrengthPolicies",
@@ -136,6 +196,9 @@
                             "value": "beta"
                         }
                     ],
+                    "conditions": [
+                        "IsB2C"
+                    ],
                     "expected_error_codes": [
                         {
                             "status": 403,
@@ -150,6 +213,10 @@
                         {
                             "name": "[API_VERSION]",
                             "value": "beta"
+                        },
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
                         }
                     ],
                     "relationships": [
@@ -172,8 +239,24 @@
                     ]
                 },
                 {
+                    "name": "claimsMappingPolicies",
+                    "uri": "policies/claimsMappingPolicies",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
+                    ]
+                },
+                {
                     "name": "conditionalAccessPolicies",
-                    "uri": "identity/conditionalAccess/policies"
+                    "uri": "identity/conditionalAccess/policies",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
+                    ]
                 },
                 {
                     "name": "conditionalAccessPoliciesBeta",
@@ -182,6 +265,10 @@
                         {
                             "name": "[API_VERSION]",
                             "value": "beta"
+                        },
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$count=true"
                         }
                     ]
                 },
@@ -192,6 +279,12 @@
                 {
                     "name": "contacts",
                     "uri": "contacts",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$count=true"
+                        }
+                    ],
                     "relationships": [
                         {
                             "name": "memberOf",
@@ -247,23 +340,53 @@
                 },
                 {
                     "name": "deleteditemsAdministrativeUnits",
-                    "uri": "directory/deleteditems/microsoft.graph.administrativeUnit"
+                    "uri": "directory/deleteditems/microsoft.graph.administrativeUnit",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$count=true&$top=999"
+                        }
+                    ]
                 },
                 {
                     "name": "deleteditemsApplications",
-                    "uri": "directory/deleteditems/microsoft.graph.application"
+                    "uri": "directory/deleteditems/microsoft.graph.application",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$count=true&$top=999"
+                        }
+                    ]
                 },
                 {
                     "name": "deleteditemsDevices",
-                    "uri": "directory/deleteditems/microsoft.graph.device"
+                    "uri": "directory/deleteditems/microsoft.graph.device",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$count=true&$select=accountEnabled,alternativeNames,alternativeSecurityIds,approximateLastSignInDateTime,complianceExpirationDateTime,createdDateTime,deletedDateTime,deviceCategory,deviceId,deviceMetadata,deviceOwnership,deviceVersion,displayName,domainName,enrollmentProfileName,enrollmentType,extensionAttributes,externalSourceName,hostnames,id,isCompliant,isManaged,isManagementRestricted,isRooted,kind,managementType,manufacturer,mdmAppId,model,name,onPremisesLastSyncDateTime,onPremisesSecurityIdentifier,onPremisesSyncEnabled,operatingSystem,operatingSystemVersion,physicalIds,platform,profileType,registrationDateTime,sourceType,status,systemLabels,trustType"
+                        }
+                    ]
                 },
                 {
                     "name": "deleteditemsDirectoryRoles",
-                    "uri": "directory/deleteditems/microsoft.graph.directoryRole"
+                    "uri": "directory/deleteditems/microsoft.graph.directoryRole",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$count=true"
+                        }
+                    ]
                 },
                 {
                     "name": "deleteditemsDirectoryRoleTemplates",
-                    "uri": "directory/deleteditems/microsoft.graph.directoryRoleTemplate"
+                    "uri": "directory/deleteditems/microsoft.graph.directoryRoleTemplate",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$count=true"
+                        }
+                    ]
                 },
                 {
                     "name": "deleteditemsGroups",
@@ -271,13 +394,19 @@
                     "parameters": [
                         {
                             "name": "[PARAMS]",
-                            "value": "?$select=assignedLabels,assignedLicenses,classification,createdByAppId,createdDateTime,deletedDateTime,description,displayName,expirationDateTime,groupTypes,id,infoCatalogs,isAssignableToRole,licenseProcessingState,mail,mailEnabled,mailNickname,membershipRule,membershipRuleProcessingState,membershipRuleProcessingStatus,onPremisesDomainName,onPremisesLastSyncDateTime,onPremisesNetBiosName,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,preferredDataLocation,preferredLanguage,proxyAddresses,renewedDateTime,resourceBehaviorOptions,resourceProvisioningOptions,securityEnabled,securityIdentifier,theme,uniqueName,unseenConversationsCount,unseenMessagesCount,visibility"
+                            "value": "?$top=999&$count=true&$select=assignedLabels,assignedLicenses,classification,createdByAppId,createdDateTime,deletedDateTime,description,displayName,expirationDateTime,groupTypes,id,infoCatalogs,isAssignableToRole,licenseProcessingState,mail,mailEnabled,mailNickname,membershipRule,membershipRuleProcessingState,membershipRuleProcessingStatus,onPremisesDomainName,onPremisesLastSyncDateTime,onPremisesNetBiosName,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,preferredDataLocation,preferredLanguage,proxyAddresses,renewedDateTime,resourceBehaviorOptions,resourceProvisioningOptions,securityEnabled,securityIdentifier,theme,uniqueName,unseenConversationsCount,unseenMessagesCount,visibility"
                         }
                     ]
                 },
                 {
                     "name": "deleteditemsServicePrincipals",
-                    "uri": "directory/deleteditems/microsoft.graph.servicePrincipal"
+                    "uri": "directory/deleteditems/microsoft.graph.servicePrincipal",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$count=true"
+                        }
+                    ]
                 },
                 {
                     "name": "deleteditemsUsers",
@@ -285,14 +414,14 @@
                     "parameters": [
                         {
                             "name": "[PARAMS]",
-                            "value": "?$select=accountEnabled,ageGroup,assignedLicenses,assignedPlans,businessPhones,city,companyName,consentProvidedForMinor,country,createdDateTime,creationType,customSecurityAttributes,deletedDateTime,department,displayName,employeeHireDate,employeeId,employeeLeaveDateTime,employeeOrgData,employeeType,externalUserState,externalUserStateChangeDateTime,faxNumber,givenName,id,identities,imAddresses,infoCatalogs,isResourceAccount,jobTitle,lastPasswordChangeDateTime,legalAgeGroupClassification,licenseAssignmentStates,mail,mailNickname,mobilePhone,officeLocation,onPremisesDistinguishedName,onPremisesDomainName,onPremisesExtensionAttributes,onPremisesImmutableId,onPremisesLastSyncDateTime,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,onPremisesUserPrincipalName,otherMails,passwordPolicies,passwordProfile,postalCode,preferredDataLocation,preferredLanguage,provisionedPlans,proxyAddresses,refreshTokensValidFromDateTime,securityIdentifier,serviceProvisioningErrors,showInAddressList,signInSessionsValidFromDateTime,state,streetAddress,surname,usageLocation,userPrincipalName,userType",
+                            "value": "?$top=999&$count=true&$select=accountEnabled,ageGroup,assignedLicenses,assignedPlans,businessPhones,city,companyName,consentProvidedForMinor,country,createdDateTime,creationType,customSecurityAttributes,deletedDateTime,department,displayName,employeeHireDate,employeeId,employeeLeaveDateTime,employeeOrgData,employeeType,externalUserState,externalUserStateChangeDateTime,faxNumber,givenName,id,identities,imAddresses,infoCatalogs,isResourceAccount,jobTitle,lastPasswordChangeDateTime,legalAgeGroupClassification,licenseAssignmentStates,mail,mailNickname,mobilePhone,officeLocation,onPremisesDistinguishedName,onPremisesDomainName,onPremisesExtensionAttributes,onPremisesImmutableId,onPremisesLastSyncDateTime,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,onPremisesUserPrincipalName,otherMails,passwordPolicies,passwordProfile,postalCode,preferredDataLocation,preferredLanguage,provisionedPlans,proxyAddresses,refreshTokensValidFromDateTime,securityIdentifier,serviceProvisioningErrors,showInAddressList,signInSessionsValidFromDateTime,state,streetAddress,surname,usageLocation,userPrincipalName,userType",
                             "conditions": [
                                 "NotP1"
                             ]
                         },
                         {
                             "name": "[PARAMS]",
-                            "value": "?$select=accountEnabled,ageGroup,assignedLicenses,assignedPlans,businessPhones,city,companyName,consentProvidedForMinor,country,createdDateTime,creationType,customSecurityAttributes,deletedDateTime,department,displayName,employeeHireDate,employeeId,employeeLeaveDateTime,employeeOrgData,employeeType,externalUserState,externalUserStateChangeDateTime,faxNumber,givenName,id,identities,imAddresses,infoCatalogs,isResourceAccount,jobTitle,lastPasswordChangeDateTime,legalAgeGroupClassification,licenseAssignmentStates,mail,mailNickname,mobilePhone,officeLocation,onPremisesDistinguishedName,onPremisesDomainName,onPremisesExtensionAttributes,onPremisesImmutableId,onPremisesLastSyncDateTime,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,onPremisesUserPrincipalName,otherMails,passwordPolicies,passwordProfile,postalCode,preferredDataLocation,preferredLanguage,provisionedPlans,proxyAddresses,refreshTokensValidFromDateTime,securityIdentifier,serviceProvisioningErrors,showInAddressList,signInActivity,signInSessionsValidFromDateTime,state,streetAddress,surname,usageLocation,userPrincipalName,userType",
+                            "value": "?$top=999&$count=true&$select=accountEnabled,ageGroup,assignedLicenses,assignedPlans,businessPhones,city,companyName,consentProvidedForMinor,country,createdDateTime,creationType,customSecurityAttributes,deletedDateTime,department,displayName,employeeHireDate,employeeId,employeeLeaveDateTime,employeeOrgData,employeeType,externalUserState,externalUserStateChangeDateTime,faxNumber,givenName,id,identities,imAddresses,infoCatalogs,isResourceAccount,jobTitle,lastPasswordChangeDateTime,legalAgeGroupClassification,licenseAssignmentStates,mail,mailNickname,mobilePhone,officeLocation,onPremisesDistinguishedName,onPremisesDomainName,onPremisesExtensionAttributes,onPremisesImmutableId,onPremisesLastSyncDateTime,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,onPremisesUserPrincipalName,otherMails,passwordPolicies,passwordProfile,postalCode,preferredDataLocation,preferredLanguage,provisionedPlans,proxyAddresses,refreshTokensValidFromDateTime,securityIdentifier,serviceProvisioningErrors,showInAddressList,signInActivity,signInSessionsValidFromDateTime,state,streetAddress,surname,usageLocation,userPrincipalName,userType",
                             "conditions": [
                                 "P1"
                             ]
@@ -301,13 +430,7 @@
                 },
                 {
                     "name": "deviceRegistrationPolicy",
-                    "uri": "policies/deviceRegistrationPolicy",
-                    "parameters": [
-                        {
-                            "name": "[API_VERSION]",
-                            "value": "beta"
-                        }
-                    ]
+                    "uri": "policies/deviceRegistrationPolicy"
                 },
                 {
                     "name": "devices",
@@ -315,7 +438,7 @@
                     "parameters": [
                         {
                             "name": "[PARAMS]",
-                            "value": "?$select=accountEnabled,alternativeNames,alternativeSecurityIds,approximateLastSignInDateTime,complianceExpirationDateTime,createdDateTime,deletedDateTime,deviceCategory,deviceId,deviceMetadata,deviceOwnership,deviceVersion,displayName,domainName,enrollmentProfileName,enrollmentType,extensionAttributes,externalSourceName,hostnames,id,isCompliant,isManaged,isManagementRestricted,isRooted,kind,managementType,manufacturer,mdmAppId,model,name,onPremisesLastSyncDateTime,onPremisesSecurityIdentifier,onPremisesSyncEnabled,operatingSystem,operatingSystemVersion,physicalIds,platform,profileType,registrationDateTime,sourceType,status,systemLabels,trustType"
+                            "value": "?$top=999&$count=true&$select=accountEnabled,alternativeNames,alternativeSecurityIds,approximateLastSignInDateTime,complianceExpirationDateTime,createdDateTime,deletedDateTime,deviceCategory,deviceId,deviceMetadata,deviceOwnership,deviceVersion,displayName,domainName,enrollmentProfileName,enrollmentType,extensionAttributes,externalSourceName,hostnames,id,isCompliant,isManaged,isManagementRestricted,isRooted,kind,managementType,manufacturer,mdmAppId,model,name,onPremisesLastSyncDateTime,onPremisesSecurityIdentifier,onPremisesSyncEnabled,operatingSystem,operatingSystemVersion,physicalIds,platform,profileType,registrationDateTime,sourceType,status,systemLabels,trustType"
                         }
                     ],
                     "relationships": [
@@ -331,7 +454,7 @@
                             "parameters": [
                                 {
                                     "name": "[PARAMS]",
-                                    "value": "?$select=id,displayName"
+                                    "value": "?$top=999&$select=id,displayName"
                                 }
                             ]
                         },
@@ -347,15 +470,37 @@
                             "parameters": [
                                 {
                                     "name": "[PARAMS]",
-                                    "value": "?$select=id,displayName"
+                                    "value": "?$top=999&$select=id,displayName"
                                 }
                             ]
                         }
                     ]
                 },
                 {
+                    "name": "directoryAudits",
+                    "uri": "auditLogs/directoryAudits",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999[LOGS_DAYS_FILTER]"
+                        }
+                    ],
+                    "expected_error_codes": [
+                        {
+                            "status": 403,
+                            "code": "Authorization_RequestDenied"
+                        }
+                    ]
+                },
+                {
                     "name": "directoryRoles",
                     "uri": "directoryRoles",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$count=true"
+                        }
+                    ],
                     "relationships": [
                         {
                             "name": "members",
@@ -387,31 +532,49 @@
                 },
                 {
                     "name": "directoryRoleTemplates",
-                    "uri": "directoryRoleTemplates"
+                    "uri": "directoryRoleTemplates",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$count=true"
+                        }
+                    ]
                 },
                 {
                     "name": "domains",
                     "uri": "domains",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$count=true"
+                        }
+                    ],
                     "relationships": [
                         {
                             "name": "domainNameReferences",
                             "uri": "/domains/[1]/domainNameReferences",
-                            "expected_error_codes": [
-                                {
-                                    "status": 400,
-                                    "code": "Request_UnsupportedQuery"
-                                }
-                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
                                     "value": "id"
+                                }
+                            ],
+                            "conditions": [
+                                "IsManaged"
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "Request_UnsupportedQuery"
                                 }
                             ]
                         },
                         {
                             "name": "federationConfiguration",
                             "uri": "/domains/[1]/federationConfiguration",
+                            "conditions": [
+                                "IsFederated"
+                            ],
                             "expected_error_codes": [
                                 {
                                     "status": 404,
@@ -449,27 +612,17 @@
                 },
                 {
                     "name": "entitlementManagementRoleDefinitions",
-                    "uri": "roleManagement/entitlementManagement/roleDefinitions"
+                    "uri": "roleManagement/entitlementManagement/roleDefinitions",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=50"
+                        }
+                    ]
                 },
                 {
                     "name": "entitlementManagementRoleAssignments",
                     "uri": "roleManagement/entitlementManagement/roleAssignments"
-                },
-                {
-                    "name": "externalAuthorizationSystems",
-                    "uri": "external/authorizationSystems",
-                    "parameters": [
-                        {
-                            "name": "[API_VERSION]",
-                            "value": "beta"
-                        }
-                    ],
-                    "expected_error_codes": [
-                        {
-                            "status": 403,
-                            "code": "INVALID_TENANT_ROUTING"
-                        }
-                    ]
                 },
                 {
                     "name": "externalIdentitiesPolicy",
@@ -488,12 +641,22 @@
                         {
                             "name": "[API_VERSION]",
                             "value": "beta"
+                        },
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
                         }
                     ]
                 },
                 {
                     "name": "globalAdmins",
                     "uri": "directoryRoles/roleTemplateId=62e90394-69f5-4237-9190-012177145e10/members",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$count=true"
+                        }
+                    ],
                     "relationships": [
                         {
                             "name": "signIns",
@@ -513,7 +676,7 @@
                     "parameters": [
                         {
                             "name": "[PARAMS]",
-                            "value": "?$select=assignedLabels,assignedLicenses,classification,createdByAppId,createdDateTime,deletedDateTime,description,displayName,expirationDateTime,groupTypes,id,infoCatalogs,isAssignableToRole,licenseProcessingState,mail,mailEnabled,mailNickname,membershipRule,membershipRuleProcessingState,membershipRuleProcessingStatus,onPremisesDomainName,onPremisesLastSyncDateTime,onPremisesNetBiosName,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,preferredDataLocation,preferredLanguage,proxyAddresses,renewedDateTime,resourceBehaviorOptions,resourceProvisioningOptions,securityEnabled,securityIdentifier,theme,uniqueName,unseenConversationsCount,unseenMessagesCount,visibility"
+                            "value": "?$top=999&$count=true&$select=assignedLabels,assignedLicenses,classification,createdByAppId,createdDateTime,deletedDateTime,description,displayName,expirationDateTime,groupTypes,id,infoCatalogs,isAssignableToRole,licenseProcessingState,mail,mailEnabled,mailNickname,membershipRule,membershipRuleProcessingState,membershipRuleProcessingStatus,onPremisesDomainName,onPremisesLastSyncDateTime,onPremisesNetBiosName,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,preferredDataLocation,preferredLanguage,proxyAddresses,renewedDateTime,resourceBehaviorOptions,resourceProvisioningOptions,securityEnabled,securityIdentifier,theme,uniqueName,unseenConversationsCount,unseenMessagesCount,visibility"
                         }
                     ],
                     "relationships": [
@@ -525,6 +688,12 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "?$top=999"
+                                }
                             ]
                         },
                         {
@@ -533,7 +702,10 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "id"
+                                    "value": "id",
+                                    "conditions": [
+                                        "IsAssignableToRole"
+                                    ]
                                 }
                             ],
                             "conditions": [
@@ -552,7 +724,10 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "id"
+                                    "value": "id",
+                                    "conditions": [
+                                        "IsAssignableToRole"
+                                    ]
                                 }
                             ],
                             "conditions": [
@@ -571,7 +746,10 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "id"
+                                    "value": "id",
+                                    "conditions": [
+                                        "IsAssignableToRole"
+                                    ]
                                 }
                             ],
                             "conditions": [
@@ -590,7 +768,10 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "id"
+                                    "value": "id",
+                                    "conditions": [
+                                        "IsAssignableToRole"
+                                    ]
                                 }
                             ],
                             "conditions": [
@@ -615,7 +796,7 @@
                             "parameters": [
                                 {
                                     "name": "[PARAMS]",
-                                    "value": "?$select=id,displayName"
+                                    "value": "?$top=999&$select=id,displayName"
                                 }
                             ]
                         },
@@ -631,7 +812,7 @@
                             "parameters": [
                                 {
                                     "name": "[PARAMS]",
-                                    "value": "?$select=id,displayName"
+                                    "value": "?$top=999&$select=id,displayName"
                                 }
                             ]
                         },
@@ -647,7 +828,7 @@
                             "parameters": [
                                 {
                                     "name": "[PARAMS]",
-                                    "value": "?$select=id,displayName"
+                                    "value": "?$top=999&$select=id,displayName"
                                 }
                             ]
                         },
@@ -670,7 +851,10 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "id"
+                                    "value": "id",
+                                    "conditions": [
+                                        "IsAssignableToRole"
+                                    ]
                                 }
                             ],
                             "conditions": [
@@ -689,7 +873,10 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "id"
+                                    "value": "id",
+                                    "conditions": [
+                                        "IsAssignableToRole"
+                                    ]
                                 }
                             ],
                             "conditions": [
@@ -724,7 +911,7 @@
                             "parameters": [
                                 {
                                     "name": "[PARAMS]",
-                                    "value": "?$select=id,displayName"
+                                    "value": "?$top=999&$select=id,displayName"
                                 }
                             ]
                         }
@@ -759,16 +946,6 @@
                     "uri": "identity/identityProviders"
                 },
                 {
-                    "name": "identityProvidersBeta",
-                    "uri": "identity/identityProviders",
-                    "parameters": [
-                        {
-                            "name": "[API_VERSION]",
-                            "value": "beta"
-                        }
-                    ]
-                },
-                {
                     "name": "identitySecurityDefaultsEnforcementPolicy",
                     "uri": "policies/identitySecurityDefaultsEnforcementPolicy"
                 },
@@ -777,6 +954,12 @@
                     "uri": "deviceManagement/detectedApps",
                     "conditions": [
                         "Intune"
+                    ],
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
                     ]
                 },
                 {
@@ -791,6 +974,12 @@
                     "uri": "deviceManagement/managedDevices",
                     "conditions": [
                         "Intune"
+                    ],
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
                     ]
                 },
                 {
@@ -800,6 +989,10 @@
                         {
                             "name": "[API_VERSION]",
                             "value": "beta"
+                        },
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
                         }
                     ],
                     "conditions": [
@@ -819,6 +1012,10 @@
                         {
                             "name": "[API_VERSION]",
                             "value": "beta"
+                        },
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
                         }
                     ],
                     "conditions": [
@@ -830,6 +1027,12 @@
                     "uri": "deviceManagement/resourceOperations",
                     "conditions": [
                         "Intune"
+                    ],
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
                     ]
                 },
                 {
@@ -837,11 +1040,23 @@
                     "uri": "deviceManagement/roleAssignments",
                     "conditions": [
                         "Intune"
+                    ],
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
                     ]
                 },
                 {
                     "name": "intuneRoleDefinitions",
                     "uri": "deviceManagement/roleDefinitions",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
+                    ],
                     "relationships": [
                         {
                             "name": "roleAssignments",
@@ -850,6 +1065,12 @@
                                 {
                                     "name": "[1]",
                                     "value": "id"
+                                }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "?$top=999"
                                 }
                             ]
                         }
@@ -865,6 +1086,10 @@
                         {
                             "name": "[API_VERSION]",
                             "value": "beta"
+                        },
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
                         }
                     ],
                     "conditions": [
@@ -876,6 +1101,12 @@
                     "uri": "deviceManagement/windowsMalwareInformation",
                     "conditions": [
                         "Intune"
+                    ],
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
                     ]
                 },
                 {
@@ -892,15 +1123,30 @@
                 },
                 {
                     "name": "namedLocations",
-                    "uri": "identity/conditionalAccess/namedLocations"
+                    "uri": "identity/conditionalAccess/namedLocations",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
+                    ]
                 },
                 {
                     "name": "oauth2PermissionGrants",
-                    "uri": "oauth2PermissionGrants"
+                    "uri": "oauth2PermissionGrants",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
+                    ]
                 },
                 {
                     "name": "onPremisesPublishingProfiles_adAdministration",
                     "uri": "onPremisesPublishingProfiles/adAdministration",
+                    "conditions": [
+                        "HasADAdministration"
+                    ],
                     "expected_error_codes": [
                         {
                             "status": 500,
@@ -917,6 +1163,9 @@
                 {
                     "name": "onPremisesPublishingProfiles_adAdministration_agentGroups",
                     "uri": "onPremisesPublishingProfiles/adAdministration/agentGroups",
+                    "conditions": [
+                        "HasADAdministration"
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -927,6 +1176,9 @@
                 {
                     "name": "onPremisesPublishingProfiles_adAdministration_agents",
                     "uri": "onPremisesPublishingProfiles/adAdministration/agents",
+                    "conditions": [
+                        "HasADAdministration"
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -937,6 +1189,9 @@
                 {
                     "name": "onPremisesPublishingProfiles_adAdministration_publishedResources",
                     "uri": "onPremisesPublishingProfiles/adAdministration/publishedResources",
+                    "conditions": [
+                        "HasADAdministration"
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -947,6 +1202,9 @@
                 {
                     "name": "onPremisesPublishingProfiles_applicationProxy",
                     "uri": "onPremisesPublishingProfiles/applicationProxy",
+                    "conditions": [
+                        "HasApplicationProxy"
+                    ],
                     "expected_error_codes": [
                         {
                             "status": 404
@@ -962,6 +1220,9 @@
                 {
                     "name": "onPremisesPublishingProfiles_applicationProxy_agentGroups",
                     "uri": "onPremisesPublishingProfiles/applicationProxy/agentGroups",
+                    "conditions": [
+                        "HasApplicationProxy"
+                    ],
                     "expected_error_codes": [
                         {
                             "status": 404
@@ -977,6 +1238,9 @@
                 {
                     "name": "onPremisesPublishingProfiles_applicationProxy_agents",
                     "uri": "onPremisesPublishingProfiles/applicationProxy/agents",
+                    "conditions": [
+                        "HasApplicationProxy"
+                    ],
                     "expected_error_codes": [
                         {
                             "status": 404
@@ -992,6 +1256,9 @@
                 {
                     "name": "onPremisesPublishingProfiles_applicationProxy_publishedResources",
                     "uri": "onPremisesPublishingProfiles/applicationProxy/publishedResources",
+                    "conditions": [
+                        "HasApplicationProxy"
+                    ],
                     "expected_error_codes": [
                         {
                             "status": 404
@@ -1007,6 +1274,9 @@
                 {
                     "name": "onPremisesPublishingProfiles_applicationProxy_connectors",
                     "uri": "onPremisesPublishingProfiles/applicationProxy/connectors",
+                    "conditions": [
+                        "HasApplicationProxy"
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -1035,6 +1305,9 @@
                 {
                     "name": "onPremisesPublishingProfiles_applicationProxy_connectorGroups",
                     "uri": "onPremisesPublishingProfiles/applicationProxy/connectorGroups",
+                    "conditions": [
+                        "HasApplicationProxy"
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -1131,6 +1404,9 @@
                 {
                     "name": "onPremisesPublishingProfiles_exchangeOnline",
                     "uri": "onPremisesPublishingProfiles/exchangeOnline",
+                    "conditions": [
+                        "HasExchangeHybrid"
+                    ],
                     "expected_error_codes": [
                         {
                             "status": 500,
@@ -1147,6 +1423,9 @@
                 {
                     "name": "onPremisesPublishingProfiles_exchangeOnline_agentGroups",
                     "uri": "onPremisesPublishingProfiles/exchangeOnline/agentGroups",
+                    "conditions": [
+                        "HasExchangeHybrid"
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -1157,6 +1436,9 @@
                 {
                     "name": "onPremisesPublishingProfiles_exchangeOnline_agents",
                     "uri": "onPremisesPublishingProfiles/exchangeOnline/agents",
+                    "conditions": [
+                        "HasExchangeHybrid"
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -1167,6 +1449,9 @@
                 {
                     "name": "onPremisesPublishingProfiles_exchangeOnline_publishedResources",
                     "uri": "onPremisesPublishingProfiles/exchangeOnline/publishedResources",
+                    "conditions": [
+                        "HasExchangeHybrid"
+                    ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
@@ -1218,22 +1503,12 @@
                     "name": "onPremisesSynchronization",
                     "uri": "directory/onPremisesSynchronization",
                     "conditions": [
-                        "GA"
-                    ]
-                },
-                {
-                    "name": "onPremisesSynchronizationBeta",
-                    "uri": "directory/onPremisesSynchronization",
+                        "GAOrApp"
+                    ],
                     "expected_error_codes": [
                         {
                             "status": 403,
                             "code": "Authorization_RequestDenied"
-                        }
-                    ],
-                    "parameters": [
-                        {
-                            "name": "[API_VERSION]",
-                            "value": "beta"
                         }
                     ]
                 },
@@ -1244,12 +1519,6 @@
                         {
                             "name": "certificateBasedAuthConfiguration",
                             "uri": "organization/[1]/certificateBasedAuthConfiguration",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "beta"
-                                }
-                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
@@ -1266,6 +1535,10 @@
                         {
                             "name": "[API_VERSION]",
                             "value": "beta"
+                        },
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
                         }
                     ]
                 },
@@ -1274,8 +1547,8 @@
                     "uri": "policies/permissionGrantPolicies",
                     "parameters": [
                         {
-                            "name": "[API_VERSION]",
-                            "value": "beta"
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
                         }
                     ]
                 },
@@ -1287,6 +1560,9 @@
                             "name": "[API_VERSION]",
                             "value": "beta"
                         }
+                    ],
+                    "conditions": [
+                        "GAOrApp"
                     ],
                     "relationships": [
                         {
@@ -1319,6 +1595,12 @@
                     "uri": "identityProtection/riskDetections",
                     "conditions": [
                         "P1"
+                    ],
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=500"
+                        }
                     ]
                 },
                 {
@@ -1326,30 +1608,36 @@
                     "uri": "identityProtection/riskyServicePrincipals",
                     "conditions": [
                         "P1"
+                    ],
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=500"
+                        }
                     ]
                 },
                 {
                     "name": "riskyUsers",
                     "uri": "identityProtection/riskyUsers",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=500&$expand=history"
+                        }
+                    ],
                     "conditions": [
                         "P1"
-                    ],
-                    "relationships": [
-                        {
-                            "name": "history",
-                            "uri": "identityProtection/riskyUsers/[1]/history",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ]
-                        }
                     ]
                 },
                 {
                     "name": "roleAssignmentScheduleInstances",
                     "uri": "roleManagement/directory/roleAssignmentScheduleInstances",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$expand=roleDefinition($select=id,templateId)"
+                        }
+                    ],
                     "conditions": [
                         "P2"
                     ]
@@ -1357,6 +1645,12 @@
                 {
                     "name": "roleAssignmentSchedules",
                     "uri": "roleManagement/directory/roleAssignmentSchedules",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$expand=roleDefinition($select=id,templateId)"
+                        }
+                    ],
                     "conditions": [
                         "P2"
                     ]
@@ -1364,10 +1658,16 @@
                 {
                     "name": "roleDefinitions",
                     "uri": "roleManagement/directory/roleDefinitions",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$count=true"
+                        }
+                    ],
                     "relationships": [
                         {
                             "name": "roleAssignments",
-                            "uri": "roleManagement/directory/roleAssignments?$filter=roleDefinitionId eq '[1]'",
+                            "uri": "roleManagement/directory/roleAssignments?$top=999&$filter=roleDefinitionId eq '[1]'",
                             "keys": [
                                 {
                                     "name": "[1]",
@@ -1378,8 +1678,24 @@
                     ]
                 },
                 {
+                    "name": "roleAssignments",
+                    "uri": "roleManagement/directory/roleAssignments",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
+                    ]
+                },
+                {
                     "name": "roleEligibilityScheduleInstances",
                     "uri": "roleManagement/directory/roleEligibilityScheduleInstances",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$expand=roleDefinition($select=id,templateId)"
+                        }
+                    ],
                     "conditions": [
                         "P2"
                     ]
@@ -1387,6 +1703,12 @@
                 {
                     "name": "roleEligibilitySchedules",
                     "uri": "roleManagement/directory/roleEligibilitySchedules",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$expand=roleDefinition($select=id,templateId)"
+                        }
+                    ],
                     "conditions": [
                         "P2"
                     ]
@@ -1397,7 +1719,7 @@
                     "parameters": [
                         {
                             "name": "[PARAMS]",
-                            "value": "?$filter=scopeId eq '/' and scopeType eq 'Directory'&$expand=rules"
+                            "value": "?$top=999&$filter=scopeId eq '/' and scopeType eq 'Directory'&$expand=rules"
                         }
                     ],
                     "conditions": [
@@ -1410,7 +1732,7 @@
                     "parameters": [
                         {
                             "name": "[PARAMS]",
-                            "value": "?$filter=scopeId eq '/' and scopeType eq 'Directory'&$expand=policy($expand=rules)"
+                            "value": "?$top=999&$filter=scopeId eq '/' and scopeType eq 'Directory'&$expand=policy($expand=rules)"
                         }
                     ],
                     "conditions": [
@@ -1423,7 +1745,7 @@
                     "parameters": [
                         {
                             "name": "[PARAMS]",
-                            "value": "?$filter=scopeId eq '/' and scopeType eq 'DirectoryRole'&$expand=policy($expand=rules)"
+                            "value": "?$top=999&$filter=scopeId eq '/' and scopeType eq 'DirectoryRole'&$expand=policy($expand=rules)"
                         }
                     ],
                     "conditions": [
@@ -1447,8 +1769,34 @@
                     ]
                 },
                 {
+                    "name": "secureScoreControlProfiles",
+                    "uri": "security/secureScoreControlProfiles",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
+                    ]
+                },
+                {
+                    "name": "secureScores",
+                    "uri": "security/secureScores",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
+                    ]
+                },
+                {
                     "name": "servicePrincipals",
                     "uri": "servicePrincipals",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$count=true"
+                        }
+                    ],
                     "relationships": [
                         {
                             "name": "appRoleAssignedTo",
@@ -1457,6 +1805,12 @@
                                 {
                                     "name": "[1]",
                                     "value": "id"
+                                }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "?$top=999"
                                 }
                             ]
                         },
@@ -1468,6 +1822,12 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "?$top=999"
+                                }
                             ]
                         },
                         {
@@ -1477,6 +1837,12 @@
                                 {
                                     "name": "[1]",
                                     "value": "id"
+                                }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "?$top=999"
                                 }
                             ]
                         },
@@ -1492,9 +1858,23 @@
                             "parameters": [
                                 {
                                     "name": "[PARAMS]",
-                                    "value": "?$select=id,displayName"
+                                    "value": "?$top=999&$select=id,displayName"
                                 }
                             ]
+                        }
+                    ]
+                },
+                {
+                    "name": "servicePrincipalSignInActivities",
+                    "uri": "reports/servicePrincipalSignInActivities",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        },
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
                         }
                     ]
                 },
@@ -1505,6 +1885,10 @@
                         {
                             "name": "[API_VERSION]",
                             "value": "beta"
+                        },
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
                         }
                     ]
                 },
@@ -1513,8 +1897,24 @@
                     "uri": "subscribedSkus"
                 },
                 {
-                    "name": "subscriptions",
-                    "uri": "subscriptions"
+                    "name": "tokenLifetimePolicies",
+                    "uri": "policies/tokenLifetimePolicies",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
+                    ]
+                },
+                {
+                    "name": "userRegistrationDetails",
+                    "uri": "reports/authenticationMethods/userRegistrationDetails",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        }
+                    ]
                 },
                 {
                     "name": "users",
@@ -1522,14 +1922,14 @@
                     "parameters": [
                         {
                             "name": "[PARAMS]",
-                            "value": "?$select=accountEnabled,ageGroup,assignedLicenses,assignedPlans,businessPhones,city,companyName,consentProvidedForMinor,country,createdDateTime,creationType,customSecurityAttributes,deletedDateTime,department,displayName,employeeHireDate,employeeId,employeeLeaveDateTime,employeeOrgData,employeeType,externalUserState,externalUserStateChangeDateTime,faxNumber,givenName,id,identities,imAddresses,infoCatalogs,isResourceAccount,jobTitle,lastPasswordChangeDateTime,legalAgeGroupClassification,licenseAssignmentStates,mail,mailNickname,mobilePhone,officeLocation,onPremisesDistinguishedName,onPremisesDomainName,onPremisesExtensionAttributes,onPremisesImmutableId,onPremisesLastSyncDateTime,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,onPremisesUserPrincipalName,otherMails,passwordPolicies,passwordProfile,postalCode,preferredDataLocation,preferredLanguage,provisionedPlans,proxyAddresses,refreshTokensValidFromDateTime,securityIdentifier,serviceProvisioningErrors,showInAddressList,signInSessionsValidFromDateTime,state,streetAddress,surname,usageLocation,userPrincipalName,userType",
+                            "value": "?$top=999&$count=true&$select=accountEnabled,ageGroup,assignedLicenses,assignedPlans,businessPhones,city,companyName,consentProvidedForMinor,country,createdDateTime,creationType,customSecurityAttributes,deletedDateTime,department,displayName,employeeHireDate,employeeId,employeeLeaveDateTime,employeeOrgData,employeeType,externalUserState,externalUserStateChangeDateTime,faxNumber,givenName,id,identities,imAddresses,infoCatalogs,isResourceAccount,jobTitle,lastPasswordChangeDateTime,legalAgeGroupClassification,licenseAssignmentStates,mail,mailNickname,mobilePhone,officeLocation,onPremisesDistinguishedName,onPremisesDomainName,onPremisesExtensionAttributes,onPremisesImmutableId,onPremisesLastSyncDateTime,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,onPremisesUserPrincipalName,otherMails,passwordPolicies,passwordProfile,postalCode,preferredDataLocation,preferredLanguage,provisionedPlans,proxyAddresses,refreshTokensValidFromDateTime,securityIdentifier,serviceProvisioningErrors,showInAddressList,signInSessionsValidFromDateTime,state,streetAddress,surname,usageLocation,userPrincipalName,userType",
                             "conditions": [
                                 "NotP1"
                             ]
                         },
                         {
                             "name": "[PARAMS]",
-                            "value": "?$select=accountEnabled,ageGroup,assignedLicenses,assignedPlans,businessPhones,city,companyName,consentProvidedForMinor,country,createdDateTime,creationType,customSecurityAttributes,deletedDateTime,department,displayName,employeeHireDate,employeeId,employeeLeaveDateTime,employeeOrgData,employeeType,externalUserState,externalUserStateChangeDateTime,faxNumber,givenName,id,identities,imAddresses,infoCatalogs,isResourceAccount,jobTitle,lastPasswordChangeDateTime,legalAgeGroupClassification,licenseAssignmentStates,mail,mailNickname,mobilePhone,officeLocation,onPremisesDistinguishedName,onPremisesDomainName,onPremisesExtensionAttributes,onPremisesImmutableId,onPremisesLastSyncDateTime,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,onPremisesUserPrincipalName,otherMails,passwordPolicies,passwordProfile,postalCode,preferredDataLocation,preferredLanguage,provisionedPlans,proxyAddresses,refreshTokensValidFromDateTime,securityIdentifier,serviceProvisioningErrors,showInAddressList,signInActivity,signInSessionsValidFromDateTime,state,streetAddress,surname,usageLocation,userPrincipalName,userType",
+                            "value": "?$top=999&$count=true&$select=accountEnabled,ageGroup,assignedLicenses,assignedPlans,businessPhones,city,companyName,consentProvidedForMinor,country,createdDateTime,creationType,customSecurityAttributes,deletedDateTime,department,displayName,employeeHireDate,employeeId,employeeLeaveDateTime,employeeOrgData,employeeType,externalUserState,externalUserStateChangeDateTime,faxNumber,givenName,id,identities,imAddresses,infoCatalogs,isResourceAccount,jobTitle,lastPasswordChangeDateTime,legalAgeGroupClassification,licenseAssignmentStates,mail,mailNickname,mobilePhone,officeLocation,onPremisesDistinguishedName,onPremisesDomainName,onPremisesExtensionAttributes,onPremisesImmutableId,onPremisesLastSyncDateTime,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,onPremisesUserPrincipalName,otherMails,passwordPolicies,passwordProfile,postalCode,preferredDataLocation,preferredLanguage,provisionedPlans,proxyAddresses,refreshTokensValidFromDateTime,securityIdentifier,serviceProvisioningErrors,showInAddressList,signInActivity,signInSessionsValidFromDateTime,state,streetAddress,surname,usageLocation,userPrincipalName,userType",
                             "conditions": [
                                 "P1"
                             ]
@@ -1543,6 +1943,12 @@
                                 {
                                     "name": "[1]",
                                     "value": "id"
+                                }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "?$top=999"
                                 }
                             ]
                         },
@@ -1570,6 +1976,29 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "?$top=999"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "emergencySignIns",
+                            "uri": "auditLogs/signIns?$filter=userId eq '[1]'",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                },
+                                {
+                                    "name": "[PLACEHOLDER]",
+                                    "value": "customSecurityAttributes",
+                                    "conditions": [
+                                        "IsEmergency"
+                                    ]
+                                }
                             ]
                         },
                         {
@@ -1579,6 +2008,12 @@
                                 {
                                     "name": "[1]",
                                     "value": "id"
+                                }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "?$top=999"
                                 }
                             ]
                         },
@@ -1590,15 +2025,30 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "?$top=999"
+                                }
                             ]
                         },
                         {
                             "name": "permissionGrants",
                             "uri": "users/[1]/permissionGrants",
+                            "conditions": [
+                                "HasLicense"
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
                                     "value": "id"
+                                }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "?$top=999"
                                 }
                             ],
                             "expected_error_codes": [
@@ -1621,42 +2071,8 @@
             ]
         },
         {
-            "name": "internal",
-            "description": "Microsoft Graph Internal",
-            "client_id": "1950a258-227b-4e31-a9cf-717495945fc2",
-            "scopes": [
-                "offline_access",
-                "https://graph.windows.net/.default"
-            ],
-            "mandatory_auth": true,
-            "url_scheme": "https://graph.windows.net/[TENANT]/[URI]?api-version=[API_VERSION][PARAMS]",
-            "default_api_behavior": {
-                "value_field": "value",
-                "next_link_field": "@odata.nextLink",
-                "success_http_code": "200",
-                "error_code": "error/code",
-                "error_message": "error/message"
-            },
-            "default_parameters": [
-                {
-                    "name": "[API_VERSION]",
-                    "value": "1.61-internal"
-                },
-                {
-                    "name": "[PARAMS]",
-                    "value": ""
-                }
-            ],
-            "apis": [
-                {
-                    "name": "policies",
-                    "uri": "policies"
-                }
-            ]
-        },
-        {
             "name": "resources",
-            "description": "Microsoft Azure Management",
+            "description": "Azure Service Management",
             "scopes": [
                 "offline_access",
                 "https://management.azure.com/.default"
@@ -1693,7 +2109,7 @@
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
-                            "value": "2020-10-01"
+                            "value": "2023-04-01"
                         }
                     ],
                     "relationships": [
@@ -1703,13 +2119,18 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2021-04-01"
+                                    "value": "2023-04-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "name"
+                                    "value": "name",
+                                    "transform": "UrlEncode"
                                 }
                             ]
                         },
@@ -1719,17 +2140,18 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2023-04-01"
+                                    "value": "2025-11-01"
                                 },
                                 {
                                     "name": "[PARAMS]",
-                                    "value": "&$filter=atScope()"
+                                    "value": "&$top=1000&$filter=atScope()"
                                 }
                             ],
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "name"
+                                    "value": "name",
+                                    "transform": "UrlEncode"
                                 }
                             ]
                         },
@@ -1739,13 +2161,18 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2023-04-01"
+                                    "value": "2025-11-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=1000"
                                 }
                             ],
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "name"
+                                    "value": "name",
+                                    "transform": "UrlEncode"
                                 }
                             ]
                         },
@@ -1755,17 +2182,18 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2022-07-01-preview"
+                                    "value": "2026-01-01-preview"
                                 },
                                 {
                                     "name": "[PARAMS]",
-                                    "value": "&$filter=atScope()"
+                                    "value": "&$top=1000&$filter=atScope()"
                                 }
                             ],
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "name"
+                                    "value": "name",
+                                    "transform": "UrlEncode"
                                 }
                             ]
                         },
@@ -1776,12 +2204,17 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2022-04-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "name"
+                                    "value": "name",
+                                    "transform": "UrlEncode"
                                 }
                             ]
                         },
@@ -1792,6 +2225,10 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2020-10-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
@@ -1799,6 +2236,9 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "conditions": [
+                                "P2"
                             ],
                             "expected_error_codes": [
                                 {
@@ -1814,6 +2254,10 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2020-10-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
@@ -1821,6 +2265,9 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "conditions": [
+                                "P2"
                             ],
                             "expected_error_codes": [
                                 {
@@ -1836,12 +2283,17 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2022-04-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "name"
+                                    "value": "name",
+                                    "transform": "UrlEncode"
                                 }
                             ]
                         },
@@ -1852,6 +2304,10 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2020-10-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
@@ -1859,6 +2315,9 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "conditions": [
+                                "P2"
                             ],
                             "expected_error_codes": [
                                 {
@@ -1874,6 +2333,10 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2020-10-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
@@ -1881,6 +2344,9 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "conditions": [
+                                "P2"
                             ],
                             "expected_error_codes": [
                                 {
@@ -1896,6 +2362,10 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2020-10-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
@@ -1903,6 +2373,9 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "conditions": [
+                                "P2"
                             ],
                             "expected_error_codes": [
                                 {
@@ -1935,75 +2408,8 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "serviceName"
-                                }
-                            ],
-                            "relationships": [
-                                {
-                                    "name": "details",
-                                    "uri": "[KEEP_URL]/[1]",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2014-01-01"
-                                        }
-                                    ],
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "serviceMemberId"
-                                        }
-                                    ],
-                                    "expected_error_codes": [
-                                        {
-                                            "status": 404,
-                                            "code": "MissingSubscription"
-                                        }
-                                    ]
-                                },
-                                {
-                                    "name": "serviceconfiguration",
-                                    "uri": "[KEEP_URL]/[1]/serviceconfiguration",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2014-01-01"
-                                        }
-                                    ],
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "serviceMemberId"
-                                        }
-                                    ],
-                                    "expected_error_codes": [
-                                        {
-                                            "status": 404,
-                                            "code": "MissingSubscription"
-                                        }
-                                    ]
-                                },
-                                {
-                                    "name": "alerts",
-                                    "uri": "[KEEP_URL]/[1]/alerts",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2014-01-01"
-                                        }
-                                    ],
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "serviceMemberId"
-                                        }
-                                    ],
-                                    "expected_error_codes": [
-                                        {
-                                            "status": 404,
-                                            "code": "MissingSubscription"
-                                        }
-                                    ]
+                                    "value": "serviceName",
+                                    "transform": "UrlEncode"
                                 }
                             ]
                         }
@@ -2035,75 +2441,8 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "serviceName"
-                                }
-                            ],
-                            "relationships": [
-                                {
-                                    "name": "details",
-                                    "uri": "[KEEP_URL]/[1]",
-                                    "expected_error_codes": [
-                                        {
-                                            "status": 404,
-                                            "code": "MissingSubscription"
-                                        }
-                                    ],
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2014-01-01"
-                                        }
-                                    ],
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "serviceMemberId"
-                                        }
-                                    ]
-                                },
-                                {
-                                    "name": "serviceconfiguration",
-                                    "uri": "[KEEP_URL]/[1]/serviceconfiguration",
-                                    "expected_error_codes": [
-                                        {
-                                            "status": 404,
-                                            "code": "MissingSubscription"
-                                        }
-                                    ],
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2014-01-01"
-                                        }
-                                    ],
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "serviceMemberId"
-                                        }
-                                    ]
-                                },
-                                {
-                                    "name": "alerts",
-                                    "uri": "[KEEP_URL]/[1]/alerts",
-                                    "expected_error_codes": [
-                                        {
-                                            "status": 404,
-                                            "code": "MissingSubscription"
-                                        }
-                                    ],
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2014-01-01"
-                                        }
-                                    ],
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "serviceMemberId"
-                                        }
-                                    ]
+                                    "value": "serviceName",
+                                    "transform": "UrlEncode"
                                 }
                             ]
                         }
@@ -2135,57 +2474,266 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "serviceName"
+                                    "value": "serviceName",
+                                    "transform": "UrlEncode"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "resourcegraph_resources",
+                    "uri": "providers/Microsoft.ResourceGraph/resources",
+                    "api_behavior": {
+                        "is_arg": "true",
+                        "value_field": "data",
+                        "arg_query": "Resources",
+                        "arg_top": "1000"
+                    },
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "2024-04-01"
+                        }
+                    ],
+                    "relationships": [
+                        {
+                            "name": "roleAssignments",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleAssignments",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2022-04-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
-                            "relationships": [
+                            "keys": [
                                 {
-                                    "name": "details",
-                                    "uri": "[KEEP_URL]/[1]",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2014-01-01"
-                                        }
-                                    ],
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "serviceMemberId"
-                                        }
-                                    ]
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleAssignmentScheduleInstances",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentScheduleInstances",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
                                 },
                                 {
-                                    "name": "serviceconfiguration",
-                                    "uri": "[KEEP_URL]/[1]/serviceconfiguration",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2014-01-01"
-                                        }
-                                    ],
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "serviceMemberId"
-                                        }
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id",
+                                    "conditions": [
+                                        "SupportsResourcePIM"
                                     ]
+                                }
+                            ],
+                            "conditions": [
+                                "P2"
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleAssignmentSchedules",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentSchedules",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
                                 },
                                 {
-                                    "name": "alerts",
-                                    "uri": "[KEEP_URL]/[1]/alerts",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2014-01-01"
-                                        }
-                                    ],
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "serviceMemberId"
-                                        }
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id",
+                                    "conditions": [
+                                        "SupportsResourcePIM"
                                     ]
+                                }
+                            ],
+                            "conditions": [
+                                "P2"
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleDefinitions",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleDefinitions",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2022-04-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleEligibilityScheduleInstances",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleEligibilityScheduleInstances",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id",
+                                    "conditions": [
+                                        "SupportsResourcePIM"
+                                    ]
+                                }
+                            ],
+                            "conditions": [
+                                "P2"
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleEligibilitySchedules",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleEligibilitySchedules",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id",
+                                    "conditions": [
+                                        "SupportsResourcePIM"
+                                    ]
+                                }
+                            ],
+                            "conditions": [
+                                "P2"
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleManagementPolicies",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleManagementPolicies",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id",
+                                    "conditions": [
+                                        "SupportsResourcePIM"
+                                    ]
+                                }
+                            ],
+                            "conditions": [
+                                "P2"
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                },
+                                {
+                                    "status": 400,
+                                    "code": "TenantNotOnboarded"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleManagementPolicyAssignments",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleManagementPolicyAssignments",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2020-10-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id",
+                                    "conditions": [
+                                        "SupportsResourcePIM"
+                                    ]
+                                }
+                            ],
+                            "conditions": [
+                                "P2"
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 400,
+                                    "code": "AadPremiumLicenseRequired"
+                                },
+                                {
+                                    "status": 400,
+                                    "code": "TenantNotOnboarded"
                                 }
                             ]
                         }
@@ -2197,11 +2745,7 @@
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
-                            "value": "2020-08-01"
-                        },
-                        {
-                            "name": "[PARAMS]",
-                            "value": "&serviceType=AdFederationService"
+                            "value": "2025-04-01"
                         }
                     ],
                     "relationships": [
@@ -2211,7 +2755,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2019-07-01"
+                                    "value": "2021-07-01"
                                 }
                             ],
                             "keys": [
@@ -2227,7 +2771,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
+                                    "value": "2025-09-01"
                                 }
                             ],
                             "keys": [
@@ -2243,7 +2787,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2023-11-01"
+                                    "value": "2024-10-23"
                                 }
                             ],
                             "keys": [
@@ -2259,7 +2803,7 @@
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
-                                            "value": "2023-11-01"
+                                            "value": "2025-04-01"
                                         }
                                     ],
                                     "keys": [
@@ -2277,7 +2821,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-07-01"
+                                    "value": "2026-03-01"
                                 }
                             ],
                             "keys": [
@@ -2293,7 +2837,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
+                                    "value": "2025-09-01"
                                 }
                             ],
                             "keys": [
@@ -2309,7 +2853,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
+                                    "value": "2025-09-01"
                                 }
                             ],
                             "keys": [
@@ -2325,7 +2869,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-02-01"
+                                    "value": "2025-12-01"
                                 }
                             ],
                             "keys": [
@@ -2341,7 +2885,7 @@
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
-                                            "value": "2024-02-01"
+                                            "value": "2025-04-01"
                                         }
                                     ],
                                     "keys": [
@@ -2372,6 +2916,10 @@
                                 {
                                     "status": 404,
                                     "code": "ClassicAdministratorListFailed"
+                                },
+                                {
+                                    "status": 404,
+                                    "code": "InvalidResourceType"
                                 }
                             ]
                         },
@@ -2381,7 +2929,11 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2021-04-01"
+                                    "value": "2025-04-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=1000"
                                 }
                             ],
                             "keys": [
@@ -2397,7 +2949,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-03-02"
+                                    "value": "2025-01-02"
                                 }
                             ],
                             "keys": [
@@ -2445,7 +2997,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-07-01"
+                                    "value": "2026-03-01"
                                 }
                             ],
                             "keys": [
@@ -2461,7 +3013,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2015-05-01"
+                                    "value": "2020-02-02"
                                 }
                             ],
                             "keys": [
@@ -2509,7 +3061,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
+                                    "value": "2025-09-01"
                                 }
                             ],
                             "keys": [
@@ -2541,7 +3093,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
+                                    "value": "2025-09-01"
                                 }
                             ],
                             "keys": [
@@ -2557,7 +3109,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
+                                    "value": "2025-09-01"
                                 }
                             ],
                             "keys": [
@@ -2573,7 +3125,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
+                                    "value": "2025-09-01"
                                 }
                             ],
                             "keys": [
@@ -2589,7 +3141,11 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2023-04-01"
+                                    "value": "2025-11-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=1000"
                                 }
                             ],
                             "keys": [
@@ -2605,7 +3161,11 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2023-04-01"
+                                    "value": "2025-11-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=1000"
                                 }
                             ],
                             "keys": [
@@ -2621,7 +3181,11 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2022-07-01-preview"
+                                    "value": "2026-01-01-preview"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=1000"
                                 }
                             ],
                             "keys": [
@@ -2637,7 +3201,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-08-01"
+                                    "value": "2025-04-01"
                                 }
                             ],
                             "keys": [
@@ -2653,7 +3217,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
+                                    "value": "2025-09-01"
                                 }
                             ],
                             "keys": [
@@ -2669,7 +3233,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-10-01"
+                                    "value": "2026-05-01"
                                 }
                             ],
                             "keys": [
@@ -2685,7 +3249,11 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2021-04-01"
+                                    "value": "2025-04-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=1000"
                                 }
                             ],
                             "keys": [
@@ -2701,7 +3269,7 @@
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
-                                            "value": "2021-04-01"
+                                            "value": "2025-04-01"
                                         }
                                     ],
                                     "keys": [
@@ -2718,6 +3286,10 @@
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2022-04-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
                                         }
                                     ],
                                     "keys": [
@@ -2734,6 +3306,10 @@
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2020-10-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
                                         }
                                     ],
                                     "keys": [
@@ -2741,6 +3317,9 @@
                                             "name": "[1]",
                                             "value": "id"
                                         }
+                                    ],
+                                    "conditions": [
+                                        "P2"
                                     ],
                                     "expected_error_codes": [
                                         {
@@ -2756,6 +3335,10 @@
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2020-10-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
                                         }
                                     ],
                                     "keys": [
@@ -2763,6 +3346,9 @@
                                             "name": "[1]",
                                             "value": "id"
                                         }
+                                    ],
+                                    "conditions": [
+                                        "P2"
                                     ],
                                     "expected_error_codes": [
                                         {
@@ -2778,6 +3364,10 @@
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2022-04-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
                                         }
                                     ],
                                     "keys": [
@@ -2794,6 +3384,10 @@
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2020-10-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
                                         }
                                     ],
                                     "keys": [
@@ -2801,6 +3395,9 @@
                                             "name": "[1]",
                                             "value": "id"
                                         }
+                                    ],
+                                    "conditions": [
+                                        "P2"
                                     ],
                                     "expected_error_codes": [
                                         {
@@ -2816,6 +3413,10 @@
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2020-10-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
                                         }
                                     ],
                                     "keys": [
@@ -2823,6 +3424,9 @@
                                             "name": "[1]",
                                             "value": "id"
                                         }
+                                    ],
+                                    "conditions": [
+                                        "P2"
                                     ],
                                     "expected_error_codes": [
                                         {
@@ -2838,6 +3442,10 @@
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2020-10-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
                                         }
                                     ],
                                     "keys": [
@@ -2845,6 +3453,9 @@
                                             "name": "[1]",
                                             "value": "id"
                                         }
+                                    ],
+                                    "conditions": [
+                                        "P2"
                                     ],
                                     "expected_error_codes": [
                                         {
@@ -2863,7 +3474,7 @@
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
-                                            "value": "2024-05-01"
+                                            "value": "2025-09-01"
                                         }
                                     ],
                                     "keys": [
@@ -2881,7 +3492,11 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2021-04-01"
+                                    "value": "2025-04-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=1000"
                                 }
                             ],
                             "keys": [
@@ -2898,6 +3513,10 @@
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2022-04-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
                                         }
                                     ],
                                     "keys": [
@@ -2914,13 +3533,23 @@
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2020-10-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
                                         }
                                     ],
                                     "keys": [
                                         {
                                             "name": "[1]",
-                                            "value": "id"
+                                            "value": "id",
+                                            "conditions": [
+                                                "SupportsResourcePIM"
+                                            ]
                                         }
+                                    ],
+                                    "conditions": [
+                                        "P2"
                                     ],
                                     "expected_error_codes": [
                                         {
@@ -2936,13 +3565,23 @@
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2020-10-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
                                         }
                                     ],
                                     "keys": [
                                         {
                                             "name": "[1]",
-                                            "value": "id"
+                                            "value": "id",
+                                            "conditions": [
+                                                "SupportsResourcePIM"
+                                            ]
                                         }
+                                    ],
+                                    "conditions": [
+                                        "P2"
                                     ],
                                     "expected_error_codes": [
                                         {
@@ -2958,6 +3597,10 @@
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2022-04-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
                                         }
                                     ],
                                     "keys": [
@@ -2974,13 +3617,23 @@
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2020-10-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
                                         }
                                     ],
                                     "keys": [
                                         {
                                             "name": "[1]",
-                                            "value": "id"
+                                            "value": "id",
+                                            "conditions": [
+                                                "SupportsResourcePIM"
+                                            ]
                                         }
+                                    ],
+                                    "conditions": [
+                                        "P2"
                                     ],
                                     "expected_error_codes": [
                                         {
@@ -2996,13 +3649,23 @@
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2020-10-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
                                         }
                                     ],
                                     "keys": [
                                         {
                                             "name": "[1]",
-                                            "value": "id"
+                                            "value": "id",
+                                            "conditions": [
+                                                "SupportsResourcePIM"
+                                            ]
                                         }
+                                    ],
+                                    "conditions": [
+                                        "P2"
                                     ],
                                     "expected_error_codes": [
                                         {
@@ -3018,13 +3681,59 @@
                                         {
                                             "name": "[API_VERSION]",
                                             "value": "2020-10-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
                                         }
                                     ],
                                     "keys": [
                                         {
                                             "name": "[1]",
-                                            "value": "id"
+                                            "value": "id",
+                                            "conditions": [
+                                                "SupportsResourcePIM"
+                                            ]
                                         }
+                                    ],
+                                    "conditions": [
+                                        "P2"
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 400,
+                                            "code": "AadPremiumLicenseRequired"
+                                        },
+                                        {
+                                            "status": 400,
+                                            "code": "TenantNotOnboarded"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleManagementPolicyAssignments",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleManagementPolicyAssignments",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2020-10-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id",
+                                            "conditions": [
+                                                "SupportsResourcePIM"
+                                            ]
+                                        }
+                                    ],
+                                    "conditions": [
+                                        "P2"
                                     ],
                                     "expected_error_codes": [
                                         {
@@ -3045,7 +3754,11 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-08-01"
+                                    "value": "2025-04-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=1000"
                                 }
                             ],
                             "keys": [
@@ -3061,7 +3774,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-07-01"
+                                    "value": "2026-03-01"
                                 }
                             ],
                             "keys": [
@@ -3078,6 +3791,10 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2022-04-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
@@ -3094,6 +3811,10 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2020-10-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
@@ -3101,6 +3822,9 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "conditions": [
+                                "P2"
                             ],
                             "expected_error_codes": [
                                 {
@@ -3116,6 +3840,10 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2020-10-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
@@ -3123,6 +3851,9 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "conditions": [
+                                "P2"
                             ],
                             "expected_error_codes": [
                                 {
@@ -3138,6 +3869,10 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2022-04-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
@@ -3154,6 +3889,10 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2020-10-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
@@ -3161,6 +3900,9 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "conditions": [
+                                "P2"
                             ],
                             "expected_error_codes": [
                                 {
@@ -3176,6 +3918,10 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2020-10-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
@@ -3183,6 +3929,9 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "conditions": [
+                                "P2"
                             ],
                             "expected_error_codes": [
                                 {
@@ -3198,6 +3947,10 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2020-10-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
@@ -3205,6 +3958,9 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "conditions": [
+                                "P2"
                             ],
                             "expected_error_codes": [
                                 {
@@ -3251,7 +4007,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2021-11-01"
+                                    "value": "2025-01-01"
                                 }
                             ],
                             "keys": [
@@ -3267,7 +4023,7 @@
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
-                                            "value": "2021-11-01"
+                                            "value": "2025-04-01"
                                         }
                                     ],
                                     "keys": [
@@ -3301,7 +4057,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-03-02"
+                                    "value": "2025-01-02"
                                 }
                             ],
                             "keys": [
@@ -3317,7 +4073,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2023-05-01"
+                                    "value": "2026-04-01"
                                 }
                             ],
                             "keys": [
@@ -3333,7 +4089,7 @@
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
-                                            "value": "2023-05-01"
+                                            "value": "2026-04-01"
                                         }
                                     ],
                                     "keys": [
@@ -3349,7 +4105,7 @@
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
-                                            "value": "2023-05-01"
+                                            "value": "2026-04-01"
                                         }
                                     ],
                                     "keys": [
@@ -3367,7 +4123,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2022-06-15"
+                                    "value": "2025-02-15"
                                 }
                             ],
                             "keys": [
@@ -3399,7 +4155,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2023-01-31"
+                                    "value": "2024-11-30"
                                 }
                             ],
                             "keys": [
@@ -3415,7 +4171,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2022-07-01"
+                                    "value": "2026-02-01"
                                 }
                             ],
                             "keys": [
@@ -3431,7 +4187,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-07-01"
+                                    "value": "2026-03-01"
                                 }
                             ],
                             "keys": [
@@ -3447,7 +4203,7 @@
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
-                                            "value": "2024-07-01"
+                                            "value": "2025-04-01"
                                         }
                                     ],
                                     "keys": [
@@ -3469,7 +4225,7 @@
                                     "parameters": [
                                         {
                                             "name": "[API_VERSION]",
-                                            "value": "2023-01-31"
+                                            "value": "2024-11-30"
                                         }
                                     ],
                                     "keys": [
@@ -3487,7 +4243,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2024-05-01"
+                                    "value": "2025-09-01"
                                 }
                             ],
                             "keys": [
@@ -3503,7 +4259,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2021-02-01"
+                                    "value": "2026-03-15"
                                 }
                             ],
                             "keys": [
@@ -3519,7 +4275,7 @@
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2023-09-01"
+                                    "value": "2026-03-01"
                                 }
                             ],
                             "keys": [
@@ -3604,7 +4360,7 @@
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
-                            "value": "2020-08-01"
+                            "value": "2025-04-01"
                         }
                     ]
                 }
@@ -3612,12 +4368,11 @@
         },
         {
             "name": "exchange",
-            "description": "Microsoft Exchange Online",
+            "description": "Office 365 Exchange Online",
             "scopes": [
                 "offline_access",
                 "https://outlook.office365.com/.default"
             ],
-            "client_id": "fb78d390-0c51-40cd-8e17-fdbfab77341b",
             "mandatory_auth": false,
             "url_scheme": "https://outlook.office365.com/[API_VERSION]/[TENANT]/[URI][PARAMS]",
             "default_api_behavior": {

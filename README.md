@@ -10,6 +10,10 @@ Edit `config-oradaz.xml`.
 
 ## Usage
 
-`oradaz.exe -t <tenant_id> -a <app_id>`
+`oradaz.exe`
 
 The configuration is read from `config-oradaz.xml` which must be stored next to `oradaz.exe`.
+
+## Questions
+
+If you have any question, contact club@ssi.gouv.fr

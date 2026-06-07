@@ -1,36 +1,48 @@
 [package]
-edition = "2021"
+edition = "2024"
 name = "oradaz"
-version = "2.0.612"
+version = "3.0.0"
 
 [dependencies]
-ansi_term = "0.12.1"
-azure_core = "0.21.0"
-azure_identity = "0.21.0"
+anstyle = "1.0.14"
 base64 = "0.22.1"
-chrono = "0.4.39"
-clap = {version = "4.5.23", features = ["derive"]}
-crossbeam = "0.8.4"
-ctrlc = "3.4.5"
-curve25519-parser = "0.4.0"
-env_logger = "0.11.6"
-futures = "0.3.31"
-lazy_static = "1.5.0"
-log = {version = "0.4.22", features = ["max_level_debug", "release_max_level_debug"]}
-mla = {version = "1.4.0", default-features = false, features = ["send"]}
-rand = "0.8.5"
-rayon = "1.10.0"
-regex = "1.11.1"
-reqwest = {version = "0.12.12", features = ["json", "blocking"]}
-serde = {version = "1.0.217", features = ["derive"]}
-serde-xml-rs = "0.6.0"
-serde_json = "1.0.134"
-serde_path_to_error = "0.1.16"
-sha256 = "1.5.0"
-tokio = {version = "1.42.0", features = ["rt", "rt-multi-thread", "time", "macros"]}
-url = "2.5.4"
+chrono = "0.4.45"
+clap = {version = "4.6.1", features = ["derive"]}
+crossterm = "0.29.0"
+dashmap = "6.2.1"
+jsonwebtoken = {version = "10.4.0", default-features = false, features = ["use_pem", "rust_crypto"]}
+log = {version = "0.4.32", features = ["max_level_trace", "release_max_level_trace"]}
+mimalloc = {version = "0.1", default-features = false}
+mla = {version = "2.0.0", default-features = false, features = ["send"]}
+rand = "0.10.1"
+regex = "1.12.3"
+reqwest = {version = "0.13.4", features = ["json", "form", "http2"]}
+serde = {version = "1.0.228", features = ["derive", "rc"]}
+serde-xml-rs = "0.8.2"
+serde_json = "1.0.150"
+sha2 = "0.11.0"
+tokio = {version = "1.52.3", features = ["rt-multi-thread", "sync", "time", "macros", "signal", "io-util", "io-std", "net"]}
+url = "2.5.8"
+uuid = {version = "1.23.2", features = ["v4"]}
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation","Win32_System_Console","Win32_System_ProcessStatus","Win32_System_Threading"] }
+
+[dev-dependencies]
+proptest = "1.4.0"
+rstest = "0.26.1"
+tempfile = "3.27.0"
+tokio = {version = "1.52.3", features = ["rt-multi-thread", "sync", "time", "macros", "signal", "io-util", "io-std", "net", "test-util"]}
+wiremock = "0.6.5"
 
 [profile.release]
-codegen-units = 1 # Limit to 1 code generation units to improve generated code performance
-lto = true # Enable Link Time Optimization
-opt-level = 'z' # Optimize for size.
+codegen-units = 1   # Limit to 1 code generation units to improve generated code performance
+lto = true          # Enable Link Time Optimization
+opt-level = 3       # Optimize for performance
+panic = "abort"     # No unwinding in production: smaller binary, better inlining
+strip = true        # Removes symbols, reducing size
+
+[profile.release-fast]
+inherits = "release"
+lto = "thin"
+codegen-units = 4
