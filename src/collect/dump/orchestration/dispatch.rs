@@ -202,25 +202,16 @@ pub async fn dispatch_requests(
                                     let dominant_code = dumper
                                         .stats
                                         .dominant_upstream_code(&url.service_name, &url.api);
-                                    // Decide whether the rate-limit budget was
-                                    // the actual cause: a URL can carry a
-                                    // non-zero rate_limit_retry_number from a
-                                    // single transient 429 yet exhaust on the
-                                    // real-error budget. Comparing against the
-                                    // per-service limits is the only way to
-                                    // tell, so do it here (the message helper
-                                    // doesn't know the limits).
-                                    let rl_retry_limit = Config::rate_limit_retry_limit_for(
-                                        &dumper.config,
-                                        &url.service_name,
-                                    );
-                                    let rl_max_wait = Config::rate_limit_max_wait_secs_for(
-                                        &dumper.config,
-                                        &url.service_name,
-                                    );
-                                    let rate_limit_exhausted = url.rate_limit_retry_number
-                                        >= rl_retry_limit
-                                        || url.rate_limit_total_wait_secs >= rl_max_wait;
+                                    // `check_retry_exhaustion` only abandons on
+                                    // the *permanent* budget (real 4xx/5xx in
+                                    // `retry_number`); 429 / network do not
+                                    // exhaust here (they are
+                                    // bounded by the liveness ceiling and
+                                    // abandoned as ThrottleStalled / NetworkStalled
+                                    // at the re-queue sites). So a `UrlRetryLimit`
+                                    // reaching this branch is always a real-error
+                                    // exhaustion — never throttling.
+                                    let rate_limit_exhausted = false;
                                     // Surface the give-up in stats.json so a
                                     // user inspecting an archive can see which
                                     // APIs exhausted their retry budget.

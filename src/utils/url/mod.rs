@@ -64,8 +64,8 @@ mod tests {
         assert_eq!(collapse_path_double_slashes("a//b?x=//z"), "a/b?x=//z");
     }
 
-    // Runs of 3+ slashes collapse to a single slash (regression: the old
-    // `replace("//", "/")` only removed pairs, so `a///b` stayed `a//b`).
+    // Runs of 3+ slashes collapse to a single slash (a naive
+    // `replace("//", "/")` only removes pairs, so `a///b` would stay `a//b`).
     #[test]
     fn collapses_runs_of_three_or_more_slashes() {
         assert_eq!(

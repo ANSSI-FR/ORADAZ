@@ -24,7 +24,7 @@ pub mod inspect;
 pub mod utils;
 
 pub const FL: usize = 25;
-pub const VERSION: &str = "3.0.06.07";
+pub const VERSION: &str = "3.0.06.09";
 pub const SCHEMA_URL: &str = "https://raw.githubusercontent.com/ANSSI-FR/ORADAZ/v3/schema.json";
 pub const APP_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0";
 pub const PUB_KEY: &[u8] = include_bytes!("keys/key.mlapub");

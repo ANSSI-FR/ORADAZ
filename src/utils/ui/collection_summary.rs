@@ -67,6 +67,8 @@ pub fn lost_reason(code: &str) -> &'static str {
         "nextLinkParsingError" => "pagination interrupted",
         "MissingBatchData" => "internal batch error",
         "UnknownApiCallCreationError" => "request could not be built",
+        "ThrottleStalled" => "throttled — no progress within liveness ceiling",
+        "NetworkStalled" => "network failure — no progress within liveness ceiling",
         _ => "not collected",
     }
 }

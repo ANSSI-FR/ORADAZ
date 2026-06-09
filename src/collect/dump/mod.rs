@@ -438,6 +438,10 @@ impl Dumper {
 
         // Shared statistics collected throughout the dump and written to stats.json.
         let stats: Arc<Stats> = Arc::new(Stats::new());
+        // The per-bucket liveness ceiling is the only bound on transient (429 /
+        // network) retries — wire it from config so a stalled
+        // bucket is abandoned and the run always terminates.
+        stats.set_liveness_ceiling_secs(Config::liveness_ceiling_secs(config));
 
         // Init condition checker
         let step = ui::StepLive::start("Conditions");

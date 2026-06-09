@@ -28,33 +28,23 @@ fn consistency_level_headers(url: &str) -> Option<HashMap<String, String>> {
 /// Returns `Some(item)` when the URL must be dropped (caller should append it
 /// to the result and continue), `None` when the URL still has budget left.
 fn check_retry_exhaustion(url: &Url, limits: &RetryLimits) -> Option<ApiCallItem> {
-    let exhausted_retries = url.retry_number >= limits.retry;
-    let exhausted_rate_limit_retries = url.rate_limit_retry_number >= limits.rate_limit_retry;
-    let exhausted_rate_limit_wait =
-        url.rate_limit_total_wait_secs >= limits.rate_limit_max_wait_secs;
-    if !exhausted_retries && !exhausted_rate_limit_retries && !exhausted_rate_limit_wait {
+    // Only the *permanent* budget (real 4xx-prereq / 5xx errors, counted in
+    // `retry_number`) abandons a URL at dispatch. Transient causes — 429
+    // throttling and transport failures — are not killed on a fixed count here;
+    // their sole bound is the per-bucket liveness ceiling (`Stats`),
+    // applied at the re-queue sites (`prepare_rate_limit_retries` for throttle,
+    // `finalize_retry` for network). The `rate_limit_*` fields of `limits` are
+    // therefore intentionally unused here.
+    if url.retry_number < limits.retry {
         return None;
     }
-    let cause = if exhausted_retries {
-        format!("retry limit ({} attempts)", limits.retry)
-    } else if exhausted_rate_limit_retries {
-        format!(
-            "rate-limit retry budget ({} 429 retries)",
-            limits.rate_limit_retry
-        )
-    } else {
-        format!(
-            "rate-limit wait budget ({}s accumulated)",
-            limits.rate_limit_max_wait_secs
-        )
-    };
     // Logged at debug, not warn: the canonical (de-duplicated) give-up warning is
     // emitted once in `dispatch.rs` when the resulting `UrlRetryLimit` becomes a
     // DumpError. This detection can fire repeatedly for a single URL under
     // send-permit backpressure, so keep its more granular cause here in the file log.
     debug!(
-        "{:FL$}Skipping api {:?} for service {:?} (URL {}) because it has exhausted its {}",
-        "ApiCall", url.api, url.service_name, url.url, cause
+        "{:FL$}Skipping api {:?} for service {:?} (URL {}) because it has exhausted its retry limit ({} attempts)",
+        "ApiCall", url.api, url.service_name, url.url, limits.retry
     );
     Some(ApiCallItem::ApiCallError(Error::UrlRetryLimit(Box::new(
         url.clone(),
@@ -68,12 +58,12 @@ fn check_retry_exhaustion(url: &Url, limits: &RetryLimits) -> Option<ApiCallItem
 fn success_code_and_value_pointer(url: &Url) -> (u16, String) {
     let success_http_code: u16 = match url.api_behavior.get("success_http_code") {
         Some(field) => field.parse().unwrap_or_else(|err| {
-            warn!(
-                "{:FL$}Error converting success_http_code value {:?} to int, using 200",
-                "ApiCall", field
-            );
+            // A malformed value is surfaced once, up front, at schema-load time
+            // (`schema::validate_success_http_codes`). Keep this at debug so the
+            // same schema defect is not re-warned for every URL of the affected
+            // API during collection; the run continues with the 200 fallback.
             debug!(
-                "{:FL$}Parse error for success_http_code value {:?}: {:?}",
+                "{:FL$}Falling back to success_http_code 200 for unparseable value {:?}: {:?}",
                 "ApiCall", field, err
             );
             200
@@ -306,8 +296,12 @@ impl ApiCall {
                     }
                 }
                 None => {
+                    // Unreachable in single-threaded dispatch: `batch_size` is
+                    // `min(urls.len(), 20)`, so the loop pops at most as many URLs
+                    // as the vector held on entry. Reaching here means that
+                    // invariant was violated.
                     error!(
-                        "{:FL$}Received an URL vector that is smaller than batch_size while trying to construct next ApiCall for service graph",
+                        "{:FL$}Internal invariant violated: URL vector exhausted before reaching batch_size while constructing next ApiCall for service graph",
                         "ApiCall"
                     );
                     return Err(Error::EmptyUrlsVector);
@@ -331,6 +325,7 @@ impl ApiCall {
                     retry_number: 0,
                     rate_limit_retry_number: 0,
                     rate_limit_total_wait_secs: 0,
+                    network_retry_number: 0,
                     post_body: None,
                 },
                 success_code: 200,
@@ -356,6 +351,7 @@ impl ApiCall {
                     retry_number: 0,
                     rate_limit_retry_number: 0,
                     rate_limit_total_wait_secs: 0,
+                    network_retry_number: 0,
                     post_body: None,
                 },
                 success_code: 200,
@@ -452,8 +448,13 @@ impl ApiCall {
                         )]));
                 }
                 None => {
+                    // Unreachable in single-threaded dispatch: `batch_size` is
+                    // `min(urls.len(), 20)`, so the loop pops at most as many URLs
+                    // as the vector held on entry (the `is_arg` push-back breaks
+                    // without consuming one). Reaching here means that invariant
+                    // was violated.
                     error!(
-                        "{:FL$}Received an URL vector that is smaller than batch_size while trying to construct next ApiCall for service resources",
+                        "{:FL$}Internal invariant violated: URL vector exhausted before reaching batch_size while constructing next ApiCall for service resources",
                         "ApiCall"
                     );
                     return Err(Error::EmptyUrlsVector);
@@ -483,6 +484,7 @@ impl ApiCall {
                 retry_number: 0,
                 rate_limit_retry_number: 0,
                 rate_limit_total_wait_secs: 0,
+                network_retry_number: 0,
                 post_body: None,
             },
             success_code: 200,

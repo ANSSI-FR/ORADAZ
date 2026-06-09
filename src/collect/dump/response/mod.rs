@@ -106,8 +106,17 @@ pub struct ResponseContent {
 pub enum ResponseMsg {
     /// Valid response data to be written to the archive.
     ResponseData(Box<ResponseContent>),
-    /// An error that should be logged in the archive's error log.
+    /// An error that should be logged in the archive's error log. Emits a
+    /// `RequestCompleted` (count 1): used by dispatch, where the abandoned
+    /// `ApiCallError` item was itself counted into `current_counter`.
     DumpError(Box<DumpError>, u32),
+    /// Counter-**neutral** lost-data write: persisted to `errors.json` and
+    /// recorded for the PARTIAL summary like `DumpError`, but emits **no**
+    /// `RequestCompleted`. Used by the request thread to abandon a transient
+    /// (network) sub-URL whose dispatched item is already accounted for by the
+    /// batch's own single `RequestCompleted` in `finalize_retry` — so a separate
+    /// completion here would double-decrement `current_counter`.
+    LostData(Box<DumpError>, u32),
     /// Signal to shut down the module.
     Terminate,
 }
@@ -266,11 +275,34 @@ impl ResponseModule {
                                 // See the ResponseData arm: same response-worker
                                 // gauge tracking for memory observability.
                                 let _worker_guard = crate::utils::sysmem::track_response_worker();
+                                // completion_count = 1: the abandoned ApiCallError
+                                // item was counted into current_counter at dispatch.
                                 let rt: ResponseErrorThread = ResponseErrorThread::new(
                                     thread_sender,
                                     thread_context.clone(),
                                     *dump_error,
                                     id,
+                                    1,
+                                );
+                                rt.process().await;
+                            }
+                        });
+                    }
+                    Some(ResponseMsg::LostData(dump_error, id)) => {
+                        workers.spawn({
+                            let thread_sender = sender.clone();
+                            let thread_context = context.clone();
+                            async move {
+                                let _worker_guard = crate::utils::sysmem::track_response_worker();
+                                // completion_count = 0: counter-neutral. The
+                                // batch's own RequestCompleted (finalize_retry)
+                                // already accounts for the dispatched item.
+                                let rt: ResponseErrorThread = ResponseErrorThread::new(
+                                    thread_sender,
+                                    thread_context.clone(),
+                                    *dump_error,
+                                    id,
+                                    0,
                                 );
                                 rt.process().await;
                             }

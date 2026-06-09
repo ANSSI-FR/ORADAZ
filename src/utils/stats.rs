@@ -17,6 +17,7 @@ use serde::{Serialize, Serializer, ser::SerializeMap, ser::SerializeSeq};
 use std::collections::HashSet;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use tokio::time::Instant;
 
 pub struct Stats {
     /// Keyed by `"{service}/{api}"`.
@@ -32,6 +33,21 @@ pub struct Stats {
     pub prereq_rechecks: DashMap<String, AtomicUsize>,
     pub started_at: Mutex<DateTime<Utc>>,
     pub ended_at: Mutex<Option<DateTime<Utc>>>,
+    /// Per-bucket (`"{service}/{api}"`) timestamp of the last *progress* — a 2xx
+    /// response that wrote data — or, for a bucket that has never succeeded, its
+    /// first transient (429 / network) failure. Backs the per-bucket **liveness
+    /// ceiling**, the only bound on transient retries (429 / network are not
+    /// abandoned on a fixed count): a transient retry is abandoned *only* when
+    /// its bucket has made no progress for `liveness_ceiling_secs`. A draining
+    /// bucket keeps resetting this and is
+    /// never dropped; a genuinely stalled endpoint is still bounded. In-memory
+    /// only (not in `stats.json`). Uses `tokio::time::Instant` so tests can drive
+    /// it with `tokio::time::pause`/`advance`.
+    progress: DashMap<String, Instant>,
+    /// No-progress ceiling (seconds) for the liveness check; `0` disables
+    /// abandonment (the value tests use when not exercising liveness). Set once
+    /// at dump startup from `livenessCeilingSecs` via `set_liveness_ceiling_secs`.
+    liveness_ceiling_secs: AtomicU64,
 }
 
 pub struct ServiceStats {
@@ -211,7 +227,44 @@ impl Stats {
             prereq_rechecks: DashMap::new(),
             started_at: Mutex::new(Utc::now()),
             ended_at: Mutex::new(None),
+            progress: DashMap::new(),
+            liveness_ceiling_secs: AtomicU64::new(0),
         }
+    }
+
+    /// Set the per-bucket no-progress ceiling (seconds) for the liveness check.
+    /// `0` disables transient abandonment. Called once at dump startup from the
+    /// configured `livenessCeilingSecs`. This is the sole bound on transient
+    /// retries (429 / network are not abandoned on a fixed count) — leaving it
+    /// `0` would let a never-draining bucket retry forever.
+    pub fn set_liveness_ceiling_secs(&self, secs: u64) {
+        self.liveness_ceiling_secs.store(secs, Ordering::Relaxed);
+    }
+
+    /// Record *progress* for a bucket: a 2xx response that wrote data. Resets the
+    /// per-bucket liveness timer so an actively-draining endpoint is never
+    /// abandoned. Must be called ONLY on a data-writing success — never on a 429
+    /// or an error (those write nothing and must not reset the timer, or a
+    /// pure-429 bucket would never trip the ceiling).
+    pub fn note_progress(&self, service: &str, api: &str) {
+        self.progress.insert(api_key(service, api), Instant::now());
+    }
+
+    /// Liveness decision for a *transient* (429 / network) retry: `true` when the
+    /// bucket must be abandoned because it has made no progress for at least
+    /// `liveness_ceiling_secs`. Seeds the baseline on first call
+    /// (`or_insert(now)`), so a bucket that has never succeeded is measured from
+    /// its first transient failure, and one that has succeeded from its last
+    /// `note_progress`. Returns `false` when the ceiling is `0` (disabled). This
+    /// is the only transient-failure bound.
+    pub fn liveness_should_abandon(&self, service: &str, api: &str) -> bool {
+        let ceiling = self.liveness_ceiling_secs.load(Ordering::Relaxed);
+        if ceiling == 0 {
+            return false;
+        }
+        let now = Instant::now();
+        let baseline = *self.progress.entry(api_key(service, api)).or_insert(now);
+        now.saturating_duration_since(baseline).as_secs() >= ceiling
     }
 
     /// Mark the effective start of the dump (called by the orchestrator just

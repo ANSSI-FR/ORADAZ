@@ -55,23 +55,57 @@ impl ResponseThread {
         urls
     }
 
-    /// Re-queue URLs throttled by a 429 response.
+    /// Re-queue URLs throttled by a 429 response, or abandon them when their
+    /// bucket has stalled.
     ///
-    /// Increments the dedicated 429 counter and accumulates the Retry-After delay
-    /// instead of bumping `retry_number`, so that transient throttling does not
-    /// consume the budget reserved for real errors.
-    pub fn prepare_rate_limit_retries(
+    /// A 429 does not abandon a URL on a fixed budget: the
+    /// 429 counters become pure metrics and the **only** transient bound is the
+    /// per-bucket liveness ceiling. A URL is abandoned (as lost data, code
+    /// `ThrottleStalled`) only when its `(service, api)` bucket has written no
+    /// data within the ceiling despite retries; otherwise it is re-queued.
+    ///
+    /// Counter note: abandonment uses `write_dump_error`, which emits a `NewError`
+    /// but NOT a `RequestCompleted`, so it is counter-neutral — the single
+    /// `RequestCompleted` from `process()` already accounts for this response's
+    /// dispatched item. Returns only the URLs to re-queue.
+    pub async fn prepare_rate_limit_retries(
         &self,
-        mut urls: Vec<Url>,
+        urls: Vec<Url>,
         retry_after: Option<u64>,
     ) -> Vec<Url> {
         if urls.is_empty() {
             return urls;
         }
-        for url in urls.iter_mut() {
+        let mut requeue: Vec<Url> = Vec::with_capacity(urls.len());
+        for mut url in urls {
+            if self
+                .context
+                .stats
+                .liveness_should_abandon(&url.service_name, &url.api)
+            {
+                self.write_dump_error(DumpError {
+                    folder: url.service_name.clone(),
+                    file: url.api.clone(),
+                    url: url.url.clone(),
+                    status: 0,
+                    code: String::from("ThrottleStalled"),
+                    message: format!(
+                        "Endpoint {:?} ({}) stayed throttled (429) with no successful data write within the liveness ceiling; abandoned so the run can terminate ({} 429 retries, {}s cumulative cooldown).",
+                        url.api,
+                        url.service_name,
+                        url.rate_limit_retry_number,
+                        url.rate_limit_total_wait_secs
+                    ),
+                    expected: false,
+                    full_response: None,
+                    post_data: None,
+                })
+                .await;
+                continue;
+            }
             // Accumulate the *effective* cooldown (the configured default when no
-            // Retry-After was provided), so a header-less 429 still progresses
-            // toward the `rateLimitMaxWaitSecs` abandon cap rather than adding 0.
+            // Retry-After was provided), so a header-less 429 still records a
+            // realistic cumulative-wait metric rather than adding 0.
             let effective = self
                 .context
                 .ratelimit_manager
@@ -92,8 +126,9 @@ impl ResponseThread {
                 url.url,
                 url.rate_limit_total_wait_secs
             );
+            requeue.push(url);
         }
-        urls
+        requeue
     }
 
     pub async fn write_dump_error(&self, dump_error: DumpError) {

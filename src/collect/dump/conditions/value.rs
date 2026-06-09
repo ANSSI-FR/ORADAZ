@@ -141,6 +141,30 @@ pub fn check_if_managed(value: &Value) -> bool {
     }
 }
 
+/// Returns `true` for an enabled member user — the population worth querying for
+/// per-user authentication methods. Excludes guests (`userType == "Guest"`,
+/// whose authentication methods live in their home tenant, so the per-user call
+/// yields little or nothing here) and disabled accounts. Defaults to `true` when
+/// a field is absent or non-conforming so we never silently drop a user we
+/// cannot classify.
+pub fn check_if_enabled_member(value: &Value) -> bool {
+    trace!(
+        "{:FL$}Checking id={}",
+        "check_if_enabled_member",
+        value_id(value)
+    );
+    let enabled = value
+        .pointer("/accountEnabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let is_guest = value
+        .pointer("/userType")
+        .and_then(|v| v.as_str())
+        .map(|t| t.eq_ignore_ascii_case("Guest"))
+        .unwrap_or(false);
+    enabled && !is_guest
+}
+
 #[cfg(test)]
 mod tests {
     use super::value_id;

@@ -31,10 +31,21 @@ pub struct Url {
     #[serde(default)]
     pub rate_limit_retry_number: usize,
     /// Total seconds accumulated from 429 Retry-After headers for this URL.
-    /// Combined with `rate_limit_retry_number`, gates the rate-limit retry
-    /// budget so a permanently throttled URL is eventually abandoned.
+    /// Combined with `rate_limit_retry_number`, a metric of cumulative throttling
+    /// for this URL. These 429 counters do not abandon the URL on a fixed budget
+    /// — the per-bucket liveness ceiling (`Stats`) is the only transient bound —
+    /// so they are observability only.
     #[serde(default)]
     pub rate_limit_total_wait_secs: u64,
+    /// Retries triggered by transport-level failures (timeout, dropped
+    /// connection, DNS) — tracked separately from both `retry_number` (real
+    /// 4xx/5xx errors) and the 429 counters, so a network blip neither consumes
+    /// the real-error budget nor is mistaken for throttling. Drives the
+    /// exponential backoff in `finalize_retry`; like the 429 counters it does
+    /// not abandon the URL on a fixed budget — the per-bucket liveness ceiling
+    /// bounds it.
+    #[serde(default)]
+    pub network_retry_number: usize,
     /// JSON body sent as a POST instead of a GET. Set for Azure Resource Graph
     /// (and any future POST-style endpoint); skipped from the serialised form
     /// when absent so GET-only URLs remain wire-compatible with prior versions.
@@ -159,10 +170,16 @@ pub struct ApiCall {
 
 /// Retry budgets applied when a URL is about to be dispatched.
 ///
-/// `retry` counts real errors (4xx prereq, 5xx) and is the main circuit breaker.
-/// `rate_limit_retry` and `rate_limit_max_wait_secs` form a separate budget for
-/// HTTP 429 throttling, which can persist for many cycles without indicating an
-/// actual error.
+/// `retry` counts real errors (4xx prereq, 5xx) and is the **only** circuit
+/// breaker enforced at dispatch (`check_retry_exhaustion`). Transient causes
+/// (429 throttling, transport failures) are not abandoned on a fixed budget —
+/// the per-bucket liveness ceiling (`Stats`) is their sole bound — so
+/// `check_retry_exhaustion` reads only `retry`. The `rate_limit_retry` /
+/// `rate_limit_max_wait_secs` fields are **not read** here; they are kept on the
+/// struct so the many `RetryLimits { … }` construction sites need not change, and
+/// remain available should a future per-bucket budget want them. The underlying
+/// config (`rateLimitRetryLimit` / `rateLimitMaxWaitSecs`) is still live elsewhere
+/// — it clamps the 429 cooldown in `RateLimitManager`.
 #[derive(Debug, Clone, Copy)]
 pub struct RetryLimits {
     pub retry: usize,

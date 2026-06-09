@@ -116,9 +116,9 @@ fn print_quality_deltas(a: &LogSource, b: &LogSource, out: &mut Vec<String>) {
             Direction::IncreaseIsBad,
         ),
         // Throttling / writer-saturation peaks from the debug-telemetry metadata
-        // fields — the A/B decision signals for slow-start, ARM-window and
-        // writer-bottleneck experiments. All `#[serde(default)]`, so older
-        // archives without them simply read 0.
+        // fields — tuning signals for slow-start, ARM-window and writer-bottleneck
+        // behaviour. All `#[serde(default)]`, so older archives without them
+        // simply read 0.
         DeltaRow::counter(
             "Backoff peak",
             metadata_u64(a, "peak_backoff_active"),

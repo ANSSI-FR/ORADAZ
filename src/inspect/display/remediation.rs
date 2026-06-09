@@ -246,13 +246,21 @@ fn unexpected_item(g: &crate::inspect::analysis::ErrorGroup) -> Item {
         String::new()
     };
     let sep = mid_sep();
-    let headline = format!(
-        "{}/{}{sep}{} {}{count_suffix}",
-        g.service,
-        g.api,
-        g.status,
-        if g.code.is_empty() { "—" } else { &g.code },
-    );
+    let code = if g.code.is_empty() { "—" } else { &g.code };
+    // `status == 0` is a lost-data (non-HTTP) terminal failure — there is no HTTP
+    // status to show, so render the code with an explicit "data lost" marker
+    // instead of a confusing literal `0`.
+    let headline = if g.status == 0 {
+        format!(
+            "{}/{}{sep}{code} (data lost){count_suffix}",
+            g.service, g.api
+        )
+    } else {
+        format!(
+            "{}/{}{sep}{} {code}{count_suffix}",
+            g.service, g.api, g.status
+        )
+    };
     let (explanation, action) = match get_hint(Some(g.status), Some(g.code.as_str())) {
         Some(h) => (h.explanation.to_string(), h.remediation.to_string()),
         None => (

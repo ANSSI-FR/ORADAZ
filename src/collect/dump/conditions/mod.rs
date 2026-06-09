@@ -261,4 +261,11 @@ impl ConditionChecker {
     pub fn check_if_managed(&self, value: &serde_json::Value) -> bool {
         value::check_if_managed(value)
     }
+
+    /// Checks if the user is an enabled member (not a guest, not disabled).
+    /// Used to skip per-user `authentication/methods` calls for guests and
+    /// disabled accounts, reducing fan-out on that rate-limited endpoint.
+    pub fn check_if_enabled_member(&self, value: &serde_json::Value) -> bool {
+        value::check_if_enabled_member(value)
+    }
 }

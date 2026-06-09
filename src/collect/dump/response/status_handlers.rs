@@ -91,6 +91,13 @@ pub async fn handle_success(
     // Handling values
     match value_handlers::handle_values(this, response, api_call).await {
         Ok(value_field) => {
+            // Liveness progress: this bucket just wrote data, so reset its
+            // no-progress timer (the only transient bound). Done in the
+            // write-success branch — not on mere 2xx receipt — so a 2xx whose
+            // write failed (the Err arm below, which re-queues) does NOT count.
+            this.context
+                .stats
+                .note_progress(&api_call.url.service_name, &api_call.url.api);
             let relationship_urls =
                 value_handlers::handle_relationships(this, api_call, value_field).await;
             new_urls.extend(relationship_urls);
@@ -111,6 +118,7 @@ pub async fn handle_too_many_requests(
 ) -> Vec<Url> {
     report_too_many_requests(this, response, api_call).await;
     this.prepare_rate_limit_retries(vec![api_call.url.clone()], response.retry_after)
+        .await
 }
 
 pub async fn handle_unexpected_status(

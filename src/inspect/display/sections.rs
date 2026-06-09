@@ -329,26 +329,47 @@ fn print_observability(metadata: Option<&Value>, out: &mut Vec<String>) {
         }
     ));
 
-    // Per-service AIMD floor + collapse count (services sorted; only those that
-    // were actually reduced are worth showing).
+    // Per-service AIMD floor + collapse/recovery dynamics (services sorted; only
+    // those that were actually reduced are worth showing). The halving count tells
+    // how often it collapsed; the increase count whether it *recovered* (ramped
+    // back up); the time-at-floor how *long* it stayed collapsed — a window pinned
+    // at the floor for minutes is invisible in the count alone.
     let mins = m.get("min_window_by_service").and_then(|v| v.as_object());
     let decs = m
         .get("window_decreases_by_service")
         .and_then(|v| v.as_object());
+    let incs = m
+        .get("window_increases_by_service")
+        .and_then(|v| v.as_object());
+    let floor_secs = m
+        .get("time_at_floor_secs_by_service")
+        .and_then(|v| v.as_object());
+    let svc_u64 = |obj: Option<&serde_json::Map<String, Value>>, svc: &str| -> u64 {
+        obj.and_then(|d| d.get(svc))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0)
+    };
     if let Some(mins) = mins {
         let mut rows: Vec<String> = Vec::new();
         for (svc, min) in mins {
-            let halvings = decs
-                .and_then(|d| d.get(svc))
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
+            let halvings = svc_u64(decs, svc);
             if halvings > 0 {
+                let increases = svc_u64(incs, svc);
+                let at_floor = svc_u64(floor_secs, svc);
+                let floor_note = if at_floor > 0 {
+                    format!(", {}s at floor", at_floor)
+                } else {
+                    String::new()
+                };
                 rows.push(format!(
-                    "  {:<27} floor {} ({} halving{})",
+                    "  {:<27} floor {} ({} halving{} / {} increase{}{})",
                     svc,
                     min.as_u64().unwrap_or(0),
                     halvings,
-                    if halvings == 1 { "" } else { "s" }
+                    if halvings == 1 { "" } else { "s" },
+                    increases,
+                    if increases == 1 { "" } else { "s" },
+                    floor_note,
                 ));
             }
         }
@@ -385,6 +406,29 @@ fn print_observability(metadata: Option<&Value>, out: &mut Vec<String>) {
         }
         if !rows.is_empty() {
             out.push(format!("  {:<27}", "AIMD ceiling contention:"));
+            rows.sort();
+            out.extend(rows);
+        }
+    }
+
+    // Per-service active-cooldown wall-clock on a single coalesced timeline. The
+    // intended cooldown (sum of Retry-After) lives per-API in stats.json; a value
+    // far below the intended sum reveals many concurrent 429s piling onto the
+    // same window (the cooldown bypassed under concurrency). Only services that
+    // actually entered a cooldown are worth showing.
+    let cooldowns = m
+        .get("cooldown_active_secs_by_service")
+        .and_then(|v| v.as_object());
+    if let Some(cooldowns) = cooldowns {
+        let mut rows: Vec<String> = Vec::new();
+        for (svc, secs) in cooldowns {
+            let secs = secs.as_u64().unwrap_or(0);
+            if secs > 0 {
+                rows.push(format!("  {:<27} {}s active", svc, secs));
+            }
+        }
+        if !rows.is_empty() {
+            out.push(format!("  {:<27}", "Cooldown active (timeline):"));
             rows.sort();
             out.extend(rows);
         }
@@ -564,6 +608,7 @@ pub const TUNING_DEFAULTS: &[(&str, u64)] = &[
     ("rate_limit_max_wait_secs", 900),
     ("stall_detection_timeout", 900),
     ("prereq_recheck_cache_secs", 90),
+    ("liveness_ceiling_secs", 900),
     ("retry_backoff_base_ms", 250),
     ("retry_backoff_cap_ms", 8000),
 ];

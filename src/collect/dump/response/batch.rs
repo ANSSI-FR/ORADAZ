@@ -92,7 +92,8 @@ pub async fn process_batch(this: &ResponseThread) -> Vec<Url> {
                                 .map(|d: &ApiCall| d.url.clone())
                                 .collect(),
                             this.response_data.response.retry_after,
-                        ),
+                        )
+                        .await,
                     );
                     debug!(
                         "{:FL$}{} sub-URL(s) re-queued on 429 envelope [ID: {}] for service {:?} (Retry-After: {}s)",

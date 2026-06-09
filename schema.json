@@ -1,6 +1,6 @@
 {
-    "oradaz_version": "3.0.06.07",
-    "schema_version": "3.0.06.07",
+    "oradaz_version": "3.0.06.09",
+    "schema_version": "3.0.06.09",
     "services": [
         {
             "name": "graph",
@@ -702,14 +702,12 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "id",
-                                    "conditions": [
-                                        "IsAssignableToRole"
-                                    ]
+                                    "value": "id"
                                 }
                             ],
                             "conditions": [
-                                "P2"
+                                "P2",
+                                "IsAssignableToRole"
                             ],
                             "expected_error_codes": [
                                 {
@@ -724,14 +722,12 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "id",
-                                    "conditions": [
-                                        "IsAssignableToRole"
-                                    ]
+                                    "value": "id"
                                 }
                             ],
                             "conditions": [
-                                "P2"
+                                "P2",
+                                "IsAssignableToRole"
                             ],
                             "expected_error_codes": [
                                 {
@@ -746,14 +742,12 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "id",
-                                    "conditions": [
-                                        "IsAssignableToRole"
-                                    ]
+                                    "value": "id"
                                 }
                             ],
                             "conditions": [
-                                "P2"
+                                "P2",
+                                "IsAssignableToRole"
                             ],
                             "expected_error_codes": [
                                 {
@@ -768,14 +762,12 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "id",
-                                    "conditions": [
-                                        "IsAssignableToRole"
-                                    ]
+                                    "value": "id"
                                 }
                             ],
                             "conditions": [
-                                "P2"
+                                "P2",
+                                "IsAssignableToRole"
                             ],
                             "expected_error_codes": [
                                 {
@@ -835,13 +827,13 @@
                         {
                             "name": "permissionGrants",
                             "uri": "groups/[1]/permissionGrants",
+                            "conditions": [
+                                "UnifiedGroup"
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "id",
-                                    "conditions": [
-                                        "UnifiedGroup"
-                                    ]
+                                    "value": "id"
                                 }
                             ]
                         },
@@ -851,14 +843,12 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "id",
-                                    "conditions": [
-                                        "IsAssignableToRole"
-                                    ]
+                                    "value": "id"
                                 }
                             ],
                             "conditions": [
-                                "P2"
+                                "P2",
+                                "IsAssignableToRole"
                             ],
                             "expected_error_codes": [
                                 {
@@ -873,14 +863,12 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "id",
-                                    "conditions": [
-                                        "IsAssignableToRole"
-                                    ]
+                                    "value": "id"
                                 }
                             ],
                             "conditions": [
-                                "P2"
+                                "P2",
+                                "IsAssignableToRole"
                             ],
                             "expected_error_codes": [
                                 {
@@ -1955,6 +1943,10 @@
                         {
                             "name": "authenticationMethods",
                             "uri": "users/[1]/authentication/methods",
+                            "conditions": [
+                                "NotP1",
+                                "IsEnabledMember"
+                            ],
                             "keys": [
                                 {
                                     "name": "[1]",

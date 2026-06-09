@@ -104,6 +104,7 @@ impl Api {
             retry_number: 0,
             rate_limit_retry_number: 0,
             rate_limit_total_wait_secs: 0,
+            network_retry_number: 0,
             post_body: None,
         })
     }

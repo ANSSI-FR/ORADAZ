@@ -116,6 +116,21 @@ pub struct Metadata {
     /// the window collapsed repeatedly ("en rafale") versus dipped once.
     #[serde(default)]
     window_decreases_by_service: BTreeMap<String, u64>,
+    /// Per-service count of effective AIMD additive increases — the **symmetric**
+    /// companion to `window_decreases_by_service`. increases ≈ decreases ⇒ the
+    /// window recovered after each collapse; decreases ≫ increases ⇒ it stayed
+    /// hammered down. Verifies the cooldown-order fix let the window re-ramp, and
+    /// feeds the per-bucket re-key (B) decision. From `collect::dump::concurrency`.
+    #[serde(default)]
+    window_increases_by_service: BTreeMap<String, u64>,
+    /// Per-service whole seconds the AIMD window spent collapsed at its floor
+    /// (`min_window`). The **duration** of collapse: a window pinned at the floor
+    /// for minutes (the run_001 pathology) is invisible in the halving *count*
+    /// alone — this is the direct measure of the B-trigger symptom ("fast
+    /// endpoints stuck at the floor during convergence"). From
+    /// `collect::dump::concurrency`.
+    #[serde(default)]
+    time_at_floor_secs_by_service: BTreeMap<String, u64>,
     /// Total uncompressed JSON bytes written across all tables (Σ `tables[].bytes`).
     /// The data-volume figure: byte throughput (`/ dump_duration_secs`) and the
     /// writer-saturation correlation (§3.8) read from here.
@@ -132,6 +147,19 @@ pub struct Metadata {
     /// to `slot_wait_events_by_service`).
     #[serde(default)]
     slot_wait_secs_by_service: BTreeMap<String, u64>,
+    /// Per-service wall-clock seconds spent under an **active** 429 cooldown,
+    /// measured on a **single coalesced timeline** (union of the cooldown
+    /// windows, not summed per-429). Compared against the per-API
+    /// *intended* cooldown sum (`stats.json` `rate_limit_wait_secs`, which adds
+    /// every 429's Retry-After), the intended/active ratio measures how many
+    /// concurrent 429s piled onto the same window — i.e. how much the cooldown
+    /// is bypassed under concurrency (the request-thread orders the cooldown
+    /// wait before the concurrency slot, so a parked worker reads a stale
+    /// `next_allowed_request`). Thousands ⇒ bypassed; the honored floor is the
+    /// in-flight concurrency at window-open (≈ the AIMD window), i.e.
+    /// single-digit, not 1. See `collect::dump::ratelimit`.
+    #[serde(default)]
+    cooldown_active_secs_by_service: BTreeMap<String, u64>,
     /// Wall-clock seconds from process start to the start of the dump phase
     /// (authentication + prerequisite checks + initial URL build). Explains the
     /// `total_duration_secs − dump_duration_secs` delta (§3.1).
@@ -218,6 +246,16 @@ impl Metadata {
                 .get_all_decreases()
                 .into_iter()
                 .collect(),
+            window_increases_by_service: dumper
+                .concurrency_controller
+                .get_all_increases()
+                .into_iter()
+                .collect(),
+            time_at_floor_secs_by_service: dumper
+                .concurrency_controller
+                .get_all_time_at_floor_secs()
+                .into_iter()
+                .collect(),
             total_bytes_written: dumper.tables_metadata.iter().map(|t| t.bytes as u64).sum(),
             slot_wait_events_by_service: dumper
                 .concurrency_controller
@@ -227,6 +265,11 @@ impl Metadata {
             slot_wait_secs_by_service: dumper
                 .concurrency_controller
                 .get_all_slot_wait_secs()
+                .into_iter()
+                .collect(),
+            cooldown_active_secs_by_service: dumper
+                .ratelimit_manager
+                .get_all_cooldown_active_secs()
                 .into_iter()
                 .collect(),
             auth_prereq_secs,
@@ -331,9 +374,12 @@ mod tests {
             peak_backoff_active: 0,
             min_window_by_service: BTreeMap::new(),
             window_decreases_by_service: BTreeMap::new(),
+            window_increases_by_service: BTreeMap::new(),
+            time_at_floor_secs_by_service: BTreeMap::new(),
             total_bytes_written: 0,
             slot_wait_events_by_service: BTreeMap::new(),
             slot_wait_secs_by_service: BTreeMap::new(),
+            cooldown_active_secs_by_service: BTreeMap::new(),
             auth_prereq_secs: 0,
             num_cpus: 0,
         };
@@ -424,9 +470,12 @@ mod tests {
             peak_backoff_active: 0,
             min_window_by_service: BTreeMap::new(),
             window_decreases_by_service: BTreeMap::new(),
+            window_increases_by_service: BTreeMap::new(),
+            time_at_floor_secs_by_service: BTreeMap::new(),
             total_bytes_written: 0,
             slot_wait_events_by_service: BTreeMap::new(),
             slot_wait_secs_by_service: BTreeMap::new(),
+            cooldown_active_secs_by_service: BTreeMap::new(),
             auth_prereq_secs: 0,
             num_cpus: 0,
         };
@@ -464,9 +513,12 @@ mod tests {
             peak_backoff_active: 0,
             min_window_by_service: BTreeMap::new(),
             window_decreases_by_service: BTreeMap::new(),
+            window_increases_by_service: BTreeMap::new(),
+            time_at_floor_secs_by_service: BTreeMap::new(),
             total_bytes_written: 0,
             slot_wait_events_by_service: BTreeMap::new(),
             slot_wait_secs_by_service: BTreeMap::new(),
+            cooldown_active_secs_by_service: BTreeMap::new(),
             auth_prereq_secs: 0,
             num_cpus: 0,
         };

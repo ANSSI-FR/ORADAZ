@@ -15,13 +15,24 @@ use std::collections::HashMap;
 const PLACEHOLDER_KEY: &str = "[PLACEHOLDER]";
 
 impl RelationshipUrl {
-    /// Returns `true` if all conditions in `key.conditions` are satisfied for `data_value`.
+    /// Returns `true` if every condition in `conditions` is satisfied for `data_value`.
     ///
-    /// Handles the specialised value-level checks (`UnifiedGroup`,
-    /// `IsAssignableToRole`, `FolderTypeWithPermissions`, `IsEmergency`) and
-    /// delegates generic named conditions to `ConditionChecker::check`.
-    /// Returns `false` early on the first failing condition so the caller can
-    /// skip the relationship entirely.
+    /// Each named condition is dispatched in the `match` below: specialised
+    /// value-level checks are handled inline, and any other name is delegated to
+    /// the tenant-level `ConditionChecker::check`. Returns `false` early on the
+    /// first failing condition so the caller can skip the relationship entirely.
+    ///
+    /// `data_value` is whatever the caller passes: `get_url` passes the **full
+    /// parent object** for a relationship-level condition (`self.conditions`) but
+    /// only `data.get(key.value)` for a key-level one (`key.conditions`). This
+    /// matters per check: *object-reading* checks (those that `pointer("/field")`
+    /// into the value — `UnifiedGroup`, `IsAssignableToRole`, `HasLicense`,
+    /// `IsFederated`, `IsManaged`, `IsEnabledMember`) only work at the
+    /// relationship level; *string/sub-object* readers (`SupportsResourcePIM` on
+    /// an ARM id, `IsEmergency` / `FolderTypeWithPermissions`) are meant for
+    /// key-level use. A key-level object-reading check on a `value:"id"` key would
+    /// receive the id string and always return `false` (guarded by
+    /// `tests/utils_schema.rs::test_object_reading_conditions_never_at_key_level`).
     async fn key_passes_conditions(
         &self,
         condition_checker: &ConditionChecker,
@@ -49,6 +60,11 @@ impl RelationshipUrl {
                 }
                 "IsEmergency" => {
                     if !condition_checker.check_if_emergency_account(data_value) {
+                        return false;
+                    }
+                }
+                "IsEnabledMember" => {
+                    if !condition_checker.check_if_enabled_member(data_value) {
                         return false;
                     }
                 }

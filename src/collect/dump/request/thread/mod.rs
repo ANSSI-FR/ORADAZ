@@ -55,14 +55,18 @@ impl RequestsThread {
             .unwrap_or_default()
     }
 
-    async fn finalize_retry(&self, mut urls: Vec<Url>) {
-        let prev_retry = urls.first().map(|u| u.retry_number).unwrap_or(0);
-        let backoff_ms = compute_backoff_ms(prev_retry);
+    async fn finalize_retry(&self, urls: Vec<Url>) {
+        // Backoff grows with the per-URL *network* retry count. A transport
+        // failure does not touch `retry_number` (the real-error 4xx/5xx budget)
+        // — it has its own `network_retry_number`, and is bounded only by the
+        // per-bucket liveness ceiling, never a fixed count.
+        let prev_net_retry = urls.first().map(|u| u.network_retry_number).unwrap_or(0);
+        let backoff_ms = compute_backoff_ms(prev_net_retry);
         let _backoff_guard = BackoffGuard::enter(); // dec BACKOFF_ACTIVE on drop
         debug!(
             "{:FL$}Network retry attempt #{} — backoff {}ms for request [ID: {}] at url {:?}",
             "RequestsThread",
-            prev_retry + 1,
+            prev_net_retry + 1,
             backoff_ms,
             self.api_call.id,
             self.api_call.url.url
@@ -77,17 +81,50 @@ impl RequestsThread {
         self.context
             .stats
             .record_http_call_failure(&self.api_call.url.service_name);
-        for url in urls.iter_mut() {
-            url.retry_number += 1;
+        let mut requeue: Vec<Url> = Vec::with_capacity(urls.len());
+        for mut url in urls {
+            // Abandon (lost data, NetworkStalled) iff the bucket has written no
+            // data within the liveness ceiling despite retries; else re-queue.
+            if self
+                .context
+                .stats
+                .liveness_should_abandon(&url.service_name, &url.api)
+            {
+                // Counter-NEUTRAL write (ResponseMsg::LostData): the single
+                // RequestCompleted below already accounts for this ApiCall's
+                // dispatched item, so an abandoned sub-URL must not emit its own
+                // completion (that would double-decrement `current_counter`).
+                self.send_to_response(ResponseMsg::LostData(
+                    Box::new(DumpError {
+                        folder: url.service_name.clone(),
+                        file: url.api.clone(),
+                        url: url.url.clone(),
+                        status: 0,
+                        code: String::from("NetworkStalled"),
+                        message: format!(
+                            "Endpoint {:?} ({}) kept failing at the transport layer with no successful data write within the liveness ceiling; abandoned so the run can terminate ({} network retries).",
+                            url.api, url.service_name, url.network_retry_number
+                        ),
+                        expected: false,
+                        full_response: None,
+                        post_data: None,
+                    }),
+                    self.api_call.id,
+                ))
+                .await;
+                continue;
+            }
+            url.network_retry_number += 1;
             self.context
                 .stats
                 .record_network_error(&url.service_name, &url.api);
             self.context.stats.record_retry(&url.service_name, &url.api);
+            requeue.push(url);
         }
         self.send_to_update(CoordinatorEvent::RequestCompleted {
             service: Arc::from(self.api_call.url.service_name.as_str()),
             id: self.api_call.id,
-            new_urls: urls,
+            new_urls: requeue,
             count: 1,
         })
         .await;
@@ -110,17 +147,40 @@ impl RequestsThread {
     /// Processes the API call.
     ///
     /// The flow is:
-    /// 1. Wait for rate limit.
-    /// 2. Acquire concurrency slot (via `SlotGuard`).
+    /// 1. Acquire concurrency slot (via `SlotGuard`).
+    /// 2. Wait out any rate-limit cooldown **while holding the slot**.
     /// 3. Acquire and validate the authentication token.
     /// 4. Execute the request (single or batch).
     /// 5. Update concurrency metrics based on the result.
     /// 6. Dispatch results to `ResponseModule` or the Coordinator.
+    ///
+    /// Order matters: the slot is acquired **before** the cooldown wait. If the
+    /// cooldown were waited first, a worker that slept once would fire stale the
+    /// moment its slot was finally granted — by then a newer 429 may have
+    /// re-armed the cooldown, so requests would go out mid-cooldown at full slot
+    /// rate (the 429-storm bypass). Holding the slot first bounds the workers
+    /// waiting out a cooldown to `window` per service, and `wait_if_needed`
+    /// re-reads the freshest `next_allowed_request` before sending — together
+    /// the actual per-cooldown pacing.
     pub async fn process(self) {
         trace!(
             "{:FL$}Processing request [ID: {}] for url {:?} (batch: {})",
             "RequestsThread", self.api_call.id, self.api_call.url.url, self.api_call.is_batch
         );
+        self.context
+            .concurrency_controller
+            .acquire_slot(&self.api_call.url.service_name)
+            .await;
+
+        // Use SlotGuard to ensure the concurrency slot is released regardless of
+        // how the function exits — including if this task is dropped mid-cooldown.
+        let _guard = SlotGuard {
+            controller: Arc::clone(&self.context.concurrency_controller),
+            service: self.api_call.url.service_name.clone(),
+        };
+
+        // Wait out any 429 cooldown while holding the slot (see the method's
+        // doc and the order rationale above).
         self.context
             .ratelimit_manager
             .wait_if_needed(&self.api_call.url.service_name)
@@ -129,17 +189,6 @@ impl RequestsThread {
             "{:FL$}Rate limit wait finished for request [ID: {}]",
             "RequestsThread", self.api_call.id
         );
-
-        self.context
-            .concurrency_controller
-            .acquire_slot(&self.api_call.url.service_name)
-            .await;
-
-        // Use SlotGuard to ensure the concurrency slot is released regardless of how the function exits.
-        let _guard = SlotGuard {
-            controller: Arc::clone(&self.context.concurrency_controller),
-            service: self.api_call.url.service_name.clone(),
-        };
         // Retrieve the token corresponding to the URL to process
         trace!(
             "{:FL$}Acquiring token for request [ID: {}]",

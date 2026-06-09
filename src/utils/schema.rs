@@ -39,7 +39,7 @@ use crate::collect::dump::request::executor::parse_retry_after;
 use crate::utils::client::OradazClient;
 use crate::utils::config::Config;
 use crate::utils::errors::Error;
-use crate::utils::url::{Api, Parameter, Url};
+use crate::utils::url::{Api, Parameter, Relationship, Url};
 use crate::utils::writer::WriterHandle;
 use crate::{FL, SCHEMA_URL, VERSION};
 
@@ -87,6 +87,73 @@ pub struct Schema {
     pub schema_hash: String,
     pub schema_version: String,
     pub services: Vec<Service>,
+}
+
+/// Validates that every `success_http_code` declared in any of the schema's
+/// behavior maps is a valid `u16`. Logs a `warn!` (naming the `service/api`) for
+/// each malformed value and returns the offending labels.
+///
+/// This surfaces the schema defect **once at load time** instead of as a
+/// per-request warning repeated for every URL of the affected API during
+/// collection (the request path falls back to 200 — see
+/// `url::api_call::success_code_and_value_pointer`). It deliberately does **not**
+/// reject the schema: collection continues with the 200 fallback, preserving the
+/// prior behavior.
+///
+/// Each declaration site is checked independently (it mirrors the runtime merge,
+/// where a service `default_api_behavior` is overlaid by an API's / relationship's
+/// own `api_behavior`), so a malformed value is always caught at its source. A
+/// malformed service default that happens to be overridden everywhere is still
+/// reported — it is a genuine schema defect, and detecting "overridden in every
+/// API" would mean replaying the full merge for no real benefit.
+pub fn validate_success_http_codes(services: &[Service]) -> Vec<String> {
+    // Block-local items see each other regardless of order, so `check_relationships`
+    // can call `check`.
+    fn check(behavior: &HashMap<String, String>, label: &str, malformed: &mut Vec<String>) {
+        if let Some(value) = behavior.get("success_http_code")
+            && value.parse::<u16>().is_err()
+        {
+            warn!(
+                "{:FL$}Schema entry {} declares a non-numeric success_http_code {:?}; the request path will fall back to 200",
+                "Schema", label, value
+            );
+            malformed.push(label.to_string());
+        }
+    }
+    fn check_relationships(
+        relationships: &[Relationship],
+        prefix: &str,
+        malformed: &mut Vec<String>,
+    ) {
+        for relationship in relationships {
+            let label = format!("{prefix}/{}", relationship.name);
+            if let Some(behavior) = &relationship.api_behavior {
+                check(behavior, &label, malformed);
+            }
+            if let Some(nested) = &relationship.relationships {
+                check_relationships(nested, &label, malformed);
+            }
+        }
+    }
+
+    let mut malformed: Vec<String> = Vec::new();
+    for service in services {
+        check(
+            &service.default_api_behavior,
+            &format!("{}/<default>", service.name),
+            &mut malformed,
+        );
+        for api in &service.apis {
+            let label = format!("{}/{}", service.name, api.name);
+            if let Some(behavior) = &api.api_behavior {
+                check(behavior, &label, &mut malformed);
+            }
+            if let Some(relationships) = &api.relationships {
+                check_relationships(relationships, &label, &mut malformed);
+            }
+        }
+    }
+    malformed
 }
 
 impl Schema {
@@ -249,6 +316,17 @@ impl Schema {
                             e.services.len(),
                             total_apis
                         );
+                        // Surface any malformed `success_http_code` up front (once)
+                        // rather than as a repeated per-request warning during
+                        // collection. Non-fatal: the request path falls back to 200.
+                        let malformed = validate_success_http_codes(&e.services);
+                        if !malformed.is_empty() {
+                            warn!(
+                                "{:FL$}{} schema entr(y/ies) declare a non-numeric success_http_code; each will use the 200 fallback during collection",
+                                "Schema",
+                                malformed.len()
+                            );
+                        }
                         Ok(Schema {
                             oradaz_version: e.oradaz_version,
                             schema_hash,

@@ -12,6 +12,13 @@ pub struct ResponseErrorThread {
     context: ResponseContext,
     dump_error: DumpError,
     request_id: u32,
+    /// Number of dispatched items this error accounts for, emitted as the
+    /// `RequestCompleted` count at the end. `1` for a dispatch-side
+    /// `UrlRetryLimit` (the `ApiCallError` item was counted into
+    /// `current_counter`); `0` for a counter-neutral `LostData` write whose item
+    /// is already accounted for elsewhere (e.g. the batch's own
+    /// `RequestCompleted`). When `0`, no completion event is sent.
+    completion_count: usize,
 }
 
 impl ResponseErrorThread {
@@ -20,12 +27,14 @@ impl ResponseErrorThread {
         context: ResponseContext,
         dump_error: DumpError,
         request_id: u32,
+        completion_count: usize,
     ) -> Self {
         ResponseErrorThread {
             sender,
             context,
             dump_error,
             request_id,
+            completion_count,
         }
     }
 
@@ -116,12 +125,17 @@ impl ResponseErrorThread {
             ProcessError::DumpError(1),
         ))
         .await;
-        self.send_to_update(CoordinatorEvent::RequestCompleted {
-            service: self.dump_error.folder.clone().into(),
-            id: self.request_id,
-            new_urls: vec![],
-            count: 1,
-        })
-        .await;
+        // Counter-neutral writes (`completion_count == 0`, the `LostData` path)
+        // emit no completion: their dispatched item is accounted for elsewhere,
+        // so a `RequestCompleted` here would under-run `current_counter`.
+        if self.completion_count > 0 {
+            self.send_to_update(CoordinatorEvent::RequestCompleted {
+                service: self.dump_error.folder.clone().into(),
+                id: self.request_id,
+                new_urls: vec![],
+                count: self.completion_count,
+            })
+            .await;
+        }
     }
 }

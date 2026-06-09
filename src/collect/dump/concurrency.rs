@@ -51,6 +51,31 @@ struct ServiceWindow {
     /// service. With `min_window_reached` it tells a one-off dip from a window
     /// hammered to the floor in repeated bursts. Observability only.
     decrease_count: AtomicU64,
+    /// Number of additive AIMD increases (window actually ramped up by 1) for
+    /// this service. The **symmetric** companion to `decrease_count`: together
+    /// they say whether the window *recovered* after a collapse (increases ≈
+    /// decreases → healthy ramp) or stayed hammered down (decreases ≫ increases →
+    /// stuck). The signal that verifies the cooldown-order fix actually let the
+    /// window re-ramp, and a key input to the per-bucket re-key (B) decision.
+    /// Observability only.
+    increase_count: AtomicU64,
+    /// Millis since `created_at` at which the window most recently *entered* its
+    /// floor (`min_window`) via a 429 halving; `0` when not currently at the
+    /// collapsed floor. Used to accumulate `time_at_floor_nanos` across
+    /// floor-enter/leave transitions. A slow-start window that merely *starts* at
+    /// `min` is NOT counted (only a real collapse sets this), mirroring
+    /// `min_window_reached`'s init.
+    floor_since_ms: AtomicU64,
+    /// Total nanoseconds the window spent collapsed at its floor (`min_window`).
+    /// **Duration** companion to `decrease_count` (a count) and `min_window_reached`
+    /// (a depth): a window that collapses once and sits at the floor for 18 min
+    /// (the run_001 pathology) looks identical to a brief dip in the count alone —
+    /// this distinguishes them. The direct measure of the B-trigger symptom
+    /// ("fast endpoints stuck at the floor during convergence"). Observability
+    /// only, and **best-effort**: it may slightly *under*-count (never over-count)
+    /// under a cross-thread enter/leave reorder — see the accumulation site in
+    /// `report_success`.
+    time_at_floor_nanos: AtomicU64,
     /// Number of times a request worker had to park in `acquire_slot` **while the
     /// window was at its ceiling** (`current >= max_window`). Gated on the ceiling
     /// on purpose: a raw "parked because full" fires during healthy saturation
@@ -89,6 +114,9 @@ impl ServiceWindow {
             last_decrease_ms: AtomicU64::new(0),
             min_window_reached: AtomicUsize::new(max_window),
             decrease_count: AtomicU64::new(0),
+            increase_count: AtomicU64::new(0),
+            floor_since_ms: AtomicU64::new(0),
+            time_at_floor_nanos: AtomicU64::new(0),
             slot_wait_events: AtomicU64::new(0),
             slot_wait_nanos: AtomicU64::new(0),
         }
@@ -319,6 +347,36 @@ impl ConcurrencyController {
                     ) {
                         Ok(_) => {
                             window.success_count.store(0, Ordering::Relaxed);
+                            // Observability: an effective additive increase (the
+                            // symmetric companion to `decrease_count`).
+                            window.increase_count.fetch_add(1, Ordering::Relaxed);
+                            // If this increment left the collapsed floor, close the
+                            // open floor segment. `swap(0)` reads-and-clears
+                            // atomically, so a concurrent leaver gets 0 and skips —
+                            // never a double-count. `time_at_floor` is **best-effort
+                            // observability**: `floor_since_ms` is a separate atomic
+                            // from `current_window` with no fence between the
+                            // window-CAS and the floor-flag update, so cross-thread
+                            // reordering of a concurrent enter (`report_429`) and
+                            // this leave can drop a floor episode's start — either
+                            // here (read `0` before the enter's store lands) or at
+                            // the enter (its `compare_exchange(0,…)` fails because
+                            // this leave's `swap` has not cleared the prior value
+                            // yet). Both only ever **under**-count, by a span bounded
+                            // to that few-instruction reorder window; the metric
+                            // never over-counts, panics, or corrupts. Making it exact
+                            // would need a per-window lock on the hot AIMD path —
+                            // not worth it for a diagnostic counter.
+                            if current == window.min_window {
+                                let since = window.floor_since_ms.swap(0, Ordering::AcqRel);
+                                if since != 0 {
+                                    let now_ms = window.created_at.elapsed().as_millis() as u64;
+                                    window.time_at_floor_nanos.fetch_add(
+                                        now_ms.saturating_sub(since).saturating_mul(1_000_000),
+                                        Ordering::Relaxed,
+                                    );
+                                }
+                            }
                             debug!(
                                 "{:FL$}AIMD window increased to {} for service {:?}",
                                 "ConcurrencyController",
@@ -393,6 +451,21 @@ impl ConcurrencyController {
                                 .min_window_reached
                                 .fetch_min(new_window, Ordering::Relaxed);
                             window.decrease_count.fetch_add(1, Ordering::Relaxed);
+                            // If this halving reached the collapsed floor, open a
+                            // floor segment (for `time_at_floor_nanos`). `CAS(0→…)`
+                            // so a window already at the floor — which cannot reach
+                            // this `new_window < current` branch anyway — never
+                            // restarts the clock. `.max(1)` keeps the sentinel
+                            // non-zero. Leaving the floor is handled in
+                            // `report_success`.
+                            if new_window == window.min_window {
+                                let _ = window.floor_since_ms.compare_exchange(
+                                    0,
+                                    now_ms.max(1),
+                                    Ordering::AcqRel,
+                                    Ordering::Relaxed,
+                                );
+                            }
                             debug!(
                                 "{:FL$}AIMD window halved from {} to {} for service {:?} (429)",
                                 "ConcurrencyController", current, new_window, service
@@ -464,6 +537,46 @@ impl ConcurrencyController {
                     r.key().clone(),
                     r.value().decrease_count.load(Ordering::Relaxed),
                 )
+            })
+            .collect()
+    }
+
+    /// Returns the number of effective AIMD additive increases per service (the
+    /// symmetric companion to `get_all_decreases`): increases ≈ decreases means
+    /// the window recovered after each collapse; decreases ≫ increases means it
+    /// stayed hammered down. Observability for the cooldown-fix verification and
+    /// the per-bucket re-key (B) decision.
+    pub fn get_all_increases(&self) -> HashMap<String, u64> {
+        self.service_windows
+            .iter()
+            .map(|r| {
+                (
+                    r.key().clone(),
+                    r.value().increase_count.load(Ordering::Relaxed),
+                )
+            })
+            .collect()
+    }
+
+    /// Returns the whole seconds each service's window spent collapsed at its
+    /// floor (`min_window`). The **duration** of collapse — distinguishes a brief
+    /// dip from a window pinned at the floor for many minutes (the run_001
+    /// pathology). Closes any segment still open at end of dump. Call after the
+    /// pipeline has drained (single-threaded, race-free).
+    pub fn get_all_time_at_floor_secs(&self) -> HashMap<String, u64> {
+        self.service_windows
+            .iter()
+            .map(|r| {
+                let w = r.value();
+                let mut nanos = w.time_at_floor_nanos.load(Ordering::Relaxed);
+                // Window still at the floor when the run ended: add the open span.
+                let since = w.floor_since_ms.load(Ordering::Relaxed);
+                if since != 0 {
+                    let now_ms = w.created_at.elapsed().as_millis() as u64;
+                    nanos = nanos
+                        .saturating_add(now_ms.saturating_sub(since).saturating_mul(1_000_000));
+                }
+                (r.key().clone(), nanos / 1_000_000_000)
             })
             .collect()
     }

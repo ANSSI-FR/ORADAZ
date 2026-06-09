@@ -275,8 +275,8 @@ mod tests {
 
     /// In no-color mode the stdout glyph is the *only* level indicator (the
     /// textual `ERROR`/`WARN` appears solely in the file log), so an error line
-    /// must not render identically to a warning. Guards `level_glyph` against a
-    /// regression to `icon(Icon::Err)`, which equals `icon(Icon::Warn)` (`!!`) in
+    /// must not render identically to a warning. Guards that `level_glyph` does
+    /// not use `icon(Icon::Err)`, which equals `icon(Icon::Warn)` (`!!`) in
     /// no-color mode.
     #[test]
     fn level_glyph_distinguishes_error_from_warn_in_no_color() {

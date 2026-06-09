@@ -438,9 +438,9 @@ mod tests {
     #[test]
     fn parse_tail_captures_bare_upstream_code_without_http_status() {
         // A dump event with no HTTP status (e.g. MissingBatchData) writes the code
-        // as a bare segment "svc<SEP>api | CODE | message". Regression: parse_tail
-        // previously ignored that segment, leaving upstream_code = None and causing
-        // find_dump_error_in_index to mis-attribute the entry.
+        // as a bare segment "svc<SEP>api | CODE | message". parse_tail must capture
+        // that segment as upstream_code; otherwise it stays None and
+        // find_dump_error_in_index mis-attributes the entry.
         let tail = format!("graph{SERVICE_API_SEPARATOR}users | MissingBatchData | some message");
         let e = parse_tail(
             "2026-06-06 18:40:36".to_string(),

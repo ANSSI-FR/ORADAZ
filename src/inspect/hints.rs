@@ -58,6 +58,28 @@ static HINTS: &[(u16, &str, &str, &str)] = &[
         "The Microsoft service is temporarily unavailable.",
         "Retry later and check the Microsoft 365 service health dashboard.",
     ),
+    // Lost-data causes (status `0` = no HTTP response; the URL was abandoned).
+    // Keyed on the synthetic status `0` that `DumpError` carries for these.
+    // The per-bucket liveness ceiling produces the first two; they are
+    // rare and high-signal (an endpoint genuinely stuck past `livenessCeilingSecs`).
+    (
+        0,
+        "ThrottleStalled",
+        "The endpoint stayed throttled (HTTP 429) with no successful data write within the liveness ceiling, so it was abandoned to keep the run terminating. Its data is incomplete.",
+        "This endpoint is rate-limited below the configured pace. Lower `concurrencyMaxWindow` (or add a `serviceOverrides` entry) for its service, and/or raise `livenessCeilingSecs`, then re-run.",
+    ),
+    (
+        0,
+        "NetworkStalled",
+        "The endpoint kept failing at the transport layer (timeout / dropped connection / DNS) with no successful data write within the liveness ceiling, so it was abandoned. Its data is incomplete.",
+        "Check network connectivity and any proxy configuration to the Microsoft endpoint, then re-run.",
+    ),
+    (
+        0,
+        "UrlRetryLimit",
+        "The endpoint returned real errors (4xx/5xx) on every attempt until its `urlRetryLimit` budget was exhausted. Its data is incomplete.",
+        "Open `oradaz inspect logs --service <service>` to see the failing status (permission, deleted resource, or persistent 5xx), fix the cause, then re-run.",
+    ),
 ];
 
 /// Returns a remediation hint for a known Microsoft API error, if one exists.
@@ -101,6 +123,25 @@ mod tests {
     #[test]
     fn test_hint_unknown_status() {
         assert!(get_hint(Some(418), Some("ImATeapot")).is_none());
+    }
+
+    /// Lost-data causes are keyed on the synthetic status `0` carried by their
+    /// `DumpError`s, with a code-specific remediation (throttle / network /
+    /// permanent split).
+    #[test]
+    fn test_hint_lost_data_causes() {
+        let throttle = get_hint(Some(0), Some("ThrottleStalled")).expect("ThrottleStalled hint");
+        assert!(throttle.explanation.contains("throttled"));
+        assert!(throttle.remediation.contains("concurrencyMaxWindow"));
+
+        let network = get_hint(Some(0), Some("NetworkStalled")).expect("NetworkStalled hint");
+        assert!(network.explanation.contains("transport"));
+
+        let permanent = get_hint(Some(0), Some("UrlRetryLimit")).expect("UrlRetryLimit hint");
+        assert!(permanent.explanation.contains("4xx/5xx"));
+
+        // An unknown lost-data code still has no catalogued hint.
+        assert!(get_hint(Some(0), Some("SomethingElse")).is_none());
     }
 
     #[test]

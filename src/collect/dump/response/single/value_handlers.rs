@@ -81,6 +81,7 @@ pub fn build_arg_next_url(response: &Response, api_call: &ApiCall) -> Option<Url
         retry_number: 0,
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
+        network_retry_number: 0,
         post_body: Some(new_body),
     })
 }
@@ -131,6 +132,7 @@ pub async fn handle_next_link(
                     retry_number: 0,
                     rate_limit_retry_number: 0,
                     rate_limit_total_wait_secs: 0,
+                    network_retry_number: 0,
                     post_body: None,
                 });
             }
@@ -390,6 +392,7 @@ pub async fn handle_relationships(
                             retry_number: 0,
                             rate_limit_retry_number: 0,
                             rate_limit_total_wait_secs: 0,
+                            network_retry_number: 0,
                             post_body: None,
                         };
                         new_urls.push(new_url);
@@ -469,6 +472,7 @@ mod tests {
                 retry_number: 0,
                 rate_limit_retry_number: 0,
                 rate_limit_total_wait_secs: 0,
+                network_retry_number: 0,
                 post_body: None,
             },
             success_code: 200,

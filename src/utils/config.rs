@@ -174,6 +174,16 @@ pub struct Config {
     /// Default: 90 s. Set to 0 to disable the cache and re-check on every 4xx.
     #[serde(rename = "prereqRecheckCacheSecs")]
     pub prereq_recheck_cache_secs: Option<u64>,
+    /// Per-bucket liveness ceiling (seconds, default 900 = 15 min). This is the
+    /// sole bound on transient (429 / network) retries, which are not abandoned
+    /// on a fixed count: a `(service, api)` bucket that has written no
+    /// data for this long despite retrying is abandoned (lost data,
+    /// `ThrottleStalled` / `NetworkStalled`) so the run always terminates. A
+    /// draining bucket keeps resetting it and is never dropped. Keep
+    /// **≥ `rateLimitMaxWaitSecs`** so a single honoured cooldown can't trip it.
+    /// Must be > 0 (0 would re-introduce unbounded transient retries).
+    #[serde(rename = "livenessCeilingSecs")]
+    pub liveness_ceiling_secs: Option<u64>,
     /// Per-service overrides for throughput-sensitive parameters. See
     /// `ServiceOverride` for the list of fields. Services not listed here use
     /// the global values.
@@ -225,6 +235,7 @@ pub struct StoredConfig {
     pub retry_backoff_base_ms: Option<u64>,
     pub retry_backoff_cap_ms: Option<u64>,
     pub prereq_recheck_cache_secs: Option<u64>,
+    pub liveness_ceiling_secs: Option<u64>,
     pub service_overrides: Option<ServiceOverrides>,
     pub logs_days_filter: Option<u32>,
     pub shuffle_urls: Option<bool>,
@@ -410,6 +421,14 @@ impl Config {
 
     pub fn prereq_recheck_cache_secs(config: &Config) -> u64 {
         config.prereq_recheck_cache_secs.unwrap_or(90)
+    }
+
+    /// Per-bucket liveness ceiling (seconds). The sole bound on transient (429 /
+    /// network) retries, which are not abandoned on a fixed count — a bucket with
+    /// no data written for this long is abandoned so the run terminates. Default
+    /// 900 (= 15 min).
+    pub fn liveness_ceiling_secs(config: &Config) -> u64 {
+        config.liveness_ceiling_secs.unwrap_or(900)
     }
 
     pub fn logs_days_filter(config: &Config) -> u32 {
@@ -667,6 +686,14 @@ impl Config {
                 "stallDetectionTimeout must be greater than 0".to_string(),
             ));
         }
+        // The liveness ceiling is the ONLY bound on transient (429 / network)
+        // retries; `0` would let a never-draining bucket retry forever and the
+        // run never terminate.
+        if self.liveness_ceiling_secs == Some(0) {
+            return Err(Error::InvalidConfigValue(
+                "livenessCeilingSecs must be greater than 0".to_string(),
+            ));
+        }
         Ok(())
     }
 
@@ -708,6 +735,7 @@ impl Config {
             retry_backoff_base_ms: self.retry_backoff_base_ms,
             retry_backoff_cap_ms: self.retry_backoff_cap_ms,
             prereq_recheck_cache_secs: self.prereq_recheck_cache_secs,
+            liveness_ceiling_secs: self.liveness_ceiling_secs,
             service_overrides: self.service_overrides.clone(),
             logs_days_filter: self.logs_days_filter,
             shuffle_urls: self.shuffle_urls,
