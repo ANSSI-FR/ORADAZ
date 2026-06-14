@@ -6,6 +6,7 @@ use crate::utils::writer::actor::WriterHandle;
 use log::{debug, error, warn};
 use serde::{Deserialize, Serialize};
 use std::fs::{self};
+use xml::reader::{EventReader, XmlEvent};
 
 /// Configuration for a single service, specifying if it is enabled for the dump.
 #[derive(Clone, Deserialize, Serialize)]
@@ -89,6 +90,9 @@ pub struct ServiceOverrides {
 /// Application configuration parsed from the XML config file.
 #[derive(Clone, Deserialize)]
 pub struct Config {
+    /// Tenant GUID or domain. Optional in the XML: the CLI `--tenant` flag, then
+    /// an interactive prompt, supply it when the element is absent or empty.
+    #[serde(default)]
     pub tenant: String,
     #[serde(rename = "appId", default)]
     pub app_id: String,
@@ -98,6 +102,9 @@ pub struct Config {
     pub output_files: Option<bool>,
     #[serde(rename = "outputMLA")]
     pub output_mla: Option<bool>,
+    /// Output directory for the archive/folder. The CLI `--output` flag takes
+    /// precedence; when neither is set the current directory is used.
+    pub output: Option<String>,
     #[serde(rename = "noCheck")]
     pub no_check: Option<bool>,
     #[serde(rename = "useDeviceCode")]
@@ -145,15 +152,17 @@ pub struct Config {
     /// via `rate_limit_retry_limit` and do not consume this budget.
     #[serde(rename = "urlRetryLimit")]
     pub url_retry_limit: Option<usize>,
-    /// Maximum number of 429 (Too Many Requests) retries per URL before marking it as
-    /// rate-limit-exhausted (default: 50). Throttling is a transient condition that
-    /// can persist for many cycles, so this budget is intentionally much higher than
-    /// `url_retry_limit`. Capped also by `rate_limit_max_wait_secs`.
+    /// Per-URL retry budget for 429 (Too Many Requests) responses (default: 50),
+    /// tracked separately from `url_retry_limit` because throttling is transient.
+    /// This counter drives metrics and backoff only — it does not abandon the URL;
+    /// the sole bound on throttling is `liveness_ceiling_secs`. Must be `> 0`.
     #[serde(rename = "rateLimitRetryLimit")]
     pub rate_limit_retry_limit: Option<usize>,
-    /// Maximum total wait time (seconds) per URL accumulated from 429 Retry-After
-    /// headers, before marking the URL as rate-limit-exhausted (default: 900 = 15 min).
-    /// Acts as a temporal safety net against indefinite throttling loops.
+    /// Clamps the duration of a single 429 cooldown — a received `Retry-After` is
+    /// capped to this value (default: 900 = 15 min) — and accumulates per URL as a
+    /// throttling metric. It does not abandon the URL (that bound is
+    /// `liveness_ceiling_secs`); keep it `<= liveness_ceiling_secs` and
+    /// `<= stall_detection_timeout`.
     #[serde(rename = "rateLimitMaxWaitSecs")]
     pub rate_limit_max_wait_secs: Option<u64>,
     /// Time in seconds before the Coordinator marks the pipeline as stalled (default: 900).
@@ -180,7 +189,9 @@ pub struct Config {
     /// data for this long despite retrying is abandoned (lost data,
     /// `ThrottleStalled` / `NetworkStalled`) so the run always terminates. A
     /// draining bucket keeps resetting it and is never dropped. Keep
-    /// **≥ `rateLimitMaxWaitSecs`** so a single honoured cooldown can't trip it.
+    /// **≥ `rateLimitMaxWaitSecs`** (strictly greater is safest: when the two are
+    /// equal, a single max-clamped cooldown lasting the whole window can trip the
+    /// ceiling on the next 429). `validate()` warns when it falls below.
     /// Must be > 0 (0 would re-introduce unbounded transient retries).
     #[serde(rename = "livenessCeilingSecs")]
     pub liveness_ceiling_secs: Option<u64>,
@@ -195,7 +206,7 @@ pub struct Config {
     #[serde(rename = "logsDaysFilter")]
     pub logs_days_filter: Option<u32>,
     /// If true, URLs are shuffled before being dispatched (default: true).
-    /// Set to false via CLI `--no-shuffle` or in the XML configuration.
+    /// Set to false in the XML configuration to preserve deterministic order.
     #[serde(rename = "shuffleUrls")]
     pub shuffle_urls: Option<bool>,
     /// If true, each service's AIMD concurrency window starts at `min_window` and
@@ -203,6 +214,33 @@ pub struct Config {
     /// (default: false). Gentler opening burst on strict throttlers (e.g. ARM).
     #[serde(rename = "concurrencySlowStart")]
     pub concurrency_slow_start: Option<bool>,
+    /// Maximum number of response-processing workers running concurrently
+    /// (default: 0 = no count bound; a positive value caps it). Each worker
+    /// holds a parsed JSON page in memory until it is written. Unbounded, the
+    /// worker count follows the in-flight request concurrency (itself bounded by
+    /// the AIMD window); set `responseMemoryBudgetBytes` to bound peak RSS by
+    /// bytes, or this to a positive count to bound it by worker count.
+    #[serde(rename = "responseWorkersMax")]
+    pub response_workers_max: Option<usize>,
+    /// Maximum bytes of in-flight parsed response pages admitted concurrently
+    /// (default 0 = disabled). Independent of `responseWorkersMax`: a response
+    /// worker acquires permits sized to its page before processing, so a few
+    /// very large pages (e.g. Azure Resource Graph) serialise while many small
+    /// pages still run at full width — bounding peak RSS without slowing the
+    /// common case. `0` disables the byte bound (worker-count bound only).
+    #[serde(rename = "responseMemoryBudgetBytes")]
+    pub response_memory_budget_bytes: Option<usize>,
+    /// Expected-error breaker: after this many *consecutive* declared-expected
+    /// errors **flagged `breaker_eligible` in the schema** on one API that has
+    /// never returned data, its remaining URLs are skipped (default: 25; 0
+    /// disables). The schema flag marks a tenant-wide all-or-nothing failure
+    /// (a feature/permission disabled for the whole tenant returns the same
+    /// declared error for every object — e.g. the 403 on
+    /// `users/{id}/permissionGrants`), so the remaining round-trips are wasted.
+    /// Unflagged expected errors (per-object 404/400) never trip the breaker.
+    /// Skipped URLs are reported separately and are not data losses.
+    #[serde(rename = "expectedErrorBreakerThreshold")]
+    pub expected_error_breaker_threshold: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -240,6 +278,9 @@ pub struct StoredConfig {
     pub logs_days_filter: Option<u32>,
     pub shuffle_urls: Option<bool>,
     pub concurrency_slow_start: Option<bool>,
+    pub response_workers_max: Option<usize>,
+    pub response_memory_budget_bytes: Option<usize>,
+    pub expected_error_breaker_threshold: Option<usize>,
 }
 
 impl Config {
@@ -350,9 +391,12 @@ impl Config {
     /// Per-service variant of [`Self::http_timeout_seconds`].
     ///
     /// Priority: service override → explicit global → code default.
-    /// The code default for `"resources"` is 60 s because ARM batch requests
-    /// can be slow (e.g. provider registration lists, PIM policies); all other
-    /// services default to 30 s.
+    /// The code default is 60 s for `"resources"` (ARM batch requests can be
+    /// slow — provider registration lists, PIM policies) and `"exchange"`
+    /// (adminapi responses routinely take 8-30 s on mailbox-heavy tenants;
+    /// 60 s absorbs slow-but-legitimate answers that a 30 s timeout would
+    /// truncate into spurious network retries); all other services default
+    /// to 30 s.
     pub fn http_timeout_seconds_for(config: &Config, service: &str) -> u64 {
         if let Some(v) =
             Self::service_override(config, service).and_then(|o| o.http_timeout_seconds)
@@ -362,7 +406,10 @@ impl Config {
         if let Some(v) = config.http_timeout_seconds {
             return v;
         }
-        if service == "resources" { 60 } else { 30 }
+        match service {
+            "resources" | "exchange" => 60,
+            _ => 30,
+        }
     }
 
     pub fn dispatch_burst_cap(config: &Config) -> usize {
@@ -446,6 +493,25 @@ impl Config {
         config.concurrency_slow_start.unwrap_or(false)
     }
 
+    /// Maximum number of concurrent response-processing workers (default 0 = no
+    /// count bound; the worker count then follows the in-flight request
+    /// concurrency, itself bounded by the AIMD window).
+    pub fn response_workers_max(config: &Config) -> usize {
+        config.response_workers_max.unwrap_or(0)
+    }
+
+    /// Maximum bytes of in-flight parsed response pages admitted concurrently
+    /// (0 = disabled, the default). Bounds peak RSS on large pages independently
+    /// of the worker-count bound.
+    pub fn response_memory_budget_bytes(config: &Config) -> usize {
+        config.response_memory_budget_bytes.unwrap_or(0)
+    }
+
+    /// Expected-error breaker threshold (0 = disabled).
+    pub fn expected_error_breaker_threshold(config: &Config) -> usize {
+        config.expected_error_breaker_threshold.unwrap_or(25)
+    }
+
     /// Validates the configuration parameters to ensure they are within acceptable bounds.
     pub fn validate(&self) -> Result<(), Error> {
         // Producing no output at all is almost always a misconfiguration: the
@@ -469,17 +535,24 @@ impl Config {
                 "Config"
             );
         }
-        // Warn (don't fail) on unknown <service name="…"> values: serde-xml-rs
-        // silently keeps a misspelled name (e.g. "ressources"), so the service
-        // just never runs with no feedback. The valid set is exactly the known
-        // trio, so this has zero false positives. A bare warn (not an error)
-        // preserves forward-compatibility if the trio ever grows.
+        // Warn (don't fail) on <service name="…"> entries that have no effect:
+        // serde-xml-rs silently keeps a misspelled name (e.g. "ressources"), so
+        // the service just never runs with no feedback. Only `resources` and
+        // `exchange` are toggleable here; `graph` is always collected (it carries
+        // `mandatory_auth` in the schema), so a `graph` entry is inert and gets a
+        // dedicated note rather than being flagged as unknown. A bare warn (not an
+        // error) preserves forward-compatibility if the toggleable set ever grows.
         if let Some(services) = &self.services {
-            const KNOWN_SERVICES: [&str; 2] = ["resources", "exchange"];
+            const TOGGLEABLE_SERVICES: [&str; 2] = ["resources", "exchange"];
             for svc in &services.services {
-                if !KNOWN_SERVICES.contains(&svc.name.as_str()) {
+                if svc.name == "graph" {
                     warn!(
-                        "{:FL$}Unknown service '{}' in <services> config — ignored. Known services: resources, exchange.",
+                        "{:FL$}Service 'graph' is always collected and cannot be toggled via <services>; this entry has no effect.",
+                        "Config"
+                    );
+                } else if !TOGGLEABLE_SERVICES.contains(&svc.name.as_str()) {
+                    warn!(
+                        "{:FL$}Unknown service '{}' in <services> config — ignored. Toggleable services: resources, exchange (graph is always collected).",
                         "Config", svc.name
                     );
                 }
@@ -694,6 +767,63 @@ impl Config {
                 "livenessCeilingSecs must be greater than 0".to_string(),
             ));
         }
+        // The liveness ceiling must stay at least as large as every service's
+        // rateLimitMaxWaitSecs: a single honoured 429 cooldown is clamped to
+        // rateLimitMaxWaitSecs, and if that exceeds the ceiling the bucket is
+        // abandoned (lost data) even though it was only waiting out one throttle.
+        // Warn rather than reject — the run still terminates.
+        let liveness = Self::liveness_ceiling_secs(self);
+        if liveness < Self::rate_limit_max_wait_secs(self) {
+            warn!(
+                "{:FL$}livenessCeilingSecs ({}) is below rateLimitMaxWaitSecs ({}): a single honoured 429 cooldown can trip the liveness ceiling and abandon recoverable data; keep livenessCeilingSecs ≥ rateLimitMaxWaitSecs.",
+                "Config",
+                liveness,
+                Self::rate_limit_max_wait_secs(self)
+            );
+        }
+        if let Some(overrides) = &self.service_overrides {
+            for ov in &overrides.services {
+                if ov.rate_limit_max_wait_secs.is_none() {
+                    continue;
+                }
+                let svc_max_wait = Self::rate_limit_max_wait_secs_for(self, &ov.name);
+                if liveness < svc_max_wait {
+                    warn!(
+                        "{:FL$}serviceOverrides[{}]: rateLimitMaxWaitSecs ({}) exceeds livenessCeilingSecs ({}); a single honoured cooldown can abandon recoverable data for this service.",
+                        "Config", ov.name, svc_max_wait, liveness
+                    );
+                }
+            }
+        }
+        // The stall-detection timeout must stay at least as large as every
+        // service's rateLimitMaxWaitSecs: a worker waiting out a single honoured
+        // 429 cooldown (bounded by rateLimitMaxWaitSecs) produces no coordinator
+        // event, so a smaller timeout would fire the stall watchdog on a
+        // legitimate cooldown — a misleading diagnostic, never a data loss.
+        // Warn rather than reject — the run still terminates.
+        let stall = Self::stall_detection_timeout(self);
+        if stall < Self::rate_limit_max_wait_secs(self) {
+            warn!(
+                "{:FL$}stallDetectionTimeout ({}) is below rateLimitMaxWaitSecs ({}): the stall watchdog can fire while a request waits out a legitimate 429 cooldown; keep stallDetectionTimeout ≥ rateLimitMaxWaitSecs.",
+                "Config",
+                stall,
+                Self::rate_limit_max_wait_secs(self)
+            );
+        }
+        if let Some(overrides) = &self.service_overrides {
+            for ov in &overrides.services {
+                if ov.rate_limit_max_wait_secs.is_none() {
+                    continue;
+                }
+                let svc_max_wait = Self::rate_limit_max_wait_secs_for(self, &ov.name);
+                if stall < svc_max_wait {
+                    warn!(
+                        "{:FL$}serviceOverrides[{}]: rateLimitMaxWaitSecs ({}) exceeds stallDetectionTimeout ({}); the stall watchdog can fire while this service waits out a legitimate cooldown.",
+                        "Config", ov.name, svc_max_wait, stall
+                    );
+                }
+            }
+        }
         Ok(())
     }
 
@@ -740,6 +870,9 @@ impl Config {
             logs_days_filter: self.logs_days_filter,
             shuffle_urls: self.shuffle_urls,
             concurrency_slow_start: self.concurrency_slow_start,
+            response_workers_max: self.response_workers_max,
+            response_memory_budget_bytes: self.response_memory_budget_bytes,
+            expected_error_breaker_threshold: self.expected_error_breaker_threshold,
         };
         let config_str = match serde_json::to_string(&config) {
             Err(err) => {
@@ -792,6 +925,12 @@ impl ConfigParser {
         };
         match serde_xml_rs::from_str::<Config>(&config_str) {
             Ok(config) => {
+                for element in Self::unknown_root_elements(&config_str) {
+                    warn!(
+                        "{:FL$}Unknown configuration element <{}> — it is ignored. Check the spelling and casing.",
+                        "ConfigParser", element
+                    );
+                }
                 config.validate()?;
                 Ok(config)
             }
@@ -801,5 +940,84 @@ impl ConfigParser {
                 Err(Error::InvalidConfigXMLStructure(Some(err.to_string())))
             }
         }
+    }
+
+    /// Direct children of the root config element that `Config` understands. A
+    /// misspelled or unsupported element (XML element names are case-sensitive)
+    /// is silently dropped by serde, so [`unknown_root_elements`] surfaces it.
+    /// Nested blocks (`services`, `serviceOverrides`, `applicationCredentials`,
+    /// `additionalMlaKeys`, `proxy`) carry their own structure and are not scanned
+    /// here. Keep in sync with the `Config` fields: when adding a field, also add
+    /// its tag to the complete-config unit test, which catches an entry here
+    /// drifting from the field's serde name (a brand-new field missing from both
+    /// is caught by neither — that part is convention).
+    ///
+    /// [`unknown_root_elements`]: Self::unknown_root_elements
+    pub const KNOWN_ROOT_ELEMENTS: &'static [&'static str] = &[
+        "tenant",
+        "appId",
+        "services",
+        "proxy",
+        "outputFiles",
+        "outputMLA",
+        "output",
+        "noCheck",
+        "useDeviceCode",
+        "listenerAddress",
+        "listenerPort",
+        "schemaFile",
+        "schemaUrlOverride",
+        "userAgent",
+        "emergencyAccountsCustomAttributes",
+        "additionalMlaKeys",
+        "traceLogs",
+        "useApplicationCredentials",
+        "applicationCredentials",
+        "concurrencyMinWindow",
+        "concurrencyMaxWindow",
+        "defaultRetryAfterSeconds",
+        "httpTimeoutSeconds",
+        "dispatchBurstCap",
+        "urlRetryLimit",
+        "rateLimitRetryLimit",
+        "rateLimitMaxWaitSecs",
+        "stallDetectionTimeout",
+        "httpConnectTimeoutSeconds",
+        "retryBackoffBaseMs",
+        "retryBackoffCapMs",
+        "prereqRecheckCacheSecs",
+        "livenessCeilingSecs",
+        "serviceOverrides",
+        "logsDaysFilter",
+        "shuffleUrls",
+        "concurrencySlowStart",
+        "responseWorkersMax",
+        "responseMemoryBudgetBytes",
+        "expectedErrorBreakerThreshold",
+    ];
+
+    /// Returns the names of unknown direct children of the root config element —
+    /// those serde silently ignored (a typo or wrong casing). The root element
+    /// itself (depth 1) and any nested content (depth ≥ 3) are not checked.
+    pub fn unknown_root_elements(config_str: &str) -> Vec<String> {
+        let mut unknown: Vec<String> = Vec::new();
+        let mut depth: usize = 0;
+        for event in EventReader::from_str(config_str) {
+            match event {
+                Ok(XmlEvent::StartElement { name, .. }) => {
+                    depth += 1;
+                    // depth 1 = root element; depth 2 = its direct children.
+                    if depth == 2 && !Self::KNOWN_ROOT_ELEMENTS.contains(&name.local_name.as_str())
+                    {
+                        unknown.push(name.local_name);
+                    }
+                }
+                Ok(XmlEvent::EndElement { .. }) => depth = depth.saturating_sub(1),
+                // Malformed XML is already surfaced by the serde parse above.
+                Err(_) => break,
+                _ => {}
+            }
+        }
+        unknown
     }
 }

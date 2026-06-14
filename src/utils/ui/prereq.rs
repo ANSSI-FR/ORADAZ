@@ -3,8 +3,7 @@
 // elapsed counter in-place, then tears down and prints a static summary block.
 use crate::utils::errors::{Error, FatalPresentation};
 use crate::utils::logger::{
-    LiveRegionState, calculate_rendered_lines, redraw_live_region, tear_down_live_region,
-    update_live_region_state, update_live_region_text,
+    LiveRegionState, replace_live_region, tear_down_live_region, update_live_region_state,
 };
 use crate::utils::mutex::lock_force;
 use crate::utils::ui::{Icon, UiMode, blue, dim, err_text, icon, mode, success, warn_text};
@@ -32,8 +31,31 @@ pub struct PrereqItem {
     pub nested_bullets: bool,
 }
 
+/// Transient 429 cooldown notice rendered inside the live region while the
+/// startup prerequisite retry loop (`Dumper::new`) waits out a `Retry-After`.
+#[derive(Debug, Clone, Copy)]
+struct ThrottleNotice {
+    until: Instant,
+    attempt: usize,
+    max_attempts: usize,
+}
+
+/// Seconds left before `until`, rounded up so the countdown starts at the full
+/// cooldown value and never displays a lingering `0s` while still waiting.
+fn throttle_remaining_secs(until: Instant, now: Instant) -> u64 {
+    let remaining = until.saturating_duration_since(now);
+    remaining.as_secs() + u64::from(remaining.subsec_nanos() > 0)
+}
+
 /// Renders the full prerequisites live region content.
-fn render_prereq_banner(frame: u8, elapsed_str: &str, items: &[PrereqItem]) -> String {
+/// `throttle` is `(remaining_secs, attempt, max_attempts)` when a 429 cooldown
+/// is in progress.
+fn render_prereq_banner(
+    frame: u8,
+    elapsed_str: &str,
+    items: &[PrereqItem],
+    throttle: Option<(u64, usize, usize)>,
+) -> String {
     let mut lines = Vec::new();
     if mode() == UiMode::Color {
         lines.push(format!(
@@ -50,6 +72,15 @@ fn render_prereq_banner(frame: u8, elapsed_str: &str, items: &[PrereqItem]) -> S
     for item in items {
         lines.push(render_item_line(item).trim_end().to_string());
     }
+    if let Some((remaining_secs, attempt, max_attempts)) = throttle {
+        lines.push(warn_text(&format!(
+            "    {}  Too many requests, retrying in {}s (attempt {}/{})",
+            icon(Icon::Warn),
+            remaining_secs,
+            attempt,
+            max_attempts
+        )));
+    }
     lines.join("\n")
 }
 
@@ -58,6 +89,8 @@ pub struct PrereqLive {
     handle: Option<JoinHandle<()>>,
     // Items reported so far (for the static spinner sub-lines).
     items: Arc<Mutex<Vec<PrereqItem>>>,
+    // Active 429 cooldown notice, if any (rendered by the ticker).
+    throttle: Arc<Mutex<Option<ThrottleNotice>>>,
     start: Instant,
 }
 
@@ -83,22 +116,20 @@ impl PrereqLive {
     pub fn start() -> Self {
         let stop_flag = Arc::new(AtomicBool::new(false));
         let items: Arc<Mutex<Vec<PrereqItem>>> = Arc::new(Mutex::new(Vec::new()));
+        let throttle: Arc<Mutex<Option<ThrottleNotice>>> = Arc::new(Mutex::new(None));
         let start = Instant::now();
 
-        let initial_text = render_prereq_banner(0, "00:00:00", &[]);
+        let initial_text = render_prereq_banner(0, "00:00:00", &[], None);
 
-        {
-            update_live_region_text(&initial_text);
-            update_live_region_state(LiveRegionState::Prereq {
-                lines: calculate_rendered_lines(&initial_text),
-            });
-        }
         println!();
         println!();
-        redraw_live_region(false);
+        replace_live_region(&initial_text, false, |lines| LiveRegionState::Prereq {
+            lines,
+        });
 
         let stop = Arc::clone(&stop_flag);
         let items_clone = Arc::clone(&items);
+        let throttle_clone = Arc::clone(&throttle);
         let mut frame: u8 = 0;
 
         let handle = thread::spawn(move || {
@@ -107,7 +138,8 @@ impl PrereqLive {
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
-                let elapsed = Instant::now().duration_since(start);
+                let now = Instant::now();
+                let elapsed = now.duration_since(start);
                 let elapsed_str = format!(
                     "{:02}:{:02}:{:02}",
                     elapsed.as_secs() / 3600,
@@ -117,13 +149,16 @@ impl PrereqLive {
                 frame = (frame + 1) % 8;
 
                 let reported = lock_force(&items_clone).clone();
-                let text = render_prereq_banner(frame, &elapsed_str, &reported);
-
-                update_live_region_text(&text);
-                redraw_live_region(true);
-                update_live_region_state(LiveRegionState::Prereq {
-                    lines: calculate_rendered_lines(&text),
+                let throttle_line = lock_force(&throttle_clone).map(|n| {
+                    (
+                        throttle_remaining_secs(n.until, now),
+                        n.attempt,
+                        n.max_attempts,
+                    )
                 });
+                let text = render_prereq_banner(frame, &elapsed_str, &reported, throttle_line);
+
+                replace_live_region(&text, true, |lines| LiveRegionState::Prereq { lines });
             }
         });
 
@@ -131,6 +166,7 @@ impl PrereqLive {
             stop_flag,
             handle: Some(handle),
             items,
+            throttle,
             start,
         }
     }
@@ -139,6 +175,47 @@ impl PrereqLive {
     pub fn report(&mut self, item: PrereqItem) {
         let mut v = lock_force(&self.items);
         v.push(item);
+    }
+
+    /// Show a 429 cooldown countdown under the spinner (cleared with
+    /// `clear_throttle_notice`). The live region must stay up across startup
+    /// prerequisite retries: tearing it down and respawning it reprints the
+    /// `start()` blank separator lines on every retry, shifting the display
+    /// down — and the retry `warn!` is file-only outside the dump phase, so
+    /// the operator would otherwise watch a blank screen during the cooldown.
+    /// In NoColor mode the live region is never rendered, so print a static,
+    /// append-only notice instead (same strategy as the auth banner).
+    pub fn set_throttle_notice(&self, retry_after_secs: u64, attempt: usize, max_attempts: usize) {
+        if mode() == UiMode::NoColor {
+            println!(
+                "    {}  Too many requests, retrying in {}s (attempt {}/{})",
+                icon(Icon::Warn),
+                retry_after_secs,
+                attempt,
+                max_attempts
+            );
+            return;
+        }
+        let now = Instant::now();
+        // checked_add: `Instant + Duration` panics on overflow, and the
+        // collection path must stay panic-free. Unreachable with a sane
+        // `rateLimitMaxWaitSecs` clamp; degrade to an already-elapsed
+        // countdown (0s) rather than aborting the run.
+        let until = now
+            .checked_add(Duration::from_secs(retry_after_secs))
+            .unwrap_or(now);
+        let mut t = lock_force(&self.throttle);
+        *t = Some(ThrottleNotice {
+            until,
+            attempt,
+            max_attempts,
+        });
+    }
+
+    /// Remove the 429 cooldown notice (redrawn away on the next tick).
+    pub fn clear_throttle_notice(&self) {
+        let mut t = lock_force(&self.throttle);
+        *t = None;
     }
 
     /// Stop the ticker, tear down the live region, and print the static summary.
@@ -390,6 +467,38 @@ mod tests {
             let line = render_item_full(item);
             assert!(line.contains(&item.name));
         }
+    }
+
+    #[test]
+    fn render_banner_includes_throttle_notice() {
+        // Substring assertions are mode-independent (no icon/colour checked) so
+        // a concurrent test toggling the global UI mode cannot flake this one.
+        let text = render_prereq_banner(0, "00:00:05", &[], Some((42, 1, 10)));
+        assert!(text.contains("retrying in 42s"));
+        assert!(text.contains("(attempt 1/10)"));
+
+        let text = render_prereq_banner(0, "00:00:05", &[], None);
+        assert!(!text.contains("retrying in"));
+    }
+
+    #[test]
+    fn throttle_remaining_secs_rounds_up_and_saturates() {
+        let now = Instant::now();
+        // 41.5s left rounds up to 42 so the countdown opens at the full value.
+        assert_eq!(
+            throttle_remaining_secs(now + Duration::from_millis(41_500), now),
+            42
+        );
+        // Exact whole seconds are not inflated.
+        assert_eq!(
+            throttle_remaining_secs(now + Duration::from_secs(10), now),
+            10
+        );
+        // A deadline in the past shows 0, not an underflow.
+        assert_eq!(
+            throttle_remaining_secs(now, now + Duration::from_secs(5)),
+            0
+        );
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use crate::FL;
 use crate::collect::dump::orchestration::events::{CoordinatorEvent, ProcessError};
-use crate::collect::dump::request::compute_backoff_ms;
 use crate::collect::dump::request::executor::parse_retry_after_value;
+use crate::collect::dump::request::{BackoffGuard, compute_backoff_ms};
 use crate::collect::dump::response::thread::ResponseThread;
 use crate::collect::dump::response::{DumpError, Response, status_handlers};
 use crate::utils::ui::dump_event;
@@ -152,6 +152,18 @@ pub async fn process_batch(this: &ResponseThread) -> Vec<Url> {
             let id_pointer = format!("/{}", data.id_field);
             let status_pointer = format!("/{}", data.status_field);
             let retry_after_pointer = format!("/{}", data.retry_after_field);
+            // Exchange serialises sub-response header keys in lowercase
+            // (`retry-after`, HTTP/2 style) while Graph documents them
+            // capitalised; when the configured pointer misses, retry once with
+            // the last segment lowercased so the server hint is still honoured
+            // (a miss would otherwise fall back to the default cooldown).
+            let retry_after_pointer_lower = {
+                let lower = match data.retry_after_field.rsplit_once('/') {
+                    Some((head, last)) => format!("/{head}/{}", last.to_lowercase()),
+                    None => format!("/{}", data.retry_after_field.to_lowercase()),
+                };
+                (lower != retry_after_pointer).then_some(lower)
+            };
             let body_pointer = format!("/{}", data.body_field);
 
             let mut initial_data = data.initial_data.clone();
@@ -260,8 +272,14 @@ pub async fn process_batch(this: &ResponseThread) -> Vec<Url> {
                 // so a `$batch` sub-response honours both the delta-seconds AND the
                 // HTTP-date form, exactly like the top-level header path; a JSON
                 // number is read directly as delta-seconds.
-                let response_retry_after: Option<u64> =
-                    response.pointer(&retry_after_pointer).and_then(|e| {
+                let response_retry_after: Option<u64> = response
+                    .pointer(&retry_after_pointer)
+                    .or_else(|| {
+                        retry_after_pointer_lower
+                            .as_deref()
+                            .and_then(|p| response.pointer(p))
+                    })
+                    .and_then(|e| {
                         e.as_str()
                             .and_then(parse_retry_after_value)
                             .or_else(|| e.as_u64())
@@ -363,6 +381,7 @@ pub async fn process_batch(this: &ResponseThread) -> Vec<Url> {
                     .and_then(|bd| bd.initial_data.values().map(|a| a.url.retry_number).max())
                     .unwrap_or(0);
                 let backoff_ms = compute_backoff_ms(max_retry);
+                let _backoff_guard = BackoffGuard::enter(); // dec BACKOFF_ACTIVE on drop
                 tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
             }
 

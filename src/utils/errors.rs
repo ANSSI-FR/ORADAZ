@@ -294,6 +294,10 @@ pub enum Error {
     MLAFinalizeArchive,
     /// Failed to write a log entry to the MLA archive.
     MLAWriteLog,
+    /// Failed to create a data-file entry within the MLA archive.
+    MLACreateDataFile,
+    /// Failed to write a data file to the MLA archive (archive ownership lost).
+    MLAWriteDataFile,
     /// Failed to append data to a file in the MLA archive.
     MLAAppendDataToFile,
     /// Wrapper for errors originating from the `mla` crate.
@@ -361,34 +365,18 @@ impl error::Error for Error {
 }
 
 /// Returns a human-readable, actionable message describing *why* a URL has
-/// exhausted its retry budget. Driven by:
-///   * `rate_limit_exhausted` — true iff the *rate-limit* budget (either the
-///     429-retry count or the cumulative Retry-After wait) was the limiting
-///     factor (decided by the caller, which knows the per-service limits),
-///   * the dominant upstream error code observed for this (service, api) pair,
-///     as recorded by `Stats::dominant_upstream_code`.
+/// exhausted its retry budget, from the dominant upstream error code observed
+/// for this (service, api) pair (as recorded by `Stats::dominant_upstream_code`).
 ///
-/// Specific codes get a tailored message; everything else falls back to a
-/// generic line that still names the last code. Note: a URL may carry a
-/// non-zero `rate_limit_retry_number` even when the *real-error* retry budget
-/// was the actual cause — a transient 429 followed by repeated 4xx failures.
-/// Relying on the URL counters alone would emit a misleading "throttled"
-/// message in that case, hence the explicit flag from the caller.
-pub fn human_retry_exhaustion_message(
-    url: &Url,
-    dominant_code: Option<&str>,
-    rate_limit_exhausted: bool,
-) -> String {
+/// A URL reaches this point only via the real-error budget (`urlRetryLimit`):
+/// 429s and transport failures are bounded by the per-bucket
+/// liveness ceiling (`livenessCeilingSecs`) and abandoned as `ThrottleStalled` /
+/// `NetworkStalled` instead, never here. Specific codes get a tailored message;
+/// everything else falls back to a generic line that still names the last code.
+pub fn human_retry_exhaustion_message(url: &Url, dominant_code: Option<&str>) -> String {
     let api = &url.api;
     let service = &url.service_name;
     let attempts = url.retry_number.max(1);
-
-    if rate_limit_exhausted {
-        return format!(
-            "Endpoint {api:?} ({service}) remained throttled past the rate-limit budget ({}s cumulative across {} 429 retries). Consider raising rateLimitRetryLimit / rateLimitMaxWaitSecs (globally or via serviceOverrides), or lowering concurrencyMaxWindow for this service.",
-            url.rate_limit_total_wait_secs, url.rate_limit_retry_number
-        );
-    }
 
     match dominant_code {
         Some("Authorization_RequestDenied") | Some("Forbidden") => format!(
@@ -549,7 +537,7 @@ mod tests {
     #[test]
     fn human_message_403_mentions_permission_specificity() {
         let url = url_with_counters(3, 0, 0);
-        let msg = human_retry_exhaustion_message(&url, Some("Authorization_RequestDenied"), false);
+        let msg = human_retry_exhaustion_message(&url, Some("Authorization_RequestDenied"));
         assert!(msg.contains("403"), "{msg}");
         assert!(msg.contains("permission"), "{msg}");
     }
@@ -557,7 +545,7 @@ mod tests {
     #[test]
     fn human_message_404_mentions_deleted_resource() {
         let url = url_with_counters(3, 0, 0);
-        let msg = human_retry_exhaustion_message(&url, Some("Request_ResourceNotFound"), false);
+        let msg = human_retry_exhaustion_message(&url, Some("Request_ResourceNotFound"));
         assert!(msg.contains("404"), "{msg}");
         assert!(msg.contains("deleted"), "{msg}");
     }
@@ -565,32 +553,20 @@ mod tests {
     #[test]
     fn human_message_5xx_mentions_backend_degraded() {
         let url = url_with_counters(5, 0, 0);
-        let msg = human_retry_exhaustion_message(&url, Some("InternalServerError"), false);
+        let msg = human_retry_exhaustion_message(&url, Some("InternalServerError"));
         assert!(msg.contains("server error"), "{msg}");
         assert!(msg.contains("degraded"), "{msg}");
     }
 
-    #[test]
-    fn human_message_rate_limit_mentions_budget() {
-        let url = url_with_counters(0, 50, 900);
-        // The rate-limit branch ignores upstream_code even if one is provided.
-        let msg = human_retry_exhaustion_message(&url, Some("InternalServerError"), true);
-        assert!(msg.contains("throttled"), "{msg}");
-        assert!(msg.contains("rateLimitMaxWaitSecs"), "{msg}");
-        assert!(msg.contains("rateLimitRetryLimit"), "{msg}");
-    }
-
     /// A URL that exhausted its *real-error* budget after a single transient 429
-    /// must NOT be reported as throttled. The caller (dispatch.rs) computes
-    /// `rate_limit_exhausted` and passes it as a boolean so the helper never
-    /// inspects URL counters directly — a non-zero `rate_limit_retry_number`
-    /// alone does not imply the cause was throttling.
+    /// must NOT be reported as throttled: this message is only reached on a real
+    /// 4xx/5xx exhaustion (429 / network are bounded by the liveness ceiling).
     #[test]
     fn human_message_mixed_429_plus_real_errors_is_not_throttled() {
         // 1 transient 429 (recovered) + 3 unexpected 4xx that exhausted the
         // real-error budget.
         let url = url_with_counters(3, 1, 5);
-        let msg = human_retry_exhaustion_message(&url, Some("Authorization_RequestDenied"), false);
+        let msg = human_retry_exhaustion_message(&url, Some("Authorization_RequestDenied"));
         assert!(
             !msg.contains("throttled"),
             "real-error exhaustion must not surface as throttling; got: {msg}"
@@ -601,7 +577,7 @@ mod tests {
     #[test]
     fn human_message_unknown_code_falls_back_to_generic() {
         let url = url_with_counters(5, 0, 0);
-        let msg = human_retry_exhaustion_message(&url, Some("SomeWeirdCode"), false);
+        let msg = human_retry_exhaustion_message(&url, Some("SomeWeirdCode"));
         assert!(msg.contains("SomeWeirdCode"), "{msg}");
         assert!(msg.contains("retry budget"), "{msg}");
     }
@@ -609,7 +585,7 @@ mod tests {
     #[test]
     fn human_message_no_code_still_useful() {
         let url = url_with_counters(5, 0, 0);
-        let msg = human_retry_exhaustion_message(&url, None, false);
+        let msg = human_retry_exhaustion_message(&url, None);
         assert!(msg.contains("retry budget"), "{msg}");
         assert!(msg.contains("users"), "{msg}");
         assert!(msg.contains("graph"), "{msg}");

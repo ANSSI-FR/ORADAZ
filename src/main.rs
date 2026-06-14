@@ -328,6 +328,35 @@ pub struct Cli {
     pub collect: CollectArgs,
 }
 
+/// Combine collect options given before the `collect` keyword (parsed into the
+/// flattened top-level args) with those given after it (parsed into the
+/// subcommand). The explicit subcommand value wins when set; otherwise the
+/// top-level value is used, so neither placement is silently dropped.
+fn merge_collect_args(mut explicit: CollectArgs, top_level: CollectArgs) -> CollectArgs {
+    explicit.tenant = explicit.tenant.or(top_level.tenant);
+    explicit.app_id = explicit.app_id.or(top_level.app_id);
+    explicit.output = explicit.output.or(top_level.output);
+    // `config_file` always has a value (clap fills its default), so "still at the
+    // default" is the only signal that the subcommand did not set it explicitly.
+    if explicit.config_file == DEFAULT_CONFIG_FILE {
+        explicit.config_file = top_level.config_file;
+    }
+    explicit.verbosity = explicit.verbosity.max(top_level.verbosity);
+    explicit
+}
+
+/// Resolve the command to run from the optional subcommand and the flattened
+/// top-level collect options. A missing subcommand (or one carrying only collect
+/// options) runs a collection; an explicit `collect` subcommand is merged with
+/// the top-level options.
+fn resolve_command(command: Option<Commands>, collect_args: CollectArgs) -> Commands {
+    match command {
+        Some(Commands::Collect(args)) => Commands::Collect(merge_collect_args(args, collect_args)),
+        Some(other) => other,
+        None => Commands::Collect(collect_args),
+    }
+}
+
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
@@ -340,7 +369,7 @@ async fn main() {
     } = Cli::parse();
     // A bare invocation (or one carrying only collect options) runs a
     // collection, exactly like the explicit `collect` subcommand.
-    let command = command.unwrap_or(Commands::Collect(collect_args));
+    let command = resolve_command(command, collect_args);
     match command {
         Commands::Collect(args) => {
             collect(
@@ -538,7 +567,7 @@ async fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{Cli, Commands};
+    use super::{Cli, Commands, InspectCommands, resolve_command};
 
     use clap::{CommandFactory, Parser};
 
@@ -567,6 +596,59 @@ mod tests {
     fn collect_subcommand_parses() {
         let cli = Cli::try_parse_from(["oradaz", "collect"]).unwrap();
         assert!(matches!(cli.command, Some(Commands::Collect(_))));
+    }
+
+    #[test]
+    fn collect_options_before_keyword_are_merged() {
+        // `oradaz --tenant x -vvv collect`: options precede the explicit
+        // subcommand and must still reach the collection.
+        let cli = Cli::try_parse_from(["oradaz", "--tenant", "x", "-vvv", "collect"]).unwrap();
+        match resolve_command(cli.command, cli.collect) {
+            Commands::Collect(args) => {
+                assert_eq!(args.tenant.as_deref(), Some("x"));
+                assert_eq!(args.verbosity, 3);
+            }
+            other => panic!("expected Collect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn collect_config_file_before_keyword_is_used() {
+        let cli = Cli::try_parse_from(["oradaz", "-c", "custom.xml", "collect"]).unwrap();
+        match resolve_command(cli.command, cli.collect) {
+            Commands::Collect(args) => assert_eq!(args.config_file, "custom.xml"),
+            other => panic!("expected Collect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn explicit_collect_value_wins_over_top_level() {
+        // A value attached to the explicit subcommand takes precedence over the
+        // same option given before the keyword.
+        let cli = Cli::try_parse_from([
+            "oradaz", "--tenant", "before", "collect", "--tenant", "after",
+        ])
+        .unwrap();
+        match resolve_command(cli.command, cli.collect) {
+            Commands::Collect(args) => assert_eq!(args.tenant.as_deref(), Some("after")),
+            other => panic!("expected Collect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn inspect_logs_top_overrides_limit() {
+        // `--top` is an alias for `--limit`; when both are given, `--top` wins
+        // (the dispatcher applies `top.or(limit)`).
+        let cli = Cli::try_parse_from(["oradaz", "inspect", "logs", "--limit", "5", "--top", "10"])
+            .unwrap();
+        match cli.command {
+            Some(Commands::Inspect {
+                sub: InspectCommands::Logs { limit, top, .. },
+            }) => {
+                assert_eq!(top.or(limit), Some(10), "--top must win over --limit");
+            }
+            other => panic!("expected inspect logs, got {other:?}"),
+        }
     }
 
     #[test]

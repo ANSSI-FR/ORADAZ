@@ -122,7 +122,7 @@ pub async fn execute_batch(
         "{:FL$}POST (batch) {} [ID: {}]",
         "Executor", &api_call.url.url, api_call.id
     );
-    let builder = client
+    let mut builder = client
         .client
         .post(&api_call.url.url)
         .header(
@@ -130,6 +130,14 @@ pub async fn execute_batch(
             &format!("{} {}", token.token_type, token.access_token),
         )
         .json(post_data);
+    // The Exchange admin-API `$batch` endpoint defaults to a `multipart/mixed`
+    // response; an explicit `Accept: application/json` makes it return the JSON
+    // `{"responses":[…]}` envelope that `ResponseThread::process_batch` parses.
+    // Graph and ARM batches already return JSON regardless, so the header is
+    // scoped to exchange to leave their requests byte-identical on the wire.
+    if api_call.url.service_name == "exchange" {
+        builder = builder.header(reqwest::header::ACCEPT, "application/json");
+    }
     let started = Instant::now();
     let res = with_timeout(builder, timeout_secs)
         .send()
@@ -185,8 +193,8 @@ async fn handle_response(
 
 /// Parse the `Retry-After` header into seconds. Supports both the delta-seconds
 /// form (`"120"`) and the HTTP-date form (RFC 7231 §7.1.3). Returns `None` when
-/// the header is absent or unparseable so the rate-limit manager applies its
-/// configured default rather than treating the value as zero.
+/// the header is absent, unparseable **or zero** so the caller applies its
+/// configured default rather than retrying immediately.
 ///
 /// `pub(crate)` so the prerequisite-check 429 handler reuses it instead of its
 /// own delta-only parser (keeps both paths honouring the same two formats).
@@ -199,6 +207,12 @@ pub(crate) fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<
 /// (`"120"`) or the HTTP-date form (RFC 7231 §7.1.3). Empty / unparseable ⇒
 /// `None` so the caller applies its configured default rather than zero.
 ///
+/// A parsed **zero** (literal `"0"`, or an HTTP-date less than a second away) is
+/// also `None`: every caller paces a retry with this value, and a zero would turn
+/// that pacing into a hot loop — burning bounded retry budgets (startup
+/// prerequisite checks, condition probes, schema download) in a single burst
+/// instead of waiting out the throttle.
+///
 /// `pub(crate)` and value-based (not header-based) so the Graph `$batch`
 /// sub-response path — which carries `Retry-After` as a JSON field, not an HTTP
 /// header — can reuse the exact same two-format parsing as the header path.
@@ -208,10 +222,17 @@ pub(crate) fn parse_retry_after_value(raw: &str) -> Option<u64> {
         return None;
     }
     if let Ok(secs) = raw.parse::<u64>() {
+        if secs == 0 {
+            trace!(
+                "{:FL$}Retry-After: 0s (delta) — treated as absent",
+                "Executor"
+            );
+            return None;
+        }
         trace!("{:FL$}Retry-After: {}s (delta)", "Executor", secs);
         return Some(secs);
     }
-    let result = parse_http_date_secs(raw);
+    let result = parse_http_date_secs(raw).filter(|&secs| secs > 0);
     if let Some(secs) = result {
         trace!(
             "{:FL$}Retry-After: {}s (HTTP-date {:?})",
@@ -322,6 +343,18 @@ mod tests {
             parse_retry_after_value("Wed, 21 Oct 2015 07:28:00 GMT"),
             None
         );
+    }
+
+    /// A parsed zero is treated as absent on both the header and the value path,
+    /// so every caller (dump cooldown, startup prerequisite/probe/schema retries)
+    /// paces with its configured default instead of retrying in a hot loop.
+    #[test]
+    fn retry_after_zero_is_treated_as_absent() {
+        let mut headers = HeaderMap::new();
+        headers.insert(RETRY_AFTER, HeaderValue::from_static("0"));
+        assert_eq!(parse_retry_after(&headers), None);
+        assert_eq!(parse_retry_after_value("0"), None);
+        assert_eq!(parse_retry_after_value(" 0 "), None);
     }
 
     #[test]

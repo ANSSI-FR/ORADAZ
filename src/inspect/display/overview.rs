@@ -10,7 +10,7 @@ use super::{
     svc_display_name, unexpected_per_service,
 };
 use crate::inspect::analysis::{
-    ErrorCategory, Verdict, aggregate_errors, compute_verdict, objects_per_service,
+    ErrorCategory, Verdict, aggregate_errors, compute_verdict, has_lost_data, objects_per_service,
 };
 use crate::inspect::loader::LogSource;
 use crate::inspect::log_parser::{last_plain_failure_context, parse_log};
@@ -27,6 +27,7 @@ pub fn print_overview(source: &LogSource, out: &mut Vec<String>) {
         source.metadata.as_ref(),
         source.stats.as_ref(),
         source.is_broken,
+        has_lost_data(&source.dump_errors),
     );
 
     out.push(section_line_with_verdict("COLLECTION SUMMARY", verdict));
@@ -229,6 +230,23 @@ fn print_health(source: &LogSource, out: &mut Vec<String>) {
     // "Request failures" (transport- or parse-level HTTP-call failures), not
     // "Network errors" — kept consistent with the stats command's relabel.
     out.push(format!("  {:<28}{}", "Request failures", net));
+    // Expected-error breaker: informative, not an attention flag — every
+    // skipped URL would have returned its bucket's schema-declared expected
+    // error, so nothing is missing that the tenant could have provided.
+    let skipped: u64 = m
+        .and_then(|m| m.get("breaker_skipped_by_api").and_then(|v| v.as_object()))
+        .map(|map| map.values().filter_map(|v| v.as_u64()).sum())
+        .unwrap_or(0);
+    if skipped > 0 {
+        let buckets = m
+            .and_then(|m| m.get("breaker_skipped_by_api").and_then(|v| v.as_object()))
+            .map(|map| map.len())
+            .unwrap_or(0);
+        out.push(format!(
+            "  {:<28}{} URL(s) on {} API(s) (declared-benign failures, not losses)",
+            "Skipped by breaker", skipped, buckets
+        ));
+    }
 }
 
 // ─── attention list + next-step pointers ─────────────────────────────────
@@ -254,7 +272,7 @@ fn print_attention(source: &LogSource, verdict: Verdict, out: &mut Vec<String>) 
             "  {}",
             fatal_line(
                 &format!("{auth} authentication error(s)"),
-                "see oradaz inspect logs --info"
+                "see the lines below or oradaz inspect hints"
             )
         ));
     }
@@ -304,13 +322,20 @@ fn print_attention(source: &LogSource, verdict: Verdict, out: &mut Vec<String>) 
         .filter(|g| g.category == ErrorCategory::Unexpected)
         .take(3)
     {
-        out.push(format!(
-            "  {}",
-            error_line(
-                &format!("{}/{}", g.service, g.api),
-                &format!("{}× HTTP {} {}", g.count, g.status, code_label(&g.code))
-            )
-        ));
+        // "service/api", or just "service" when the api name is empty. A
+        // non-HTTP terminal failure (status 0) shows the code without a
+        // misleading "HTTP 0".
+        let target = if g.api.is_empty() {
+            g.service.clone()
+        } else {
+            format!("{}/{}", g.service, g.api)
+        };
+        let detail = if g.status == 0 {
+            format!("{}× {}", g.count, code_label(&g.code))
+        } else {
+            format!("{}× HTTP {} {}", g.count, g.status, code_label(&g.code))
+        };
+        out.push(format!("  {}", error_line(&target, &detail)));
     }
 
     // High-throttle APIs (transient but blocked the pipeline) — up to 2.
@@ -319,8 +344,8 @@ fn print_attention(source: &LogSource, verdict: Verdict, out: &mut Vec<String>) 
     }
 
     // Writer single-core saturation (debug telemetry): flagged only when
-    // producers actually stalled on the 256 MiB byte budget — the §3.8 signal,
-    // otherwise invisible in the one-screen digest. `#[serde(default)]` → 0 on
+    // producers actually stalled on the 256 MiB byte budget — otherwise invisible
+    // in the one-screen digest. `#[serde(default)]` → 0 on
     // older archives, so this never fires for them.
     let writer_stalls = metadata_u64(source.metadata.as_ref(), "writer_budget_blocked_count");
     if writer_stalls > 0 {
@@ -336,6 +361,22 @@ fn print_attention(source: &LogSource, verdict: Verdict, out: &mut Vec<String>) 
                 "Writer saturation",
                 &format!(
                     "producers blocked {secs_disp}s over {writer_stalls} stall(s) — single-core MLA write may be the bottleneck"
+                )
+            )
+        ));
+    }
+
+    // Stall-watchdog fires: the pipeline went eventless for stallDetectionTimeout
+    // with requests in flight. The run recovered (the watchdog never aborts),
+    // but the log around the "Stall detected" lines is worth reading.
+    let stalls = metadata_u64(source.metadata.as_ref(), "stall_events");
+    if stalls > 0 {
+        out.push(format!(
+            "  {}",
+            warn_line(
+                "Pipeline stalls",
+                &format!(
+                    "stall watchdog fired {stalls}× — see the 'Stall detected' lines in oradaz.log"
                 )
             )
         ));

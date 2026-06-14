@@ -6,7 +6,7 @@ use crate::utils::client::OradazClient;
 use crate::utils::errors::Error;
 use crate::utils::ui::auth_banner::AuthBanner;
 
-use log::{debug, error, trace};
+use log::{debug, error, trace, warn};
 use serde::Deserialize;
 use std::time::Duration;
 
@@ -79,7 +79,7 @@ impl DeviceCodeAuth {
         // tearing down and reprinting the banner.
         let token_response: InitialTokenResponse = loop {
             // Request a device code.
-            trace!("{:FL$}Getting code for device code flow", "DeviceCodeAuth");
+            debug!("{:FL$}Getting code for device code flow", "DeviceCodeAuth");
             let dc_resp: DeviceCodeResponse = match oradaz_client
                 .client
                 .post(&devicecode_endpoint)
@@ -139,7 +139,7 @@ impl DeviceCodeAuth {
             }
 
             // Poll the token endpoint (RFC 8628 §3.5).
-            trace!("{:FL$}Exchanging code for token", "DeviceCodeAuth");
+            debug!("{:FL$}Exchanging code for token", "DeviceCodeAuth");
             match Self::poll_for_token(
                 &oradaz_client.client,
                 &token_endpoint,
@@ -215,11 +215,19 @@ impl DeviceCodeAuth {
         device_code: &str,
         initial_interval_secs: u64,
     ) -> Result<InitialTokenResponse, DeviceCodePollError> {
+        // A transient failure (a transport blip during the minutes-long user
+        // sign-in, a 5xx, or `temporarily_unavailable`) must not abort the flow:
+        // retry after the interval. Bound the *consecutive* count so a persistent
+        // outage cannot spin forever; any normal poll response (authorization_pending
+        // / slow_down) resets it. The device-code expiry remains the natural
+        // overall bound when the server is reachable.
+        const MAX_CONSECUTIVE_POLL_FAILURES: u32 = 10;
         let mut interval_secs = initial_interval_secs;
+        let mut consecutive_failures: u32 = 0;
         loop {
             tokio::time::sleep(Duration::from_secs(interval_secs)).await;
 
-            let resp = client
+            let resp = match client
                 .post(token_endpoint)
                 .form(&[
                     ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
@@ -228,10 +236,36 @@ impl DeviceCodeAuth {
                 ])
                 .send()
                 .await
-                .map_err(DeviceCodePollError::Transport)?;
+            {
+                Ok(r) => r,
+                Err(err) => {
+                    consecutive_failures += 1;
+                    if consecutive_failures > MAX_CONSECUTIVE_POLL_FAILURES {
+                        return Err(DeviceCodePollError::Transport(err));
+                    }
+                    warn!(
+                        "{:FL$}Device code poll transport error (attempt {}/{}), retrying: {:?}",
+                        "DeviceCodeAuth", consecutive_failures, MAX_CONSECUTIVE_POLL_FAILURES, err
+                    );
+                    continue;
+                }
+            };
 
             let status = resp.status();
-            let bytes = resp.bytes().await.map_err(DeviceCodePollError::Transport)?;
+            let bytes = match resp.bytes().await {
+                Ok(b) => b,
+                Err(err) => {
+                    consecutive_failures += 1;
+                    if consecutive_failures > MAX_CONSECUTIVE_POLL_FAILURES {
+                        return Err(DeviceCodePollError::Transport(err));
+                    }
+                    warn!(
+                        "{:FL$}Device code poll read error (attempt {}/{}), retrying: {:?}",
+                        "DeviceCodeAuth", consecutive_failures, MAX_CONSECUTIVE_POLL_FAILURES, err
+                    );
+                    continue;
+                }
+            };
 
             if status.is_success() {
                 let body = serde_json::from_slice::<TokenEndpointResponse>(&bytes)
@@ -239,10 +273,26 @@ impl DeviceCodeAuth {
                 return Ok(InitialTokenResponse { token: body });
             }
 
+            // A 5xx is a transient server-side error: retry like a transport blip.
+            if status.is_server_error() {
+                consecutive_failures += 1;
+                if consecutive_failures > MAX_CONSECUTIVE_POLL_FAILURES {
+                    return Err(DeviceCodePollError::Terminal(format!(
+                        "device code token endpoint returned HTTP {status} repeatedly"
+                    )));
+                }
+                warn!(
+                    "{:FL$}Device code poll: server error HTTP {} (attempt {}/{}), retrying",
+                    "DeviceCodeAuth", status, consecutive_failures, MAX_CONSECUTIVE_POLL_FAILURES
+                );
+                continue;
+            }
+
             // Non-success: try to parse as a polling error response.
             match serde_json::from_slice::<PollingErrorResponse>(&bytes) {
                 Ok(err_resp) => match err_resp.error.as_str() {
                     "authorization_pending" => {
+                        consecutive_failures = 0;
                         trace!(
                             "{:FL$}Device code poll: authorization_pending",
                             "DeviceCodeAuth"
@@ -250,6 +300,7 @@ impl DeviceCodeAuth {
                         continue;
                     }
                     "slow_down" => {
+                        consecutive_failures = 0;
                         // RFC 8628 §3.5: add 5 s on each slow_down. Cap the interval
                         // so a misbehaving server cannot push it arbitrarily high and
                         // delay expiry detection.
@@ -260,12 +311,46 @@ impl DeviceCodeAuth {
                         );
                         continue;
                     }
+                    "temporarily_unavailable" => {
+                        // RFC 8628 / OAuth: a transient server condition; retry.
+                        consecutive_failures += 1;
+                        if consecutive_failures > MAX_CONSECUTIVE_POLL_FAILURES {
+                            return Err(DeviceCodePollError::Terminal(
+                                "device code token endpoint temporarily_unavailable repeatedly"
+                                    .to_string(),
+                            ));
+                        }
+                        warn!(
+                            "{:FL$}Device code poll: temporarily_unavailable (attempt {}/{}), retrying",
+                            "DeviceCodeAuth", consecutive_failures, MAX_CONSECUTIVE_POLL_FAILURES
+                        );
+                        continue;
+                    }
                     "expired_token" => return Err(DeviceCodePollError::ExpiredToken),
                     other => {
                         return Err(DeviceCodePollError::Terminal(other.to_string()));
                     }
                 },
                 Err(_) => {
+                    // A 429 without a parseable OAuth error body (a throttle from a
+                    // gateway in front of the token endpoint) is transient: retry at
+                    // the poll interval instead of aborting the sign-in. A 429 whose
+                    // body does parse (e.g. `slow_down`) is routed by its error code
+                    // above and never reaches this arm.
+                    if status.as_u16() == 429 {
+                        consecutive_failures += 1;
+                        if consecutive_failures > MAX_CONSECUTIVE_POLL_FAILURES {
+                            return Err(DeviceCodePollError::Terminal(
+                                "device code token endpoint throttled (HTTP 429) repeatedly"
+                                    .to_string(),
+                            ));
+                        }
+                        warn!(
+                            "{:FL$}Device code poll: throttled HTTP 429 (attempt {}/{}), retrying",
+                            "DeviceCodeAuth", consecutive_failures, MAX_CONSECUTIVE_POLL_FAILURES
+                        );
+                        continue;
+                    }
                     debug!(
                         "{:FL$}Device code poll: unparseable error body (HTTP {}): {:?}",
                         "DeviceCodeAuth",
@@ -285,5 +370,62 @@ impl DeviceCodeAuth {
     /// non-recoverable.
     pub fn is_device_code_expired(err: &DeviceCodePollError) -> bool {
         matches!(err, DeviceCodePollError::ExpiredToken)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// A transient 5xx, then `authorization_pending`, then success: the poll loop
+    /// must ride through the transient failure instead of aborting on it.
+    #[tokio::test]
+    async fn poll_rides_through_transient_5xx_then_pending() {
+        let server = MockServer::start().await;
+        // First poll → 503 (transient server error).
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(503))
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        // Second poll → authorization_pending.
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(400)
+                    .set_body_json(serde_json::json!({ "error": "authorization_pending" })),
+            )
+            .up_to_n_times(1)
+            .with_priority(2)
+            .mount(&server)
+            .await;
+        // Third poll → success.
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({ "access_token": "the-token" })),
+            )
+            .with_priority(3)
+            .mount(&server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = DeviceCodeAuth::poll_for_token(
+            &client,
+            &server.uri(),
+            "client-id",
+            "device-code",
+            0, // no inter-poll delay in the test
+        )
+        .await;
+
+        let resp = match result {
+            Ok(r) => r,
+            Err(_) => panic!("poll must succeed after a transient 5xx and pending"),
+        };
+        assert_eq!(resp.token.access_token, "the-token");
     }
 }

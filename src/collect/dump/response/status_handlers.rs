@@ -16,10 +16,15 @@ pub async fn report_too_many_requests(
     response: &Response,
     api_call: &ApiCall,
 ) {
-    // Handle HTTP status code 429 - Too many requests. Resolve the effective
-    // cooldown once (server `Retry-After`, else the configured default) and use
-    // it for both the rate-limit manager and the logged message, so a header-less
-    // 429 still backs off by the default instead of not at all.
+    // Handle HTTP status code 429 - Too many requests. `effective` is the
+    // resolved cooldown (server `Retry-After`, else the configured default,
+    // clamped to `rateLimitMaxWaitSecs`) used for the logged message, so a
+    // header-less 429 still reports the default it will back off by.
+    //
+    // The rate-limit manager is given the *raw* `response.retry_after` instead:
+    // it resolves and clamps internally (yielding the same cooldown) and counts
+    // each clamp. Passing the already-clamped `effective` would make its internal
+    // `raw == capped`, so the clamp would never be observed.
     let effective = this
         .context
         .ratelimit_manager
@@ -32,9 +37,23 @@ pub async fn report_too_many_requests(
     this.context
         .stats
         .record_retry_after_provenance(&api_call.url.service_name, response.retry_after);
-    this.context
-        .ratelimit_manager
-        .report_429(&api_call.url.service_name, Some(effective));
+    if api_call.is_batch {
+        // Batch envelope 429: service-level cooldown only. The envelope is not
+        // a data bucket (its sub-requests span many APIs), so it must not feed
+        // the per-bucket escalation — nothing would ever reset its streak.
+        this.context
+            .ratelimit_manager
+            .report_429(&api_call.url.service_name, response.retry_after);
+    } else {
+        // Single request or batch sub-response: also count into the
+        // (service, api) bucket's escalation streak, so an endpoint stuck on a
+        // long-refill server quota gets paced individually.
+        this.context.ratelimit_manager.report_429_bucket(
+            &api_call.url.service_name,
+            &api_call.url.api,
+            response.retry_after,
+        );
+    }
     // The AIMD concurrency-window halving is intentionally NOT done here.
     // This runs once per single 429, once per batch *envelope* 429, AND once per
     // *sub*-429 inside a 2xx batch — halving here would collapse the window N
@@ -88,6 +107,17 @@ pub async fn handle_success(
         new_urls.push(next_url);
     }
 
+    // An `$expand` extraction seed flattens each parent's expanded collection to
+    // its own file and returns per-object fallback URLs for any parent that hit
+    // the API cap; it owns its liveness/progress accounting internally.
+    if api_call.url.api_behavior.contains_key("expand_extract") {
+        match value_handlers::handle_expand_extract(this, response, api_call).await {
+            Ok(fallbacks) => new_urls.extend(fallbacks),
+            Err(_) => new_urls.extend(this.prepare_retries(vec![api_call.url.clone()])),
+        }
+        return new_urls;
+    }
+
     // Handling values
     match value_handlers::handle_values(this, response, api_call).await {
         Ok(value_field) => {
@@ -98,6 +128,11 @@ pub async fn handle_success(
             this.context
                 .stats
                 .note_progress(&api_call.url.service_name, &api_call.url.api);
+            // Same trigger for the 429-escalation streak: a written page proves
+            // the bucket drains, so its escalated pacing is lifted.
+            this.context
+                .ratelimit_manager
+                .note_bucket_progress(&api_call.url.service_name, &api_call.url.api);
             let relationship_urls =
                 value_handlers::handle_relationships(this, api_call, value_field).await;
             new_urls.extend(relationship_urls);
@@ -128,7 +163,7 @@ pub async fn handle_unexpected_status(
     status: u16,
 ) -> Vec<Url> {
     use crate::collect::dump::response::DumpError;
-    use crate::utils::url::expected_errors::is_expected_error;
+    use crate::utils::url::expected_errors::{is_breaker_eligible_error, is_expected_error};
     use serde_json::Value;
 
     let mut dump_error: DumpError = DumpError {
@@ -203,6 +238,9 @@ pub async fn handle_unexpected_status(
     // batch_data is Some, sub-URLs are re-queued via prepare_retries in the batch
     // response handler; when batch_data is None, handle_missing_batch_data records
     // the error.
+    // URLs to re-dispatch on the standard retry budget for an undeclared 2xx or a
+    // 3xx response — not a prerequisite failure, so the service is not paused.
+    let mut standard_retry_urls: Vec<Url> = Vec::new();
     if !expected && !api_call.is_batch {
         if status >= 500 {
             // Transient server error: retry directly without a prereq re-check.
@@ -257,8 +295,15 @@ pub async fn handle_unexpected_status(
                 .stats
                 .record_retry(&api_call.url.service_name, &api_call.url.api);
             return vec![url];
-        } else {
-            // 403 and other 4xx: potential prerequisite failure, decrement retry budget.
+        } else if status == 404 || status == 409 {
+            // 404 (resource gone / not found) and 409 (state conflict, e.g. a
+            // locked exchange mailbox) are never permission signals, so they
+            // must not pause the whole service for a prerequisite re-check.
+            // They retry on the standard budget, like undeclared 2xx/3xx.
+            standard_retry_urls = this.prepare_retries(vec![api_call.url.clone()]);
+        } else if status >= 400 {
+            // 403 and other 4xx (401/404/409 handled above): potential
+            // prerequisite failure → re-check, decrement retry budget.
             let retried_urls = this.prepare_retries(vec![api_call.url.clone()]);
             if let Some(url) = retried_urls.into_iter().next() {
                 this.send_to_update(CoordinatorEvent::NewError(
@@ -267,11 +312,20 @@ pub async fn handle_unexpected_status(
                 ))
                 .await;
             }
+        } else {
+            // An undeclared 2xx or a 3xx for this API: not a prerequisite failure
+            // and retrying the exact request rarely helps, but consume the
+            // standard retry budget (urlRetryLimit) without pausing the service
+            // for a permission re-check. The URLs are re-dispatched via the
+            // return value; dispatch abandons them as UrlRetryLimit on exhaustion.
+            standard_retry_urls = this.prepare_retries(vec![api_call.url.clone()]);
         }
     }
-    // Emit structured event and write DumpError for expected errors and 4xx prereq errors.
-    // 4xx writes one entry per retry attempt (useful for diagnosing error code evolution);
-    // only 5xx avoids per-attempt writes (transient, low diagnostic value).
+    // Emit structured event and write DumpError for expected errors, 4xx prereq
+    // errors and undeclared 2xx/3xx statuses. Those write one entry per retry
+    // attempt (useful for diagnosing error code evolution); 5xx and 401 return
+    // early above and so avoid per-attempt writes (both transient, low
+    // diagnostic value).
     let level = if expected {
         log::Level::Debug
     } else {
@@ -289,7 +343,43 @@ pub async fn handle_unexpected_status(
         message: dump_error.message.clone(),
     });
     dump_error.expected = expected;
+    let error_code = dump_error.code.clone();
     this.write_dump_error(dump_error).await;
 
-    Vec::new()
+    // Expected-error breaker: count this declared-benign error into the
+    // bucket's consecutive streak. When the configured threshold is reached on
+    // a bucket that never wrote a page (fires at most once per bucket), ask the
+    // coordinator to drop its remaining URLs as skipped.
+    //
+    // Only errors the schema flags `breaker_eligible` feed the breaker — a
+    // tenant-wide all-or-nothing signal (every URL of the bucket returns it, so
+    // the rest are wasted round-trips). Per-object expected errors (a resource
+    // gone, an account type lacking a feature) are left unflagged: letting them
+    // trip an API-wide skip would silently drop the data-bearing objects not yet
+    // processed (e.g. resources that DO support resource-scope PIM, mixed with
+    // many that 404). The opt-in is per `(status, code)`, so the schema author
+    // — not a hard-coded status — decides what counts as tenant-wide.
+    if !api_call.is_batch
+        && is_breaker_eligible_error(status, error_code_field, api_call)
+        && this
+            .context
+            .stats
+            .record_expected_error_streak(&api_call.url.service_name, &api_call.url.api)
+    {
+        log::warn!(
+            "{:FL$}API {:?} of service {:?} returned only declared expected errors (latest: {} {}); skipping its remaining URLs (expectedErrorBreakerThreshold)",
+            "ResponseThread",
+            api_call.url.api,
+            api_call.url.service_name,
+            status,
+            error_code
+        );
+        this.send_to_update(CoordinatorEvent::BreakerTripped {
+            service: Arc::from(api_call.url.service_name.as_str()),
+            api: api_call.url.api.clone(),
+        })
+        .await;
+    }
+
+    standard_retry_urls
 }

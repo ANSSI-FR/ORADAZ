@@ -149,6 +149,42 @@ pub fn request_workers_inflight() -> usize {
 }
 
 // ---------------------------------------------------------------------------
+// Response-worker admission wait
+// ---------------------------------------------------------------------------
+
+/// Cumulative wall-clock time (ms) the response module spent waiting for a
+/// worker permit (`responseWorkersMax` bound). A non-zero total means responses
+/// arrived faster than the bounded worker pool drained them — the bound is
+/// actively capping memory; a zero total means it never constrained the run.
+static RESP_SEM_WAIT_MS: AtomicU64 = AtomicU64::new(0);
+
+/// Accumulates one wait for a response-worker permit.
+pub fn record_resp_sem_wait_ms(ms: u64) {
+    RESP_SEM_WAIT_MS.fetch_add(ms, Ordering::Relaxed);
+}
+
+/// Total time (ms) spent waiting for response-worker permits so far.
+pub fn resp_sem_wait_ms_total() -> u64 {
+    RESP_SEM_WAIT_MS.load(Ordering::Relaxed)
+}
+
+/// Cumulative wall-clock time (ms) the response module spent waiting on the
+/// response byte budget (`responseMemoryBudgetBytes`). A non-zero total means a
+/// few large pages serialised through the budget — the memory bound actively
+/// back-pressured the pipeline; zero means it never constrained the run.
+static RESP_MEM_WAIT_MS: AtomicU64 = AtomicU64::new(0);
+
+/// Accumulates one wait on the response byte budget.
+pub fn record_resp_mem_wait_ms(ms: u64) {
+    RESP_MEM_WAIT_MS.fetch_add(ms, Ordering::Relaxed);
+}
+
+/// Total time (ms) spent waiting on the response byte budget so far.
+pub fn resp_mem_wait_ms_total() -> u64 {
+    RESP_MEM_WAIT_MS.load(Ordering::Relaxed)
+}
+
+// ---------------------------------------------------------------------------
 // Peak tracking
 // ---------------------------------------------------------------------------
 
@@ -184,6 +220,34 @@ pub fn peak_rss_bytes() -> u64 {
 /// Peak total URL-pool length observed so far.
 pub fn peak_pool_len() -> u64 {
     PEAK_POOL_LEN.load(Ordering::Relaxed)
+}
+
+// ---------------------------------------------------------------------------
+// Write throughput (cumulative)
+// ---------------------------------------------------------------------------
+
+/// Cumulative count of JSON objects written to the archive's data tables.
+static WRITTEN_ENTRIES: AtomicU64 = AtomicU64::new(0);
+/// Cumulative uncompressed JSON bytes written to the archive's data tables.
+static WRITTEN_BYTES: AtomicU64 = AtomicU64::new(0);
+
+/// Accumulates one table write: `entries` objects totalling `bytes` uncompressed
+/// JSON bytes. Sampled into the periodic `Memory sample:` debug line so the
+/// after-the-fact log shows the write-throughput *trajectory* (where the run
+/// slowed down), not just the end-of-run totals.
+pub fn record_written(entries: u64, bytes: u64) {
+    WRITTEN_ENTRIES.fetch_add(entries, Ordering::Relaxed);
+    WRITTEN_BYTES.fetch_add(bytes, Ordering::Relaxed);
+}
+
+/// Cumulative objects written to data tables so far.
+pub fn written_entries() -> u64 {
+    WRITTEN_ENTRIES.load(Ordering::Relaxed)
+}
+
+/// Cumulative uncompressed bytes written to data tables so far.
+pub fn written_bytes() -> u64 {
+    WRITTEN_BYTES.load(Ordering::Relaxed)
 }
 
 // ---------------------------------------------------------------------------

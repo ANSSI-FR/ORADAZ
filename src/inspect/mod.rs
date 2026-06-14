@@ -19,7 +19,7 @@ use crate::inspect::display::{
     print_services_section, print_stats_section, print_summary, print_timeline,
     print_timeline_view, strip_ansi_codes,
 };
-use crate::inspect::loader::load_log_source;
+use crate::inspect::loader::{ArchiveNeeds, LogNeed, load_log_source};
 use crate::utils::logger;
 use crate::utils::ui;
 use crate::utils::ui::{Icon, err_text, icon};
@@ -146,8 +146,14 @@ pub fn run_compare(opts: CompareCliOptions) {
         ));
     }
 
-    let source_a = load_log_source(&opts.source_a, opts.key.as_deref());
-    let source_b = load_log_source(&opts.source_b, key_for_b.as_deref());
+    // Compare reads error verdicts + metadata/stats/config deltas; it never
+    // renders the log.
+    let needs = ArchiveNeeds {
+        errors: true,
+        log: LogNeed::Never,
+    };
+    let source_a = load_log_source(&opts.source_a, opts.key.as_deref(), &needs);
+    let source_b = load_log_source(&opts.source_b, key_for_b.as_deref(), &needs);
 
     let mut lines: Vec<String> = vec![String::new()];
     print_compare_section(&source_a, &source_b, &mut lines);
@@ -189,7 +195,15 @@ pub fn run_hints(
     logger::set_no_color(matches!(ui::mode(), ui::UiMode::NoColor));
     let (path, _) = resolve_source(mla, folder, key.as_deref());
     let service_filter = validate_service_filter(service.as_deref());
-    let source = load_log_source(&path, key.as_deref());
+    // Hints aggregates errors; it quotes the log tail only on a failed run.
+    let source = load_log_source(
+        &path,
+        key.as_deref(),
+        &ArchiveNeeds {
+            errors: true,
+            log: LogNeed::OnFailure,
+        },
+    );
 
     let mut lines: Vec<String> = vec![String::new()];
     print_remediation_section(
@@ -232,7 +246,15 @@ pub fn run_timeline(opts: TimelineCliOptions) {
     let service_filter = validate_service_filter(opts.service.as_deref());
     let bucket_secs = validate_bucket(opts.bucket.as_deref());
 
-    let source = load_log_source(&path, opts.key.as_deref());
+    // Timeline parses the full log into the per-bucket chart.
+    let source = load_log_source(
+        &path,
+        opts.key.as_deref(),
+        &ArchiveNeeds {
+            errors: true,
+            log: LogNeed::Always,
+        },
+    );
 
     // Same per-API filtering as run_logs (service only here — the timeline
     // command intentionally doesn't expose --api/--http/--since/--last).
@@ -279,7 +301,15 @@ pub fn run_summary(
     ui::init(no_color);
     logger::set_no_color(matches!(ui::mode(), ui::UiMode::NoColor));
     let (path, _) = resolve_source(mla, folder, key.as_deref());
-    let source = load_log_source(&path, key.as_deref());
+    // Summary aggregates errors; it quotes the log tail only on a failed run.
+    let source = load_log_source(
+        &path,
+        key.as_deref(),
+        &ArchiveNeeds {
+            errors: true,
+            log: LogNeed::OnFailure,
+        },
+    );
 
     let mut lines: Vec<String> = vec![String::new()];
     print_overview(&source, &mut lines);
@@ -331,7 +361,16 @@ pub fn run_logs(
         None => None,
     };
 
-    let source = load_log_source(&path, key.as_deref());
+    // The log viewer parses the full log; --full also reads response bodies
+    // from errors.json.
+    let source = load_log_source(
+        &path,
+        key.as_deref(),
+        &ArchiveNeeds {
+            errors: true,
+            log: LogNeed::Always,
+        },
+    );
 
     // Parse + sequentially filter entries.
     let mut entries: Vec<LogEntry> = log_parser::parse_log(&source.log_text)
@@ -433,7 +472,15 @@ pub fn run_services(
     logger::set_no_color(matches!(ui::mode(), ui::UiMode::NoColor));
     let (path, _) = resolve_source(mla, folder, key.as_deref());
     let service_filter = validate_service_filter(service.as_deref());
-    let source = load_log_source(&path, key.as_deref());
+    // Services aggregates errors (ISSUES BY API) but never renders the log.
+    let source = load_log_source(
+        &path,
+        key.as_deref(),
+        &ArchiveNeeds {
+            errors: true,
+            log: LogNeed::Never,
+        },
+    );
 
     let mut lines: Vec<String> = vec![String::new()];
     print_services_section(
@@ -468,7 +515,15 @@ pub fn run_config(
     // Propagate colour setting to the logger (affects file logs)
     logger::set_no_color(matches!(ui::mode(), ui::UiMode::NoColor));
     let (path, _) = resolve_source(mla, folder, key.as_deref());
-    let source = load_log_source(&path, key.as_deref());
+    // Config renders metadata + config JSON only — no log, no errors.
+    let source = load_log_source(
+        &path,
+        key.as_deref(),
+        &ArchiveNeeds {
+            errors: false,
+            log: LogNeed::Never,
+        },
+    );
 
     let mut lines: Vec<String> = vec![String::new()];
     print_config_section(
@@ -501,7 +556,15 @@ pub fn run_metadata(
     // Propagate colour setting to the logger (affects file logs)
     logger::set_no_color(matches!(ui::mode(), ui::UiMode::NoColor));
     let (path, _) = resolve_source(mla, folder, key.as_deref());
-    let source = load_log_source(&path, key.as_deref());
+    // Metadata renders metadata + config JSON only — no log, no errors.
+    let source = load_log_source(
+        &path,
+        key.as_deref(),
+        &ArchiveNeeds {
+            errors: false,
+            log: LogNeed::Never,
+        },
+    );
 
     let mut lines: Vec<String> = vec![String::new()];
     print_metadata_section(
@@ -540,7 +603,15 @@ pub fn run_stats(opts: StatsCliOptions) {
     logger::set_no_color(matches!(ui::mode(), ui::UiMode::NoColor));
     let (path, _) = resolve_source(opts.mla, opts.folder, opts.key.as_deref());
     let service_filter = validate_service_filter(opts.service.as_deref());
-    let source = load_log_source(&path, opts.key.as_deref());
+    // Stats renders metadata + config + stats JSON only — no log, no errors.
+    let source = load_log_source(
+        &path,
+        opts.key.as_deref(),
+        &ArchiveNeeds {
+            errors: false,
+            log: LogNeed::Never,
+        },
+    );
 
     let mut lines: Vec<String> = vec![String::new()];
     print_stats_section(

@@ -40,8 +40,10 @@ pub enum RequestMsg {
 /// Global counter for requests that were retried due to transient errors.
 pub static RETRY_COUNT: AtomicU64 = AtomicU64::new(0);
 
-/// Instantaneous count of request slots currently sleeping in a retry backoff.
-/// Non-zero means the pipeline is degraded: slots are held but no requests are in flight.
+/// Instantaneous count of request slots currently sleeping in a retry/cooldown
+/// backoff. Each counted slot holds an AIMD concurrency permit while its worker
+/// waits instead of issuing a request, so a high value is a throttling/transport
+/// degradation signal (surfaced as the progress UI's "Backoff: N").
 pub static BACKOFF_ACTIVE: AtomicU64 = AtomicU64::new(0);
 
 /// Peak value of [`BACKOFF_ACTIVE`] over the run — the largest number of request

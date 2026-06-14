@@ -2,7 +2,7 @@
 use anstyle::{AnsiColor, Effects, Style};
 use std::env;
 use std::io::IsTerminal;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum UiMode {
@@ -34,8 +34,6 @@ pub enum Icon {
     Spinner(u8), // frame index 0-7
 }
 
-static FORCE_NO_COLOR: AtomicBool = AtomicBool::new(false);
-
 /// Initialize UI mode. Call once at startup.
 pub fn init(force_no_color: bool) {
     // Enable Virtual Terminal processing on Windows so ANSI escape codes work.
@@ -44,8 +42,10 @@ pub fn init(force_no_color: bool) {
         crate::utils::ui::vt::enable_vt_processing();
     }
 
-    // environment variable overrides
-    let env_no = env::var("NO_COLOR").is_ok();
+    // Honour the NO_COLOR convention (https://no-color.org): any *non-empty* value
+    // disables colour, while an empty `NO_COLOR=` is treated as unset so it does not
+    // accidentally suppress colour. Colour is also disabled when stdout is not a TTY.
+    let env_no = env::var("NO_COLOR").is_ok_and(|v| !v.is_empty());
     let term = std::io::stdout().is_terminal();
     let mode = if force_no_color || env_no || !term {
         UiMode::NoColor
@@ -54,7 +54,6 @@ pub fn init(force_no_color: bool) {
     };
     set_mode(mode);
     crate::utils::logger::config::NO_COLOR.store(mode == UiMode::NoColor, Ordering::Relaxed);
-    FORCE_NO_COLOR.store(force_no_color, Ordering::Relaxed);
 }
 
 pub fn set_mode(mode: UiMode) {

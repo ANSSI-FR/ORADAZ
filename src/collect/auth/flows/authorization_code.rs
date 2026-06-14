@@ -13,13 +13,36 @@ use crate::utils::ui::auth_banner::AuthBanner;
 use base64::prelude::*;
 use log::{debug, error, trace};
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::TcpListener;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::net::{TcpListener, TcpStream};
 use url::Url;
 use uuid::Uuid;
 
+/// Upper bound on the bytes read for a connection's HTTP request line, so a
+/// client on the loopback interface cannot grow the buffer without limit.
+const MAX_REQUEST_LINE_BYTES: u64 = 8 * 1024;
+
+/// Per-connection deadline for receiving the request line. Connections are
+/// handled one at a time, so a peer that completes the TCP handshake but never
+/// sends anything (a browser preconnect socket, a local port scanner) would
+/// otherwise block the loop while the genuine OAuth redirect waits in the
+/// accept backlog. A real redirect arrives within milliseconds; 10 s is
+/// generous for it and short enough that sign-in is not noticeably delayed.
+const REQUEST_LINE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Utility for performing authentication using the Authorization Code flow.
 pub struct AuthorizationCodeAuth {}
+
+/// Sends a minimal plain-text HTTP/1.1 response to the browser and asks it to
+/// close the connection. Errors are returned to the caller, which treats a
+/// failed write to a transient/stray connection as non-fatal.
+async fn respond(stream: &mut TcpStream, status: &str, body: &str) -> std::io::Result<()> {
+    let response = format!(
+        "HTTP/1.1 {status}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    stream.write_all(response.as_bytes()).await
+}
 
 /// Generates a PKCE verifier (random base64url) and its S256 challenge.
 fn generate_pkce() -> (String, String) {
@@ -42,11 +65,15 @@ async fn wait_for_redirect(
     listener_address: &str,
     listener_port: &str,
 ) -> Result<(String, String), Error> {
-    // Wait for the first successfully-accepted connection, skipping transient
-    // accept-level errors (e.g. a browser preconnect socket that aborts).
-    let (mut stream, _) = loop {
-        match listener.accept().await {
-            Ok(conn) => break conn,
+    // The browser may open several connections to the loopback redirect URI
+    // (speculative/preconnect sockets, a favicon request, …) around the real
+    // OAuth redirect. Keep accepting until one carries the authorization `code`,
+    // answering and ignoring the others, so a stray connection cannot abort
+    // interactive sign-in. There is no deadline here: the wait lasts as long as
+    // the user takes, and the operator interrupts with Ctrl+C.
+    loop {
+        let (mut stream, _) = match listener.accept().await {
+            Ok(conn) => conn,
             Err(err) => {
                 debug!(
                     "{:FL$}Transient TCP accept error on {}:{}, waiting for the next connection: {:?}",
@@ -54,101 +81,118 @@ async fn wait_for_redirect(
                 );
                 continue;
             }
-        }
-    };
+        };
 
-    let mut request_line: String = String::new();
-    {
-        let mut reader = BufReader::new(&mut stream);
-        if let Err(err) = reader.read_line(&mut request_line).await {
+        // Read only the request line, capped so a hostile client cannot grow the
+        // buffer without limit and bounded in time so a silent held-open
+        // connection cannot stall the loop. A read error, a timeout or an empty
+        // line is a stray/aborted connection: drop it and wait for the next one.
+        let mut request_line = String::new();
+        {
+            let mut reader = BufReader::new(&mut stream).take(MAX_REQUEST_LINE_BYTES);
+            match tokio::time::timeout(REQUEST_LINE_TIMEOUT, reader.read_line(&mut request_line))
+                .await
+            {
+                Ok(Ok(_)) => {}
+                Ok(Err(err)) => {
+                    debug!(
+                        "{:FL$}Ignoring connection with unreadable request line: {:?}",
+                        "AuthorizationCodeAuth", err
+                    );
+                    continue;
+                }
+                Err(_) => {
+                    debug!(
+                        "{:FL$}Ignoring connection that sent no request line within {}s",
+                        "AuthorizationCodeAuth",
+                        REQUEST_LINE_TIMEOUT.as_secs()
+                    );
+                    continue;
+                }
+            }
+        }
+
+        // The request target is the second whitespace-separated token of e.g.
+        // "GET /redirect?code=...&state=... HTTP/1.1".
+        let url = match request_line
+            .split_whitespace()
+            .nth(1)
+            .and_then(|path| Url::parse(&format!("http://localhost{path}")).ok())
+        {
+            Some(u) => u,
+            None => {
+                debug!(
+                    "{:FL$}Ignoring connection with no parseable request target on {}:{}",
+                    "AuthorizationCodeAuth", listener_address, listener_port
+                );
+                let _ = respond(
+                    &mut stream,
+                    "400 Bad Request",
+                    "Waiting for the OAuth redirect...",
+                )
+                .await;
+                continue;
+            }
+        };
+
+        let find_param = |name: &str| {
+            url.query_pairs()
+                .find(|(k, _)| k == name)
+                .map(|(_, v)| v.into_owned())
+        };
+
+        // An explicit `error` parameter means the identity provider rejected the
+        // request (most often the user denied consent): a definitive failure,
+        // reported to both the browser and the operator.
+        if let Some(error_code) = find_param("error") {
+            let description = find_param("error_description").unwrap_or_default();
             error!(
-                "{:FL$}Error reading from TCP listener stream",
-                "AuthorizationCodeAuth",
+                "{:FL$}Authorization request rejected by the identity provider: {} {}",
+                "AuthorizationCodeAuth", error_code, description
             );
-            debug!(
-                "{:FL$}Error reading from TCP listener stream: {:?}",
-                "AuthorizationCodeAuth", err
-            );
-            return Err(Error::AuthorizationCodeFlowCreation);
+            let _ = respond(
+                &mut stream,
+                "200 OK",
+                "Authentication failed, please go back to ORADAZ",
+            )
+            .await;
+            return Err(Error::AuthorizationCodeFlowAuthentication);
         }
-    }
 
-    let redirect_uri_path: &str = match request_line.split_whitespace().nth(1) {
-        Some(r) => r,
-        None => {
-            error!(
-                "{:FL$}Error getting redirect URI in TCP Listener",
-                "AuthorizationCodeAuth"
-            );
-
-            return Err(Error::AuthorizationCodeFlowCreation);
+        // A `code` identifies the genuine OAuth redirect. The `state` is returned
+        // as-is and validated against the CSRF token by the caller. A failed
+        // write of the confirmation page does not invalidate the received code —
+        // authentication proceeds; the browser just shows no confirmation.
+        if let Some(code) = find_param("code") {
+            let state = find_param("state").unwrap_or_default();
+            if let Err(err) = respond(
+                &mut stream,
+                "200 OK",
+                "Authentication successful, please go back to ORADAZ",
+            )
+            .await
+            {
+                debug!(
+                    "{:FL$}Could not write the success page to the browser (authentication continues): {:?}",
+                    "AuthorizationCodeAuth", err
+                );
+            }
+            return Ok((code, state));
         }
-    };
-    let url: Url = match Url::parse(&("http://localhost".to_string() + redirect_uri_path)) {
-        Ok(u) => u,
-        Err(err) => {
-            error!(
-                "{:FL$}URL parse error in TCP Listener",
-                "AuthorizationCodeAuth",
-            );
-            debug!(
-                "{:FL$}URL parse error in TCP Listener: {:?}",
-                "AuthorizationCodeAuth", err
-            );
-            return Err(Error::AuthorizationCodeFlowCreation);
-        }
-    };
 
-    let code = match url
-        .query_pairs()
-        .find(|(k, _)| k == "code")
-        .map(|(_, v)| v.into_owned())
-    {
-        Some(c) => c,
-        None => {
-            error!(
-                "{:FL$}Missing 'code' parameter in redirect URI",
-                "AuthorizationCodeAuth"
-            );
-            return Err(Error::AuthorizationCodeFlowCreation);
-        }
-    };
-
-    let state = match url
-        .query_pairs()
-        .find(|(k, _)| k == "state")
-        .map(|(_, v)| v.into_owned())
-    {
-        Some(s) => s,
-        None => {
-            error!(
-                "{:FL$}Missing 'state' parameter in redirect URI",
-                "AuthorizationCodeAuth"
-            );
-            return Err(Error::AuthorizationCodeFlowCreation);
-        }
-    };
-
-    let message: String = String::from("Authentication successful, please go back to ORADAZ");
-    let response: String = format!(
-        "HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n{}",
-        message.len(),
-        message
-    );
-    if let Err(err) = stream.write_all(response.as_bytes()).await {
-        error!(
-            "{:FL$}Cannot write TCP listener response to stream",
-            "AuthorizationCodeAuth"
-        );
+        // Neither `code` nor `error`: a stray connection (preconnect, favicon, …).
+        // Answer politely and keep waiting for the real redirect.
         debug!(
-            "{:FL$}TCP stream write error: {:?}",
-            "AuthorizationCodeAuth", err
+            "{:FL$}Ignoring non-redirect request on {}:{}",
+            "AuthorizationCodeAuth", listener_address, listener_port
         );
-
-        return Err(Error::AuthorizationCodeFlowCreation);
+        let _ = respond(
+            &mut stream,
+            "404 Not Found",
+            "Waiting for the OAuth redirect...",
+        )
+        .await;
     }
-
-    Ok((code, state))
 }
 
 impl AuthorizationCodeAuth {
@@ -340,6 +384,7 @@ impl AuthorizationCodeAuth {
 #[cfg(test)]
 mod tests {
     use super::wait_for_redirect;
+    use crate::utils::errors::Error;
 
     use tokio::io::AsyncWriteExt;
     use tokio::net::{TcpListener, TcpStream};
@@ -364,19 +409,51 @@ mod tests {
         assert_eq!(state, "the-state");
     }
 
-    /// A redirect missing the `code` parameter is an error (not a silent empty code).
+    /// A stray connection that opens and closes without sending the redirect
+    /// (e.g. a browser preconnect socket) must be skipped, after which the real
+    /// redirect on a later connection still succeeds.
     #[tokio::test]
-    async fn wait_for_redirect_missing_code_is_error() {
+    async fn wait_for_redirect_skips_stray_connection_then_succeeds() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(wait_for_redirect(listener, "127.0.0.1", "0"));
+
+        // Open then immediately close a connection without sending anything.
+        let stray = TcpStream::connect(addr).await.unwrap();
+        drop(stray);
+
+        let mut client = TcpStream::connect(addr).await.unwrap();
+        client
+            .write_all(b"GET /redirect?code=real-code&state=real-state HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
+
+        let (code, state) = server.await.unwrap().unwrap();
+        assert_eq!(code, "real-code");
+        assert_eq!(state, "real-state");
+    }
+
+    /// A consent denial redirects with an `error` parameter (and no `code`): a
+    /// definitive failure, distinct from a stray connection that is skipped.
+    #[tokio::test]
+    async fn wait_for_redirect_reports_provider_error() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(wait_for_redirect(listener, "127.0.0.1", "0"));
 
         let mut client = TcpStream::connect(addr).await.unwrap();
         client
-            .write_all(b"GET /redirect?state=only HTTP/1.1\r\n\r\n")
+            .write_all(
+                b"GET /redirect?error=access_denied&error_description=denied HTTP/1.1\r\n\r\n",
+            )
             .await
             .unwrap();
 
-        assert!(server.await.unwrap().is_err());
+        // The dedicated authentication-failure variant distinguishes a consent
+        // denial from a stray connection (which is skipped, not an error).
+        assert!(matches!(
+            server.await.unwrap(),
+            Err(Error::AuthorizationCodeFlowAuthentication)
+        ));
     }
 }

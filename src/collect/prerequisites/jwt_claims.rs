@@ -44,6 +44,21 @@ impl TokenGrants {
     }
 }
 
+/// Decodes a single base64url JWT segment (e.g. the payload). JWT segments use
+/// base64url **without** padding, but some tokens in the wild pad the segment;
+/// this tries the unpadded decoder first, then falls back to re-padding. Shared
+/// by the grant inspection here and the access-token identity parsing in
+/// [`crate::collect::auth::tokens::response`] so the two cannot drift apart.
+pub(crate) fn decode_jwt_segment(segment: &str) -> Result<Vec<u8>, base64::DecodeError> {
+    BASE64_URL_SAFE_NO_PAD.decode(segment).or_else(|_| {
+        let mut padded = segment.to_string();
+        while !padded.len().is_multiple_of(4) {
+            padded.push('=');
+        }
+        BASE64_URL_SAFE.decode(padded.as_bytes())
+    })
+}
+
 #[derive(Deserialize)]
 struct JwtPayload {
     #[serde(default)]
@@ -69,18 +84,7 @@ pub fn parse_token_grants(access_token: &str) -> TokenGrants {
         }
     };
 
-    // JWT payloads use base64url without padding, but some tokens in the wild
-    // pad the segment. Try the unpadded decoder first, then fall back to the
-    // padded one after re-adding padding bytes.
-    let decoded = BASE64_URL_SAFE_NO_PAD.decode(payload_b64).or_else(|_| {
-        let mut padded = payload_b64.to_string();
-        while padded.len() % 4 != 0 {
-            padded.push('=');
-        }
-        BASE64_URL_SAFE.decode(padded.as_bytes())
-    });
-
-    let bytes = match decoded {
+    let bytes = match decode_jwt_segment(payload_b64) {
         Ok(b) => b,
         Err(err) => {
             debug!(

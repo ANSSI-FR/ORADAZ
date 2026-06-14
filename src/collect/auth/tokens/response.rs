@@ -1,9 +1,9 @@
 /// Module to handle OAuth2 token responses.
 use crate::FL;
 use crate::collect::auth::tokens::entity::Token;
+use crate::collect::prerequisites::jwt_claims::decode_jwt_segment;
 use crate::utils::errors::Error;
 
-use base64::prelude::*;
 use chrono::Utc;
 use log::{debug, error, trace};
 use serde::Deserialize;
@@ -123,7 +123,7 @@ impl InitialTokenResponse {
             .token_type
             .clone()
             .unwrap_or_else(|| String::from("Bearer"));
-        match BASE64_URL_SAFE_NO_PAD.decode(&payload_part) {
+        match decode_jwt_segment(&payload_part) {
             Ok(bytes) => {
                 let token_str = String::from_utf8_lossy(&bytes);
                 match serde_json::from_str::<PartialAccessToken>(&token_str) {

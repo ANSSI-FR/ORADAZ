@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <tenant>12345678-4321-4321-4321-123456789012</tenant>
+  <appId>12345678-1234-1234-1234-123456789012</appId>
+  <outputFiles>1</outputFiles>
+  <outputMLA>true</outputMLA>
+  <concurrencyMinWindow>5</concurrencyMinWindow>
+  <concurrencyMaxWindow>50</concurrencyMaxWindow>
+  <httpTimeoutSeconds>60</httpTimeoutSeconds>
+  <defaultRetryAfterSeconds>45</defaultRetryAfterSeconds>
+  <dispatchBurstCap>200</dispatchBurstCap>
+  <urlRetryLimit>3</urlRetryLimit>
+  <stallDetectionTimeout>600</stallDetectionTimeout>
+  <prereqRecheckCacheSecs>15</prereqRecheckCacheSecs>
+  <livenessCeilingSecs>1200</livenessCeilingSecs>
+  <concurrencySlowStart>true</concurrencySlowStart>
+  <proxy>
+    <url>http://proxy.example.com:8080</url>
+    <username>proxyuser</username>
+    <password>proxypass</password>
+  </proxy>
+  <useDeviceCode>true</useDeviceCode>
+  <noCheck>true</noCheck>
+  <listenerAddress>127.0.0.1</listenerAddress>
+  <listenerPort>8888</listenerPort>
+  <schemaFile>/path/to/custom/schema.json</schemaFile>
+  <userAgent>OradazCustomAgent/1.0</userAgent>
+  <services>
+    <service name="graph">true</service>
+    <service name="exchange">false</service>
+    <service name="resources">true</service>
+  </services>
+</root>

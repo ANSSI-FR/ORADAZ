@@ -25,7 +25,7 @@ pub struct TableMetadata {
     pub count: usize,
     /// Total uncompressed JSON bytes written for this table (sum of all pages).
     /// Pairs with `count` for data-volume analysis: heavy tables are `$select`
-    /// candidates, and the total feeds the writer-saturation correlation (§3.8).
+    /// candidates, and the total feeds the writer-saturation correlation.
     #[serde(default)]
     pub bytes: usize,
 }
@@ -57,11 +57,14 @@ pub struct Metadata {
     services: HashMap<String, ServiceCollectionStatus>,
     tokens: Vec<TokenMetadata>,
     tables: Vec<TableMetadata>,
-    /// Total number of error entries written to `errors.json` during the dump.
-    /// Includes both HTTP errors (4xx/5xx, expected or not) and non-HTTP
-    /// entries (nextLink parsing, retry-budget exhaustion, missing-token, etc.).
-    /// As a result, `errors >= expected_errors + unexpected_errors`; the
-    /// difference is the count of non-HTTP entries.
+    /// Total number of error entries written to `errors.json` during the dump,
+    /// across HTTP errors (4xx/5xx, expected or not) and non-HTTP entries
+    /// (nextLink parsing, retry-budget exhaustion, missing-token, …).
+    /// `expected_errors`/`unexpected_errors` are counted per HTTP *response*, so
+    /// 5xx retries (counted on each attempt, written at most once) and
+    /// batch-wrapper attribution (one envelope failure attributed to many
+    /// sub-URLs) can make their sum exceed `errors`. Use `non_http_errors` for
+    /// the exact non-HTTP figure rather than subtracting.
     errors: usize,
     /// HTTP errors (status ≥ 400 except 429) whose status/code matched a
     /// declared `expected_error_codes` entry. Benign: PIM probes on
@@ -74,6 +77,21 @@ pub struct Metadata {
     /// investigating. Sourced from `Stats::record_response` per-API counters.
     #[serde(default)]
     unexpected_errors: usize,
+    /// Exact count of non-HTTP (`status == 0`) entries written to `errors.json`
+    /// (lost-data abandonments, missing-token, nextLink parsing, …), counted at
+    /// the single `errors.json` write chokepoint. Reliable even when the
+    /// response-counted `expected`/`unexpected` figures overshoot `errors`.
+    /// `#[serde(default)]` → 0 on archives predating this field.
+    #[serde(default)]
+    non_http_errors: usize,
+    /// Total *lost-data* failures: non-HTTP (`status == 0`, unexpected) errors
+    /// that abandoned a URL with its data unwritten (`UrlRetryLimit`,
+    /// `ThrottleStalled`, `NetworkStalled`, …) — the counter behind the
+    /// PARTIAL verdict. A subset of `non_http_errors` (which also counts
+    /// benign entries like `MissingTokenForRelationships`). Per-API breakdown
+    /// in `stats.json` (`lost_data_by_code`).
+    #[serde(default)]
+    lost_data_errors: usize,
     auth_errors: usize,
     prerequisites_errors: usize,
     /// Peak process RSS (bytes) observed during the dump, or 0 when unavailable
@@ -103,6 +121,17 @@ pub struct Metadata {
     /// with `writer_budget_blocked_secs` (one long stall vs many short).
     #[serde(default)]
     writer_budget_blocked_count: u64,
+    /// Total seconds producers spent blocked on the writer *channel* send. The
+    /// channel is bounded by message count, so a service writing many tiny pages
+    /// can saturate it without filling the byte budget — non-zero here with
+    /// `writer_budget_blocked_secs = 0` means the writer is the bottleneck on a
+    /// small-page service. See `utils::writer::actor`.
+    #[serde(default)]
+    writer_send_blocked_secs: u64,
+    /// Number of `write_file` calls whose channel send stalled; pairs with
+    /// `writer_send_blocked_secs` (one long stall vs many short).
+    #[serde(default)]
+    writer_send_blocked_count: u64,
     /// Peak simultaneous request slots parked in a retry/cooldown backoff — the
     /// throttling-severity signal. See `collect::dump::request::BACKOFF_ACTIVE`.
     #[serde(default)]
@@ -119,28 +148,25 @@ pub struct Metadata {
     /// Per-service count of effective AIMD additive increases — the **symmetric**
     /// companion to `window_decreases_by_service`. increases ≈ decreases ⇒ the
     /// window recovered after each collapse; decreases ≫ increases ⇒ it stayed
-    /// hammered down. Verifies the cooldown-order fix let the window re-ramp, and
-    /// feeds the per-bucket re-key (B) decision. From `collect::dump::concurrency`.
+    /// hammered down. From `collect::dump::concurrency`.
     #[serde(default)]
     window_increases_by_service: BTreeMap<String, u64>,
     /// Per-service whole seconds the AIMD window spent collapsed at its floor
     /// (`min_window`). The **duration** of collapse: a window pinned at the floor
-    /// for minutes (the run_001 pathology) is invisible in the halving *count*
-    /// alone — this is the direct measure of the B-trigger symptom ("fast
-    /// endpoints stuck at the floor during convergence"). From
-    /// `collect::dump::concurrency`.
+    /// for minutes is invisible in the halving *count* alone — the count and the
+    /// duration are reported separately. From `collect::dump::concurrency`.
     #[serde(default)]
     time_at_floor_secs_by_service: BTreeMap<String, u64>,
     /// Total uncompressed JSON bytes written across all tables (Σ `tables[].bytes`).
     /// The data-volume figure: byte throughput (`/ dump_duration_secs`) and the
-    /// writer-saturation correlation (§3.8) read from here.
+    /// writer-saturation correlation read from here.
     #[serde(default)]
     total_bytes_written: u64,
     /// Per-service count of "parked at the AIMD ceiling" events — request workers
     /// that blocked because demand exceeded the *maximum allowed* concurrency
     /// (`current >= max_window`), not because the window was reduced by 429. The
     /// direct signal that `concurrencyMaxWindow` is the binding constraint: high
-    /// here + low `retries_rate_limit` ⇒ raising the cap is safe (M1).
+    /// here + low `retries_rate_limit` ⇒ raising the cap is safe.
     #[serde(default)]
     slot_wait_events_by_service: BTreeMap<String, u64>,
     /// Per-service whole seconds spent parked at the ceiling (magnitude companion
@@ -160,14 +186,74 @@ pub struct Metadata {
     /// single-digit, not 1. See `collect::dump::ratelimit`.
     #[serde(default)]
     cooldown_active_secs_by_service: BTreeMap<String, u64>,
+    /// Per-service count of 429 cooldowns clamped down to `rateLimitMaxWaitSecs`.
+    /// Non-zero means the server demanded longer waits than the configured cap
+    /// allows; each clamped cooldown resumes early and risks an immediate
+    /// re-429. See `collect::dump::ratelimit`.
+    #[serde(default)]
+    retry_after_clamped_by_service: BTreeMap<String, u64>,
+    /// Per-service wall-clock seconds the service spent **paused** — dispatch
+    /// gated by a prerequisite re-check or a mid-dump token refresh (union of
+    /// both causes, one interval when they overlap). Explains a duration gap
+    /// that shows neither throttling nor writer pressure. From `Stats`.
+    #[serde(default)]
+    pause_secs_by_service: BTreeMap<String, u64>,
+    /// Per-service count of mid-dump background token-refresh episodes. High
+    /// counts flag token lifetimes short relative to the collection length
+    /// (each episode pauses the service's dispatch). From `Stats`.
+    #[serde(default)]
+    token_refreshes_by_service: BTreeMap<String, u64>,
+    /// Number of times the coordinator's stall watchdog fired with requests in
+    /// flight (no event for `stallDetectionTimeout`; the run logs and
+    /// continues). Non-zero flags a run that went quiet long enough to need
+    /// the watchdog — worth reading the log around the "Stall detected" lines.
+    #[serde(default)]
+    stall_events: u64,
+    /// Per-API (`"service/api"`) count of URLs skipped by the expected-error
+    /// breaker: the bucket accumulated `expectedErrorBreakerThreshold`
+    /// consecutive schema-declared expected errors without ever writing a
+    /// page, so its remaining URLs were dropped. Skipped URLs are **not**
+    /// losses (each would have returned the same declared-benign error) and
+    /// never make the verdict PARTIAL. From `Stats`.
+    #[serde(default)]
+    breaker_skipped_by_api: BTreeMap<String, u64>,
+    /// Per-API (`"service/api"`) count of `$expand` parents whose collection hit
+    /// the API cap and was re-fetched in full per-object. An entry proves the
+    /// fallback recovered a possibly truncated collection — the direct "no data
+    /// lost" signal for the `$expand` extraction path; absence means no parent
+    /// could have been truncated on this run. From `Stats`.
+    #[serde(default)]
+    expand_cap_hits_by_api: BTreeMap<String, u64>,
+    /// Per-bucket (`"service/api"`) highest consecutive-429 streak among the
+    /// buckets whose cooldown escalation engaged (streak ≥ the doubling
+    /// threshold). Crossed with `lost_data_by_code`: a bucket listed here but
+    /// absent from the losses was *recovered* by the escalated pacing; one
+    /// present in both still hit the liveness ceiling. From
+    /// `collect::dump::ratelimit`.
+    #[serde(default)]
+    cooldown_escalated_by_api: BTreeMap<String, u64>,
+    /// Cumulative wall-clock (ms) the response module waited for a worker
+    /// permit (`responseWorkersMax`). Non-zero means the bound actively
+    /// backpressured the pipeline (responses arrived faster than the bounded
+    /// workers + single-stream writer drained them); zero means it never
+    /// constrained the run. From `utils::sysmem`.
+    #[serde(default)]
+    resp_sem_wait_ms_total: u64,
+    /// Cumulative wall-clock (ms) the response module waited on the byte budget
+    /// (`responseMemoryBudgetBytes`). Non-zero means a few large pages serialised
+    /// through the budget — the memory bound actively back-pressured the
+    /// pipeline; zero means it never constrained the run (or is disabled). From
+    /// `utils::sysmem`.
+    #[serde(default)]
+    resp_mem_wait_ms_total: u64,
     /// Wall-clock seconds from process start to the start of the dump phase
     /// (authentication + prerequisite checks + initial URL build). Explains the
-    /// `total_duration_secs − dump_duration_secs` delta (§3.1).
+    /// `total_duration_secs − dump_duration_secs` delta.
     #[serde(default)]
     auth_prereq_secs: i64,
     /// Available CPU parallelism observed at packaging time (`0` when unavailable).
     /// Context for the single-core MLA writer: "N cores available, one used for
-    /// compression" sizes the cost of moving compression off the tokio runtime (§3.8).
+    /// compression" sizes the cost of moving compression off the tokio runtime.
     #[serde(default)]
     num_cpus: u64,
 }
@@ -226,6 +312,8 @@ impl Metadata {
             errors: dumper.errors_number,
             expected_errors,
             unexpected_errors,
+            non_http_errors: dumper.stats.non_http_errors(),
+            lost_data_errors: dumper.stats.total_lost_data(),
             auth_errors: dumper.auth_errors_number,
             prerequisites_errors: dumper.prerequisites_errors_number,
             peak_rss_bytes: crate::utils::sysmem::peak_rss_bytes(),
@@ -235,6 +323,9 @@ impl Metadata {
             writer_budget_blocked_secs: crate::utils::writer::actor::writer_budget_blocked_nanos()
                 / 1_000_000_000,
             writer_budget_blocked_count: crate::utils::writer::actor::writer_budget_blocked_count(),
+            writer_send_blocked_secs: crate::utils::writer::actor::writer_send_blocked_nanos()
+                / 1_000_000_000,
+            writer_send_blocked_count: crate::utils::writer::actor::writer_send_blocked_count(),
             peak_backoff_active: crate::collect::dump::request::peak_backoff_active(),
             min_window_by_service: dumper
                 .concurrency_controller
@@ -272,6 +363,23 @@ impl Metadata {
                 .get_all_cooldown_active_secs()
                 .into_iter()
                 .collect(),
+            retry_after_clamped_by_service: dumper
+                .ratelimit_manager
+                .get_all_clamped_counts()
+                .into_iter()
+                .collect(),
+            pause_secs_by_service: dumper.stats.pause_secs_by_service(),
+            token_refreshes_by_service: dumper.stats.token_refreshes_by_service(),
+            stall_events: dumper.stats.stall_events() as u64,
+            breaker_skipped_by_api: dumper.stats.breaker_skipped_by_api(),
+            expand_cap_hits_by_api: dumper.stats.expand_cap_hits_by_api(),
+            cooldown_escalated_by_api: dumper
+                .ratelimit_manager
+                .get_escalated_buckets()
+                .into_iter()
+                .collect(),
+            resp_sem_wait_ms_total: crate::utils::sysmem::resp_sem_wait_ms_total(),
+            resp_mem_wait_ms_total: crate::utils::sysmem::resp_mem_wait_ms_total(),
             auth_prereq_secs,
             num_cpus: std::thread::available_parallelism()
                 .map(|n| n.get() as u64)
@@ -363,6 +471,8 @@ mod tests {
             errors: 5,
             expected_errors: 3,
             unexpected_errors: 2,
+            non_http_errors: 0,
+            lost_data_errors: 0,
             auth_errors: 2,
             prerequisites_errors: 1,
             peak_rss_bytes: 0,
@@ -371,6 +481,8 @@ mod tests {
             peak_writer_inflight_bytes: 0,
             writer_budget_blocked_secs: 0,
             writer_budget_blocked_count: 0,
+            writer_send_blocked_secs: 0,
+            writer_send_blocked_count: 0,
             peak_backoff_active: 0,
             min_window_by_service: BTreeMap::new(),
             window_decreases_by_service: BTreeMap::new(),
@@ -380,6 +492,15 @@ mod tests {
             slot_wait_events_by_service: BTreeMap::new(),
             slot_wait_secs_by_service: BTreeMap::new(),
             cooldown_active_secs_by_service: BTreeMap::new(),
+            retry_after_clamped_by_service: BTreeMap::new(),
+            pause_secs_by_service: BTreeMap::new(),
+            token_refreshes_by_service: BTreeMap::new(),
+            stall_events: 0,
+            breaker_skipped_by_api: BTreeMap::new(),
+            expand_cap_hits_by_api: BTreeMap::new(),
+            cooldown_escalated_by_api: BTreeMap::new(),
+            resp_sem_wait_ms_total: 0,
+            resp_mem_wait_ms_total: 0,
             auth_prereq_secs: 0,
             num_cpus: 0,
         };
@@ -459,6 +580,8 @@ mod tests {
             errors: 0,
             expected_errors: 0,
             unexpected_errors: 0,
+            non_http_errors: 0,
+            lost_data_errors: 0,
             auth_errors: 0,
             prerequisites_errors: 0,
             peak_rss_bytes: 0,
@@ -467,6 +590,8 @@ mod tests {
             peak_writer_inflight_bytes: 0,
             writer_budget_blocked_secs: 0,
             writer_budget_blocked_count: 0,
+            writer_send_blocked_secs: 0,
+            writer_send_blocked_count: 0,
             peak_backoff_active: 0,
             min_window_by_service: BTreeMap::new(),
             window_decreases_by_service: BTreeMap::new(),
@@ -476,6 +601,15 @@ mod tests {
             slot_wait_events_by_service: BTreeMap::new(),
             slot_wait_secs_by_service: BTreeMap::new(),
             cooldown_active_secs_by_service: BTreeMap::new(),
+            retry_after_clamped_by_service: BTreeMap::new(),
+            pause_secs_by_service: BTreeMap::new(),
+            token_refreshes_by_service: BTreeMap::new(),
+            stall_events: 0,
+            breaker_skipped_by_api: BTreeMap::new(),
+            expand_cap_hits_by_api: BTreeMap::new(),
+            cooldown_escalated_by_api: BTreeMap::new(),
+            resp_sem_wait_ms_total: 0,
+            resp_mem_wait_ms_total: 0,
             auth_prereq_secs: 0,
             num_cpus: 0,
         };
@@ -502,6 +636,8 @@ mod tests {
             errors: 10,
             expected_errors: 4,
             unexpected_errors: 6,
+            non_http_errors: 0,
+            lost_data_errors: 0,
             auth_errors: 3,
             prerequisites_errors: 2,
             peak_rss_bytes: 0,
@@ -510,6 +646,8 @@ mod tests {
             peak_writer_inflight_bytes: 0,
             writer_budget_blocked_secs: 0,
             writer_budget_blocked_count: 0,
+            writer_send_blocked_secs: 0,
+            writer_send_blocked_count: 0,
             peak_backoff_active: 0,
             min_window_by_service: BTreeMap::new(),
             window_decreases_by_service: BTreeMap::new(),
@@ -519,6 +657,15 @@ mod tests {
             slot_wait_events_by_service: BTreeMap::new(),
             slot_wait_secs_by_service: BTreeMap::new(),
             cooldown_active_secs_by_service: BTreeMap::new(),
+            retry_after_clamped_by_service: BTreeMap::new(),
+            pause_secs_by_service: BTreeMap::new(),
+            token_refreshes_by_service: BTreeMap::new(),
+            stall_events: 0,
+            breaker_skipped_by_api: BTreeMap::new(),
+            expand_cap_hits_by_api: BTreeMap::new(),
+            cooldown_escalated_by_api: BTreeMap::new(),
+            resp_sem_wait_ms_total: 0,
+            resp_mem_wait_ms_total: 0,
             auth_prereq_secs: 0,
             num_cpus: 0,
         };

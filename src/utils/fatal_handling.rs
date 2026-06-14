@@ -15,18 +15,23 @@
 #[macro_export]
 macro_rules! bail_fatal {
     ($err:expr) => {{
-        // Log the error
+        // Log the error BEFORE pausing stdout logging, so the error line itself
+        // still reaches the console.
         ::log::error!("{:width$}{}", "main", $err, width = $crate::FL);
+
+        // Suppress further stdout logs and pause the progress ticker BEFORE
+        // printing the fatal block: a ticker frame painted after the block (or
+        // after the "Press Enter" prompt below) would otherwise repaint over
+        // them. The process is about to exit, so this pause source is
+        // intentionally never decremented.
+        $crate::utils::logger::config::DUMP_PAUSED
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         // Display UI fatal block
         let title = $err.title();
         let context = $err.context();
         let steps = $err.remediation_steps();
         $crate::utils::ui::fatal(title, context.as_deref(), steps);
-
-        // Suppress further stdout logs during the wait for user input. The process is
-        // about to exit, so this pause source is intentionally never decremented.
-        $crate::utils::logger::config::DUMP_PAUSED
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         // Wait for user if interactive
         $crate::utils::fatal_handling::wait_if_interactive();

@@ -14,11 +14,13 @@ use crate::utils::logger::clear_progress_line;
 use crate::utils::mutex::lock_force;
 use crate::utils::sysmem;
 use crate::utils::ui::progress::{ProgressState, finalize_performing_collect_label, start_ticker};
+use crate::utils::url::Url;
 use crate::utils::writer::actor::WriterHandle;
 
 use log::{debug, error, info, trace, warn};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::io::IsTerminal;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -64,6 +66,12 @@ const MEM_SAMPLE_INTERVAL: Duration = Duration::from_secs(15);
 /// `stall_detection_timeout` (900s) after the operator resumed.
 const PAUSED_POLL_SECS: u64 = 1;
 
+/// When a `ResumeService` (throttled-prereq-recheck resumption) fires while a
+/// token refresh is in flight for that service, the resume is deferred by this
+/// many seconds and re-sent, so the prereq re-check runs with the fresh token
+/// rather than the stale one (which could 401 → abort).
+const RESUME_DEFER_SECS: u64 = 2;
+
 /// Samples process RSS and the in-process memory gauges and logs them at `debug`.
 /// The file log captures `debug` regardless of console verbosity, so this makes a
 /// suspected large-tenant OOM diagnosable after the fact. Never fails: RSS is
@@ -89,8 +97,14 @@ fn sample_memory(dumper: &Dumper) {
     let backoff = crate::collect::dump::request::BACKOFF_ACTIVE.load(Ordering::Relaxed);
     let windows = fmt_service_map(&dumper.concurrency_controller.get_all_windows());
     let inflight = fmt_service_map(&dumper.concurrency_controller.get_all_in_flight());
+    // `written=`/`written_bytes=` are cumulative totals: the delta between two
+    // samples is the write throughput over that interval, which localises a
+    // slowdown in time when cross-read with `windows=`/`backoff=`/`writer_q=`.
+    // `resp_sem_wait=` is the cumulative wait (ms) for a response-worker permit
+    // (`responseWorkersMax`); `breaker=` the number of buckets skipped by the
+    // expected-error breaker so far.
     debug!(
-        "{:FL$}Memory sample: RSS={} pool_total={} pool_top={} req_inflight={} resp_inflight={} writer_q={}% writer_bytes={} backoff={} windows={} inflight={}",
+        "{:FL$}Memory sample: RSS={} pool_total={} pool_top={} req_inflight={} resp_inflight={} writer_q={}% writer_bytes={} backoff={} windows={} inflight={} written={} written_bytes={} resp_sem_wait={} breaker={}",
         "Dumper",
         rss.map(sysmem::format_bytes)
             .unwrap_or_else(|| "n/a".to_string()),
@@ -102,8 +116,36 @@ fn sample_memory(dumper: &Dumper) {
         writer_bytes,
         backoff,
         windows,
-        inflight
+        inflight,
+        sysmem::written_entries(),
+        sysmem::written_bytes(),
+        sysmem::resp_sem_wait_ms_total(),
+        dumper.stats.breaker_tripped_count()
     );
+}
+
+/// Drops from `urls` every URL of a breaker-tripped `(service, api)` bucket,
+/// recording each one as skipped. Cheap no-op while no breaker has fired.
+fn drop_tripped_urls(
+    dumper: &Dumper,
+    tripped: &HashSet<(Arc<str>, String)>,
+    service: &Arc<str>,
+    urls: Vec<Url>,
+) -> Vec<Url> {
+    if tripped.is_empty() {
+        return urls;
+    }
+    let mut kept = Vec::with_capacity(urls.len());
+    for url in urls {
+        if tripped.contains(&(Arc::clone(service), url.api.clone())) {
+            dumper
+                .stats
+                .record_breaker_skipped(&url.service_name, &url.api, 1);
+        } else {
+            kept.push(url);
+        }
+    }
+    kept
 }
 
 /// Formats a per-service gauge map as `svc1:v1,svc2:v2` with services sorted, so
@@ -184,6 +226,11 @@ pub async fn coordinate(
     // `PrereqOutcome::Throttled` retry loop so a persistently rate-limited
     // re-check cannot live-lock the run (see `record_prereq_throttle`).
     let mut prereq_throttle_attempts: HashMap<Arc<str>, usize> = HashMap::new();
+    // (service, api) buckets whose expected-error breaker fired. Their pool
+    // URLs were dropped when the trip event arrived; this set keeps filtering
+    // the URLs that come back later (rate-limit re-queues, prereq re-queues)
+    // so a tripped bucket stays skipped for the rest of the run.
+    let mut tripped_apis: HashSet<(Arc<str>, String)> = HashSet::new();
     let prereq_cache = Duration::from_secs(Config::prereq_recheck_cache_secs(&dumper.config));
     // Background prerequisite re-check / prompt tasks. Invariant: every task
     // added here MUST enqueue its outcome event (`PrereqResult` / `ResumeService`)
@@ -391,6 +438,10 @@ pub async fn coordinate(
                     v.join(", ")
                 };
                 if in_flight_now > 0 {
+                    // A real stall (requests in flight, no event): count it so the
+                    // run-level `stall_events` figure in metadata.json flags runs
+                    // that needed the watchdog, without grepping the log.
+                    dumper.stats.record_stall();
                     let per_service = dumper.concurrency_controller.get_all_in_flight();
                     let mut active: Vec<String> = per_service
                         .iter()
@@ -467,6 +518,15 @@ pub async fn coordinate(
                                 "{:FL$}Received PotentialPrerequisiteError for service {:?}, url {:?}",
                                 "Dumper", service, url.url
                             );
+                            if tripped_apis.contains(&(service.clone(), url.api.clone())) {
+                                // The bucket's breaker fired: this re-queue is
+                                // skipped like its pool siblings, and no
+                                // prerequisite re-check is spawned for it.
+                                dumper
+                                    .stats
+                                    .record_breaker_skipped(&url.service_name, &url.api, 1);
+                                continue;
+                            }
                             dumper
                                 .stats
                                 .record_prereq_trigger(&url.service_name, &url.api);
@@ -536,7 +596,15 @@ pub async fn coordinate(
                                         dumper.missing_token_errors_number += 1;
                                     }
                                     Some(_) => {
-                                        prereq_in_flight.insert(Arc::clone(&service));
+                                        // Pause accounting: a service enters the paused
+                                        // union when it joins either gating set while
+                                        // absent from the other (overlapping causes are
+                                        // one union interval).
+                                        if prereq_in_flight.insert(Arc::clone(&service))
+                                            && !token_refresh_in_flight.contains(&service)
+                                        {
+                                            dumper.stats.note_service_paused(&service);
+                                        }
                                         dumper.stats.record_prereq_recheck(&service);
                                         // `warn!` (not `debug!`): a transient prerequisite
                                         // loss pauses the service for a re-check and is a
@@ -579,6 +647,10 @@ pub async fn coordinate(
                             // one refresh task (which itself double-checks under
                             // `refresh_lock`).
                             if token_refresh_in_flight.insert(Arc::clone(&service)) {
+                                dumper.stats.record_token_refresh(&service);
+                                if !prereq_in_flight.contains(&service) {
+                                    dumper.stats.note_service_paused(&service);
+                                }
                                 warn!(
                                     "{:FL$}Token expired for service {:?} — refreshing in the background; pausing its dispatch until done",
                                     "Dumper", service
@@ -607,7 +679,19 @@ pub async fn coordinate(
                             );
                             match process_errors(dumper, &service, error).await {
                                 Ok(Some(url)) => {
-                                    dumper.current_urls.entry(service).or_default().push(url);
+                                    let kept = drop_tripped_urls(
+                                        dumper,
+                                        &tripped_apis,
+                                        &service,
+                                        vec![url],
+                                    );
+                                    if !kept.is_empty() {
+                                        dumper
+                                            .current_urls
+                                            .entry(service)
+                                            .or_default()
+                                            .extend(kept);
+                                    }
                                 }
                                 Ok(None) => {}
                                 Err(e) => {
@@ -655,11 +739,15 @@ pub async fn coordinate(
                             );
                             dumper.current_counter.fetch_sub(count, Ordering::Release);
                             if !new_urls.is_empty() {
-                                dumper
-                                    .current_urls
-                                    .entry(service)
-                                    .or_default()
-                                    .extend(new_urls);
+                                let new_urls =
+                                    drop_tripped_urls(dumper, &tripped_apis, &service, new_urls);
+                                if !new_urls.is_empty() {
+                                    dumper
+                                        .current_urls
+                                        .entry(service)
+                                        .or_default()
+                                        .extend(new_urls);
+                                }
                             }
                             {
                                 let mut prog = lock_force(&progress_state);
@@ -679,13 +767,40 @@ pub async fn coordinate(
                             break;
                         }
 
+                        CoordinatorEvent::BreakerTripped { service, api } => {
+                            // First trip for this bucket: drop its pending pool
+                            // URLs as skipped; the set keeps filtering later
+                            // re-queues. URLs already in flight complete
+                            // normally (their declared-expected errors are
+                            // recorded as usual).
+                            if tripped_apis.insert((Arc::clone(&service), api.clone())) {
+                                let mut dropped: usize = 0;
+                                if let Some(mut urls) = dumper.current_urls.get_mut(&service) {
+                                    let before = urls.len();
+                                    urls.retain(|u| u.api != api);
+                                    dropped = before - urls.len();
+                                }
+                                dumper.stats.record_breaker_skipped(&service, &api, dropped);
+                                warn!(
+                                    "{:FL$}Expected-error breaker for {:?}/{:?}: {} pending URL(s) skipped; later re-queues for this API will be skipped as well",
+                                    "Dumper", service, api, dropped
+                                );
+                            }
+                        }
+
                         CoordinatorEvent::PrereqResult(service, outcome) => match outcome {
                             PrereqOutcome::Success => {
                                 info!(
                                     "{:FL$}Prerequisites re-verified for {:?}, resuming dispatch",
                                     "Dumper", service
                                 );
-                                prereq_in_flight.remove(&service);
+                                // Pause accounting: the union interval closes only when
+                                // the service leaves *both* gating sets.
+                                if prereq_in_flight.remove(&service)
+                                    && !token_refresh_in_flight.contains(&service)
+                                {
+                                    dumper.stats.note_service_resumed(&service);
+                                }
                                 prereq_throttle_attempts.remove(&service);
                                 prereq_last_success.insert(Arc::clone(&service), Instant::now());
                             }
@@ -710,7 +825,11 @@ pub async fn coordinate(
                                         "{:FL$}Prerequisite re-check for {:?} stayed throttled for {} attempts; abandoning the re-check and resuming dispatch (its URLs will drain their own retry budget)",
                                         "Dumper", service, MAX_PREREQ_THROTTLE_RETRIES
                                     );
-                                    prereq_in_flight.remove(&service);
+                                    if prereq_in_flight.remove(&service)
+                                        && !token_refresh_in_flight.contains(&service)
+                                    {
+                                        dumper.stats.note_service_resumed(&service);
+                                    }
                                 } else {
                                     debug!(
                                         "{:FL$}Prereq throttled for {:?}, sleeping {}s then retrying",
@@ -738,9 +857,16 @@ pub async fn coordinate(
                                 // reset the budget — a fresh episode after the user
                                 // fixes the issue starts from zero, like Success does.
                                 prereq_throttle_attempts.remove(&service);
-                                if Config::use_application_credentials_auth(&dumper.config) {
+                                // Abort to `.broken` when there is no operator to
+                                // prompt: application credentials (no interaction by
+                                // design) OR a non-TTY stdin (piped/redirected, e.g. a
+                                // container or CI run). Prompting a closed stdin would
+                                // read EOF instantly and loop forever.
+                                if Config::use_application_credentials_auth(&dumper.config)
+                                    || !std::io::stdin().is_terminal()
+                                {
                                     error!(
-                                        "{:FL$}Prerequisite re-check failed for {:?} (app credentials): {}",
+                                        "{:FL$}Prerequisite re-check failed for {:?} and cannot prompt (application credentials or non-interactive stdin): {}",
                                         "Dumper", service, msg
                                     );
                                     dumper.write_prerequisite_error(&service, &msg).await;
@@ -767,25 +893,60 @@ pub async fn coordinate(
                         },
 
                         CoordinatorEvent::ResumeService(service) => {
-                            info!(
-                                "{:FL$}ResumeService for {:?} — spawning new prereq re-check",
-                                "Dumper", service
-                            );
-                            // Re-insert into prereq_in_flight so the service stays
-                            // gated during the new check (defense-in-depth: the
-                            // service should already be present in the common paths,
-                            // but an unexpected remove between the Throttled sleep and
-                            // this handler would otherwise open a dispatch window).
-                            prereq_in_flight.insert(Arc::clone(&service));
-                            dumper.stats.record_prereq_recheck(&service);
-                            let tokens = Arc::clone(&dumper.tokens);
-                            let oradaz_client = dumper.oradaz_client.clone();
-                            let config = dumper.config.clone();
-                            let sender = event_sender.clone();
-                            let svc = Arc::clone(&service);
-                            background_tasks.spawn(async move {
-                                prereq_check_task(svc, tokens, oradaz_client, config, sender).await;
-                            });
+                            if token_refresh_in_flight.contains(&service) {
+                                // A token refresh is in flight for this service: the
+                                // prereq re-check would run with the stale token and,
+                                // in the real-expiry window, could read a 401/403 and
+                                // abort despite a valid refresh. Defer and re-send the
+                                // resume; the service stays gated via
+                                // token_refresh_in_flight meanwhile.
+                                info!(
+                                    "{:FL$}ResumeService for {:?} deferred: token refresh in flight",
+                                    "Dumper", service
+                                );
+                                let sender = event_sender.clone();
+                                let svc = Arc::clone(&service);
+                                background_tasks.spawn(async move {
+                                    tokio::time::sleep(Duration::from_secs(RESUME_DEFER_SECS))
+                                        .await;
+                                    if let Err(err) = sender
+                                        .send(CoordinatorEvent::ResumeService(Arc::clone(&svc)))
+                                        .await
+                                    {
+                                        // Send fails only when the coordinator has
+                                        // exited (run ending) — nothing left to resume.
+                                        trace!(
+                                            "{:FL$}Deferred ResumeService for {:?} not delivered (coordinator gone): {:?}",
+                                            "Dumper", svc, err
+                                        );
+                                    }
+                                });
+                            } else {
+                                info!(
+                                    "{:FL$}ResumeService for {:?} — spawning new prereq re-check",
+                                    "Dumper", service
+                                );
+                                // Re-insert into prereq_in_flight so the service stays
+                                // gated during the new check (defense-in-depth: the
+                                // service should already be present in the common paths,
+                                // but an unexpected remove between the Throttled sleep and
+                                // this handler would otherwise open a dispatch window).
+                                if prereq_in_flight.insert(Arc::clone(&service))
+                                    && !token_refresh_in_flight.contains(&service)
+                                {
+                                    dumper.stats.note_service_paused(&service);
+                                }
+                                dumper.stats.record_prereq_recheck(&service);
+                                let tokens = Arc::clone(&dumper.tokens);
+                                let oradaz_client = dumper.oradaz_client.clone();
+                                let config = dumper.config.clone();
+                                let sender = event_sender.clone();
+                                let svc = Arc::clone(&service);
+                                background_tasks.spawn(async move {
+                                    prereq_check_task(svc, tokens, oradaz_client, config, sender)
+                                        .await;
+                                });
+                            }
                         }
 
                         CoordinatorEvent::TokenRefreshed(service) => {
@@ -793,7 +954,11 @@ pub async fn coordinate(
                                 "{:FL$}Token refreshed for service {:?} — dispatch unblocked",
                                 "Dumper", service
                             );
-                            token_refresh_in_flight.remove(&service);
+                            if token_refresh_in_flight.remove(&service)
+                                && !prereq_in_flight.contains(&service)
+                            {
+                                dumper.stats.note_service_resumed(&service);
+                            }
                         }
 
                         CoordinatorEvent::TokenRefreshFailed {
@@ -806,7 +971,11 @@ pub async fn coordinate(
                             // any definitive auth error, then abort the run cleanly
                             // into a `.broken` archive, mirroring the app-cred
                             // prerequisite-failure path.
-                            token_refresh_in_flight.remove(&service);
+                            if token_refresh_in_flight.remove(&service)
+                                && !prereq_in_flight.contains(&service)
+                            {
+                                dumper.stats.note_service_resumed(&service);
+                            }
                             if let Some(ae) = auth_error {
                                 dumper.write_auth_error(ae).await;
                             }

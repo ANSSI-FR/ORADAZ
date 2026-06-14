@@ -3,6 +3,7 @@
 /// This module handles the extraction of logs, error reports, metadata, and
 /// configuration from an encrypted MLA archive using a provided private key.
 use crate::collect::dump::response::DumpError;
+use crate::inspect::loader::{ArchiveNeeds, resolve_log_need};
 use crate::utils::errors::Error;
 
 use mla::ArchiveReader;
@@ -26,9 +27,18 @@ pub struct ArchiveContents {
 /// Reads an MLA archive from the filesystem and decrypts its contents.
 ///
 /// It expects a private key in OpenSSL 25519 format to initialize the `ArchiveReader`.
-/// Attempts to extract: `oradaz.log`, `errors.json`, `metadata.json`, `config.json`,
-/// `prerequisites.json`, and `stats.json`.
-pub fn read_archive(path: &str, key_path: &str) -> Result<ArchiveContents, Error> {
+/// Always extracts the four small JSON entries (`metadata.json`, `config.json`,
+/// `prerequisites.json`, `stats.json`). `errors.json` and `oradaz.log` are read
+/// only when `needs` asks for them: the log is fragmented across the whole
+/// archive (see [`ArchiveNeeds`]), so skipping it when a subcommand never renders
+/// it avoids re-decoding nearly every compression block. `is_broken` feeds the
+/// `OnFailure` log decision (see [`resolve_log_need`]).
+pub fn read_archive(
+    path: &str,
+    key_path: &str,
+    needs: &ArchiveNeeds,
+    is_broken: bool,
+) -> Result<ArchiveContents, Error> {
     let key_bytes = std::fs::read(key_path)
         .map_err(|e| Error::StringError(format!("Cannot read key file '{}': {}", key_path, e)))?;
 
@@ -85,8 +95,15 @@ pub fn read_archive(path: &str, key_path: &str) -> Result<ArchiveContents, Error
         }
     };
 
-    let log = read_entry("oradaz.log")?.unwrap_or_default();
-    let errors_text = read_entry("errors.json")?.unwrap_or_default();
+    // Read the small (contiguous, cheap) entries first plus `errors.json` when
+    // requested; the fragmented `oradaz.log` is read last and only when needed.
+    // Random access makes the read *order* free — the speed-up comes from
+    // skipping the log entirely when unused, not from reading it last.
+    let errors_text = if needs.errors {
+        read_entry("errors.json")?.unwrap_or_default()
+    } else {
+        String::new()
+    };
     let metadata_text = read_entry("metadata.json")?;
     let config_text = read_entry("config.json")?;
     let prerequisites_text = read_entry("prerequisites.json")?;
@@ -112,6 +129,13 @@ pub fn read_archive(path: &str, key_path: &str) -> Result<ArchiveContents, Error
     let stats_val = stats_text
         .as_deref()
         .and_then(|t| serde_json::from_str(t).ok());
+
+    // The log decision uses the metadata just parsed (for `auth_errors`).
+    let log = if resolve_log_need(needs.log, is_broken, metadata.as_ref()) {
+        read_entry("oradaz.log")?.unwrap_or_default()
+    } else {
+        String::new()
+    };
 
     Ok(ArchiveContents {
         log,

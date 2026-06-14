@@ -85,11 +85,15 @@ pub async fn check_user_for_ga(checker: &ConditionChecker, token: &Token) -> Opt
                             None => return Some(true),
                             Some(end_date_time) => match end_date_time.parse::<DateTime<Utc>>() {
                                 Err(err) => {
+                                    // Treat an unparseable bound as "this assignment
+                                    // inactive" and keep scanning — a later permanent
+                                    // or still-valid GA assignment must still win,
+                                    // rather than caching a definitive `false`.
                                     warn!(
-                                        "{:FL$}Error parsing endDateTime {end_date_time:?} for PIM role assignments: {err:?}",
+                                        "{:FL$}Error parsing endDateTime {end_date_time:?} for a PIM role assignment, skipping it: {err:?}",
                                         "ConditionChecker"
                                     );
-                                    return Some(false);
+                                    continue;
                                 }
                                 Ok(d) => {
                                     if d.timestamp() > Utc::now().timestamp() {

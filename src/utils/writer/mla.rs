@@ -236,14 +236,14 @@ impl MlaWriter {
                         Ok(l) => l,
                         Err(err) => {
                             error!(
-                                "{:FL$}Could not create file entry file '{}' for MLA archive",
+                                "{:FL$}Could not create entry for file '{}' in MLA archive",
                                 "MlaWriter", filepath
                             );
                             debug!(
-                                "{:FL$}Log file entry creation error: {:?}",
+                                "{:FL$}Data file entry creation error: {:?}",
                                 "MlaWriter", err
                             );
-                            return Err(Error::MLACreateLogFile);
+                            return Err(Error::MLACreateDataFile);
                         }
                     };
                     match a.start_entry(file_entry) {
@@ -257,18 +257,20 @@ impl MlaWriter {
                         }
                         Ok(file_id) => {
                             // The `!contains_key` guard above guarantees there is no
-                            // prior entry for this path, so `insert` always returns
-                            // `None`. (The former revert-on-collision branch was
-                            // unreachable, and had it ever run it would have orphaned
-                            // the freshly started `file_id` — an entry started but
-                            // never `end_entry`'d, which fails `finalize`.)
+                            // prior entry for this path, so this records the id of a
+                            // freshly started entry. Each id is `end_entry`'d once at
+                            // archive close; overwriting a live id here would orphan its
+                            // started-but-never-finalized entry and fail `finalize`.
                             self.file_ids.insert(String::from(filepath), file_id);
                         }
                     }
                 }
                 None => {
-                    error!("{:FL$}Ownership issue while writing log file", "MlaWriter");
-                    return Err(Error::MLAWriteLog);
+                    error!(
+                        "{:FL$}Ownership issue while creating data file '{}' in archive",
+                        "MlaWriter", filepath
+                    );
+                    return Err(Error::MLAWriteDataFile);
                 }
             };
         }
@@ -289,10 +291,10 @@ impl MlaWriter {
                     }
                     None => {
                         error!(
-                            "{:FL$}Ownership issue while writing file '{}' in archive",
+                            "{:FL$}Ownership issue while writing data file '{}' in archive",
                             "MlaWriter", filepath
                         );
-                        return Err(Error::MLAWriteLog);
+                        return Err(Error::MLAWriteDataFile);
                     }
                 };
             }

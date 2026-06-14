@@ -596,15 +596,34 @@ impl ClientCredentialsAuth {
         let variant = if imds_url_override.is_some() {
             ImdsVariant::Standard
         } else {
-            // Detect misconfigured App Service environment before calling the
-            // IMDS endpoint: IDENTITY_ENDPOINT present without IDENTITY_HEADER
-            // causes a silent fallback to the VM link-local address and a timeout
-            // instead of a clear error.
+            // App Service / Container Apps set IDENTITY_ENDPOINT *and*
+            // IDENTITY_HEADER; exactly one of them present is a misconfiguration
+            // that would otherwise fall through to the VM link-local Standard
+            // variant and time out instead of giving a clear error. We only
+            // diagnose that here when IMDS_ENDPOINT is *absent*: if it is set this
+            // is an Azure Arc (or Arc-like) environment — including a real Arc
+            // server, which sets IDENTITY_ENDPOINT + IMDS_ENDPOINT but no
+            // IDENTITY_HEADER — so we defer to detect_imds_variant, which
+            // classifies it as AzureArc and returns its own clear "unsupported"
+            // error rather than this App-Service-centric message.
             if std::env::var("IDENTITY_ENDPOINT").is_ok()
                 && std::env::var("IDENTITY_HEADER").is_err()
+                && std::env::var("IMDS_ENDPOINT").is_err()
             {
                 return Err(Error::ClientCredentialsFlowCreation(format!(
                     "IDENTITY_ENDPOINT is set but IDENTITY_HEADER is missing for service \
+                     '{service}'. On App Service and Container Apps both environment \
+                     variables must be present for managed identity authentication."
+                )));
+            }
+            // Symmetric case: IDENTITY_HEADER without IDENTITY_ENDPOINT (same
+            // IMDS_ENDPOINT-absent rule as the guard above).
+            if std::env::var("IDENTITY_HEADER").is_ok()
+                && std::env::var("IDENTITY_ENDPOINT").is_err()
+                && std::env::var("IMDS_ENDPOINT").is_err()
+            {
+                return Err(Error::ClientCredentialsFlowCreation(format!(
+                    "IDENTITY_HEADER is set but IDENTITY_ENDPOINT is missing for service \
                      '{service}'. On App Service and Container Apps both environment \
                      variables must be present for managed identity authentication."
                 )));

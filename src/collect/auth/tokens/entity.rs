@@ -9,7 +9,7 @@ use crate::utils::errors::Error;
 use crate::utils::ui::{self, dump_event};
 
 use log::{self, debug, error, info, trace, warn};
-use std::io;
+use std::io::{self, IsTerminal};
 use std::time::Duration;
 
 /// Time window (in seconds) before token expiration when a refresh should be triggered.
@@ -169,18 +169,20 @@ async fn handle_missing_permission_after_refresh(
     service: &str,
     config: &Config,
 ) -> Result<(), Error> {
-    if Config::use_application_credentials_auth(config) {
+    // Fail fast when there is no operator to fix the permission: application
+    // credentials (no interaction by design) OR a non-TTY stdin (piped/redirected,
+    // e.g. a container or CI run). `Reprocess(Some)` routes straight to
+    // `TokenRefreshFailed` in `compute_token_refresh`, unlike the transient
+    // `Reprocess(None)` path which is retried without limit — prompting a closed
+    // stdin would read EOF instantly and loop forever.
+    if Config::use_application_credentials_auth(config) || !io::stdin().is_terminal() {
         error!(
-            "{:FL$}Prerequisite check failed for service {:?} after token (re)acquisition (application credentials) — aborting collection",
+            "{:FL$}Prerequisite check failed for service {:?} after token (re)acquisition and cannot prompt (application credentials or non-interactive stdin) — aborting collection",
             "Token", service
         );
-        // Fail fast: a definitive missing permission under application credentials
-        // cannot be fixed (no operator). `Reprocess(Some)` routes straight to
-        // `TokenRefreshFailed` in `compute_token_refresh`, unlike the transient
-        // `Reprocess(None)` path which is retried for the generous app-cred budget.
         return Err(Error::Reprocess(Some(AuthError {
             api: service.to_string(),
-            error: "Missing required application permission".to_string(),
+            error: "Missing required permission (no interactive operator to fix it)".to_string(),
         })));
     }
     error!(
@@ -241,6 +243,18 @@ impl Token {
         chrono::Utc::now().timestamp() + REFRESH_TOKEN_EXPIRATION_THRESHOLD >= self.expires_on
     }
 
+    /// Replace this token with a freshly-acquired one, preserving the existing
+    /// refresh token when the new response did not carry one. Azure rotates the
+    /// refresh token on most refresh responses but is not contractually required
+    /// to return one every time; dropping it would force a full interactive
+    /// re-authentication on the next expiry.
+    fn adopt(&mut self, mut new: Token) {
+        if new.refresh_token.is_none() {
+            new.refresh_token = self.refresh_token.take();
+        }
+        *self = new;
+    }
+
     /// Refreshes the token if it is expired or near expiration, ensuring it remains valid for use.
     ///
     /// If a refresh token is available, it attempts to use it. Otherwise, it performs
@@ -257,10 +271,21 @@ impl Token {
         );
         match &self.refresh_token {
             None => {
-                warn!(
-                    "{:FL$}No refresh token for service {:?}, performing new authentication",
-                    "Token", self.service
-                );
+                // Client-credential flows never return a refresh token, so
+                // re-acquiring is the normal hourly renewal there (debug). For an
+                // interactive flow a missing refresh token is unusual and triggers
+                // a re-authentication prompt (warn).
+                if Config::use_application_credentials_auth(config) {
+                    debug!(
+                        "{:FL$}No refresh token for service {:?} (application credentials), re-acquiring",
+                        "Token", self.service
+                    );
+                } else {
+                    warn!(
+                        "{:FL$}No refresh token for service {:?}, performing new authentication",
+                        "Token", self.service
+                    );
+                }
                 self.renew(config, oradaz_client).await
             }
             Some(_) => match self
@@ -282,15 +307,8 @@ impl Token {
                     self.renew(config, oradaz_client).await
                 }
                 Ok(token) => {
-                    if token.tenant_id != self.tenant_id || token.client_id != self.client_id {
-                        error!(
-                            "{:FL$}Token identity mismatch after refresh for service {:?}: expected tenant={}, client={}",
-                            "Token", self.service, self.tenant_id, self.client_id
-                        );
-                        return Err(Error::Reprocess(None));
-                    }
                     if config.no_check.unwrap_or(false) {
-                        *self = token;
+                        self.adopt(token);
                         Ok(())
                     } else {
                         match recheck_prerequisites_after_refresh(
@@ -303,7 +321,7 @@ impl Token {
                         {
                             Ok(()) => {
                                 debug!("{:FL$}Successfully refreshed token", "Token");
-                                *self = token;
+                                self.adopt(token);
                                 Ok(())
                             }
                             Err(_) => {
@@ -462,14 +480,16 @@ impl Token {
                 })))
             }
             Ok(token) => {
+                // The new token is parsed from a fresh sign-in; its user identity
+                // is read from the JWT, so a mismatch means re-authentication
+                // landed on a different account (the tenant/client are inputs, not
+                // re-derived, so comparing them would always pass).
                 if token.user_id != self.user_id
                     || token.user_principal_name != self.user_principal_name
-                    || token.tenant_id != self.tenant_id
-                    || token.client_id != self.client_id
                 {
                     error!(
-                        "{:FL$}Token identity mismatch after re-authentication for service {:?}: expected tenant={}, client={}, user={}",
-                        "Token", self.service, self.tenant_id, self.client_id, self.user_id
+                        "{:FL$}Token identity mismatch after re-authentication for service {:?}: expected user={}",
+                        "Token", self.service, self.user_id
                     );
                     Err(Error::Reprocess(None))
                 } else if let Some(true) = config.no_check {
@@ -477,7 +497,7 @@ impl Token {
                         "{:FL$}Successfully renewed token for service {:?}, skipping checks",
                         "Token", self.service
                     );
-                    *self = token;
+                    self.adopt(token);
                     Ok(())
                 } else {
                     match recheck_prerequisites_after_refresh(
@@ -493,7 +513,7 @@ impl Token {
                                 "{:FL$}Successfully renewed token for service {:?}",
                                 "Token", self.service
                             );
-                            *self = token;
+                            self.adopt(token);
                             Ok(())
                         }
                         Err(_) => {
@@ -538,5 +558,35 @@ mod tests {
                 RefreshPrereqDecision::Retry
             );
         }
+    }
+
+    fn token_with_refresh(rt: Option<&str>) -> Token {
+        Token {
+            tenant_id: "t".to_string(),
+            client_id: "c".to_string(),
+            service: "graph".to_string(),
+            expires_on: 0,
+            access_token: "at".to_string(),
+            refresh_token: rt.map(str::to_string),
+            token_type: "Bearer".to_string(),
+            user_id: "u".to_string(),
+            user_principal_name: "u@example.test".to_string(),
+            scopes: vec![],
+        }
+    }
+
+    #[test]
+    fn adopt_preserves_refresh_token_when_new_response_omits_it() {
+        let mut existing = token_with_refresh(Some("old-rt"));
+        // A refresh response that did not carry a new refresh_token.
+        existing.adopt(token_with_refresh(None));
+        assert_eq!(existing.refresh_token.as_deref(), Some("old-rt"));
+    }
+
+    #[test]
+    fn adopt_takes_new_refresh_token_when_present() {
+        let mut existing = token_with_refresh(Some("old-rt"));
+        existing.adopt(token_with_refresh(Some("new-rt")));
+        assert_eq!(existing.refresh_token.as_deref(), Some("new-rt"));
     }
 }

@@ -14,10 +14,24 @@ use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use log::{debug, error};
 use serde::{Serialize, Serializer, ser::SerializeMap, ser::SerializeSeq};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use tokio::time::Instant;
+
+/// Transport-failure cause buckets for the per-service network-error breakdown.
+/// Distinguishing the dominant cause is what makes the failure actionable:
+/// timeouts point at `httpTimeoutSeconds`, connect failures at proxy/firewall
+/// trouble, the rest at DNS/protocol/body-read issues.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NetworkErrorKind {
+    /// The request (or connection establishment) timed out.
+    Timeout,
+    /// TCP/TLS connection establishment failed.
+    Connect,
+    /// Any other transport failure (DNS, protocol error, body read, …).
+    Other,
+}
 
 pub struct Stats {
     /// Keyed by `"{service}/{api}"`.
@@ -48,6 +62,51 @@ pub struct Stats {
     /// abandonment (the value tests use when not exercising liveness). Set once
     /// at dump startup from `livenessCeilingSecs` via `set_liveness_ceiling_secs`.
     liveness_ceiling_secs: AtomicU64,
+    /// Expected-error breaker threshold: consecutive schema-declared expected
+    /// errors on one bucket (with zero pages ever written) after which the
+    /// bucket's remaining URLs are dropped as *skipped*. `0` disables the
+    /// breaker. Set once at dump startup from `expectedErrorBreakerThreshold`
+    /// via `set_breaker_threshold`.
+    breaker_threshold: AtomicUsize,
+    /// Exact count of non-HTTP (`status == 0`) entries written to `errors.json`
+    /// — the figure the inspect metadata view shows directly, rather than
+    /// deriving it from `errors - (expected + unexpected)` (which underflows
+    /// when 5xx retries or batch-wrapper attribution inflate the
+    /// response-counted figures). In-memory only (surfaced via `metadata.json`).
+    non_http_errors: AtomicUsize,
+    /// Per-service wall-clock pause accounting: time each service spent with its
+    /// dispatch gated by a prerequisite re-check or a token refresh (the
+    /// coordinator's paused-service union). Explains a duration gap that shows
+    /// neither throttling nor writer pressure. Surfaced via `metadata.json`
+    /// (`pause_secs_by_service`).
+    service_pauses: DashMap<String, ServicePauseStats>,
+    /// Per-service count of background token-refresh tasks spawned mid-dump (one
+    /// per refresh episode, deduplicated by the coordinator). High counts flag
+    /// short token lifetimes relative to the collection length. Surfaced via
+    /// `metadata.json` (`token_refreshes_by_service`).
+    token_refreshes: DashMap<String, AtomicUsize>,
+    /// Number of times the coordinator's stall watchdog fired with requests in
+    /// flight (no event for `stallDetectionTimeout`; the run logs and continues).
+    /// Surfaced via `metadata.json` (`stall_events`).
+    stall_events: AtomicUsize,
+}
+
+/// Wall-clock pause accounting for one service: the currently-open pause
+/// interval (if any) plus the accumulated total of closed intervals.
+pub struct ServicePauseStats {
+    /// Start of the currently-open pause interval; `None` while not paused.
+    since: Mutex<Option<Instant>>,
+    /// Accumulated paused wall-clock (ms) across closed intervals.
+    total_ms: AtomicU64,
+}
+
+impl ServicePauseStats {
+    fn new() -> Self {
+        Self {
+            since: Mutex::new(None),
+            total_ms: AtomicU64::new(0),
+        }
+    }
 }
 
 pub struct ServiceStats {
@@ -69,6 +128,15 @@ pub struct ServiceStats {
     /// Number of HTTP round-trips timed for this service (the `*_sum_ms`
     /// denominator).
     pub http_latency_count: AtomicU64,
+    /// Success-only (2xx) variant of the latency trio. The all-response figures
+    /// above mix fast 429/4xx turnarounds into the mean, making a heavily
+    /// throttled service look faster than it is; this trio isolates the latency
+    /// of round-trips that actually delivered data.
+    pub http_latency_ok_sum_ms: AtomicU64,
+    /// Largest single 2xx round-trip latency (ms) for this service.
+    pub http_latency_ok_max_ms: AtomicU64,
+    /// Number of 2xx round-trips timed (the `*_ok_sum_ms` denominator).
+    pub http_latency_ok_count: AtomicU64,
     /// Count of 429s where the server provided a parseable `Retry-After`.
     pub retry_after_server_count: AtomicU64,
     /// Count of 429s with no usable `Retry-After` — the configured default cooldown
@@ -80,10 +148,28 @@ pub struct ServiceStats {
     pub retry_after_max_secs: AtomicU64,
     /// Total sub-requests packed into this service's batch envelopes (Σ of each
     /// batch's fill). Batch-fill efficiency = `batch_subrequests_total /
-    /// http_batch_calls`; a value well below 20 means batches dispatched
-    /// under-filled — a small dispatch frontier, or the Graph v1.0/beta envelope
-    /// split halving effective fill. `0` for services that never batch.
+    /// http_batch_calls`; a value well below the per-service cap (20 for
+    /// Graph/ARM, 10 for Exchange) means batches dispatched under-filled — a
+    /// small dispatch frontier, or the Graph v1.0/beta envelope split halving
+    /// effective fill. `0` for services that never batch.
     pub batch_subrequests_total: AtomicUsize,
+    /// Transport failures whose cause was a timeout (request or connect). With
+    /// the two counters below, breaks down the transport-failure portion of
+    /// `http_call_failures` by cause (`http_call_failures` also counts
+    /// non-transport retries — builder/redirect errors and non-JSON 2xx bodies —
+    /// so the three cause buckets sum to **at most** that figure): a
+    /// timeout-dominated profile points at `httpTimeoutSeconds`, not the network.
+    pub network_timeout_errors: AtomicU64,
+    /// Transport failures whose cause was TCP/TLS connection establishment.
+    pub network_connect_errors: AtomicU64,
+    /// Transport failures with any other cause (DNS, protocol, body read, …).
+    pub network_other_errors: AtomicU64,
+    /// Total milliseconds spent sleeping in the transient-retry exponential
+    /// backoff for this service (network and permanent-request-error retries).
+    /// Distinct from the 429 cooldown (tracked by `rate_limit_wait_secs` per API
+    /// and `cooldown_active_secs_by_service` in `metadata.json`): this is the
+    /// wall-clock cost of transport-level instability.
+    pub backoff_wait_ms_total: AtomicU64,
 }
 
 impl ServiceStats {
@@ -95,10 +181,17 @@ impl ServiceStats {
             http_latency_sum_ms: AtomicU64::new(0),
             http_latency_max_ms: AtomicU64::new(0),
             http_latency_count: AtomicU64::new(0),
+            http_latency_ok_sum_ms: AtomicU64::new(0),
+            http_latency_ok_max_ms: AtomicU64::new(0),
+            http_latency_ok_count: AtomicU64::new(0),
             retry_after_server_count: AtomicU64::new(0),
             retry_after_default_count: AtomicU64::new(0),
             retry_after_max_secs: AtomicU64::new(0),
             batch_subrequests_total: AtomicUsize::new(0),
+            network_timeout_errors: AtomicU64::new(0),
+            network_connect_errors: AtomicU64::new(0),
+            network_other_errors: AtomicU64::new(0),
+            backoff_wait_ms_total: AtomicU64::new(0),
         }
     }
 }
@@ -123,11 +216,18 @@ pub struct ApiStats {
     /// Per-API HTTP round-trip latency (ms): sum, max, and sample count. Recorded
     /// only for **single** (non-batch) calls — a batch envelope carries one latency
     /// for up to 20 sub-URLs, so per-endpoint latency is meaningful only for the
-    /// single-call services (resources/ARG, exchange). Graph (batched) gets
+    /// single-call paths (resources/ARG). Graph and Exchange (batched) get
     /// service-level latency via `ServiceStats` instead.
     pub http_latency_sum_ms: AtomicU64,
     pub http_latency_max_ms: AtomicU64,
     pub http_latency_count: AtomicU64,
+    /// Success-only (2xx) variant of the per-API latency trio (single calls
+    /// only, like the all-response trio above). Isolates data-delivering
+    /// round-trips from the fast 429/4xx turnarounds that skew the mean on a
+    /// throttled endpoint.
+    pub http_latency_ok_sum_ms: AtomicU64,
+    pub http_latency_ok_max_ms: AtomicU64,
+    pub http_latency_ok_count: AtomicU64,
     /// Counts of upstream error codes (the `code` field of error responses,
     /// e.g. "UnknownError", "Forbidden", "InvalidAuthenticationToken") for
     /// failed (non-2xx, non-429) responses. Used to give the inspect view
@@ -149,13 +249,38 @@ pub struct ApiStats {
     /// candidates for `schema-light`.
     pub child_urls_generated: AtomicUsize,
     /// Per-code count of *lost-data* failures: `DumpError`s with `status == 0`
-    /// and `expected == false` (URL abandoned via `UrlRetryLimit`, or
-    /// `NoTokenForApiCall` / `nextLinkParsingError` / `MissingBatchData` / …).
-    /// These never produce an HTTP status, so they bypass `unexpected_errors`;
-    /// recorded at the single `write_dump_error` chokepoint to feed the
-    /// end-of-collection "PARTIAL COLLECTION" summary. In-memory only — not
-    /// serialized to `stats.json`.
+    /// and `expected == false` (`UrlRetryLimit`, `ThrottleStalled` /
+    /// `NetworkStalled`, `NoTokenForApiCall`, `nextLinkParsingError`,
+    /// `MissingBatchData`, …). These never produce an HTTP status, so they bypass
+    /// `unexpected_errors`; recorded at the single `write_dump_error` chokepoint.
+    /// Feeds the end-of-collection "PARTIAL COLLECTION" summary and is serialized
+    /// per API in `stats.json` (with the run total in `metadata.json`
+    /// `lost_data_errors`) so cross-run analysis can see which endpoints lost
+    /// data and why.
     pub lost_data_by_code: DashMap<String, AtomicUsize>,
+    /// Consecutive schema-declared *expected* error responses for this bucket
+    /// since it last wrote a page. Feeds the expected-error breaker (see
+    /// `Stats::record_expected_error_streak`).
+    pub expected_streak: AtomicUsize,
+    /// Whether this bucket ever wrote a page. A bucket that has delivered data
+    /// is never breaker-skipped, whatever its later error streak.
+    pub ever_wrote: AtomicBool,
+    /// Whether the expected-error breaker fired for this bucket (at most once).
+    pub breaker_tripped: AtomicBool,
+    /// URLs of this bucket dropped by the breaker without being requested.
+    /// They are *skipped*, not lost: every one of them would have returned the
+    /// same schema-declared expected error the streak was made of.
+    pub breaker_skipped: AtomicUsize,
+    /// 2xx responses for this bucket whose value array was empty: the endpoint
+    /// was queried but the server held no objects for it. Separates "called but
+    /// empty" from an error when reading per-API yield (objects / request), so a
+    /// high-volume, low-yield endpoint stands out as a request-reduction target.
+    pub empty_responses: AtomicUsize,
+    /// Parents whose `$expand`ed collection hit the API cap (so it may be
+    /// truncated) and triggered a full per-object re-fetch. `0` proves no
+    /// truncation was possible on this run; `> 0` means the fallback recovered
+    /// the complete collection (no data lost). See the `$expand` extraction path.
+    pub expand_cap_hits: AtomicUsize,
 }
 
 pub struct ConditionStats {
@@ -186,11 +311,20 @@ impl ApiStats {
             http_latency_sum_ms: AtomicU64::new(0),
             http_latency_max_ms: AtomicU64::new(0),
             http_latency_count: AtomicU64::new(0),
+            http_latency_ok_sum_ms: AtomicU64::new(0),
+            http_latency_ok_max_ms: AtomicU64::new(0),
+            http_latency_ok_count: AtomicU64::new(0),
             upstream_error_codes: DashMap::new(),
             unexpected_responses_by_status: DashMap::new(),
             pages_followed: AtomicUsize::new(0),
             child_urls_generated: AtomicUsize::new(0),
             lost_data_by_code: DashMap::new(),
+            expected_streak: AtomicUsize::new(0),
+            ever_wrote: AtomicBool::new(false),
+            breaker_tripped: AtomicBool::new(false),
+            breaker_skipped: AtomicUsize::new(0),
+            empty_responses: AtomicUsize::new(0),
+            expand_cap_hits: AtomicUsize::new(0),
         }
     }
 }
@@ -229,7 +363,103 @@ impl Stats {
             ended_at: Mutex::new(None),
             progress: DashMap::new(),
             liveness_ceiling_secs: AtomicU64::new(0),
+            breaker_threshold: AtomicUsize::new(0),
+            non_http_errors: AtomicUsize::new(0),
+            service_pauses: DashMap::new(),
+            token_refreshes: DashMap::new(),
+            stall_events: AtomicUsize::new(0),
         }
+    }
+
+    /// Open a pause interval for `service` (its dispatch is gated by a
+    /// prerequisite re-check or token refresh). Idempotent: a service already
+    /// paused keeps its original interval start, so overlapping pause causes
+    /// (prereq + token refresh) are measured as one union interval.
+    pub fn note_service_paused(&self, service: &str) {
+        let entry = self
+            .service_pauses
+            .entry(service.to_string())
+            .or_insert_with(ServicePauseStats::new);
+        if let Ok(mut since) = entry.value().since.lock()
+            && since.is_none()
+        {
+            *since = Some(Instant::now());
+        }
+    }
+
+    /// Close the open pause interval for `service` and accumulate its duration.
+    /// No-op when the service is not currently paused, so a redundant resume
+    /// cannot corrupt the total.
+    pub fn note_service_resumed(&self, service: &str) {
+        if let Some(entry) = self.service_pauses.get(service)
+            && let Ok(mut since) = entry.value().since.lock()
+            && let Some(start) = since.take()
+        {
+            let ms = start.elapsed().as_millis().min(u64::MAX as u128) as u64;
+            entry.value().total_ms.fetch_add(ms, Ordering::Relaxed);
+        }
+    }
+
+    /// Wall-clock seconds each service spent paused (prereq re-check / token
+    /// refresh union). An interval still open at read time is counted up to
+    /// "now" without being closed, so a service paused when the run aborts is
+    /// fully accounted for. A service that paused only briefly keeps its entry
+    /// at `0` — the pause *happened*, even if it rounded below one second.
+    pub fn pause_secs_by_service(&self) -> BTreeMap<String, u64> {
+        self.service_pauses
+            .iter()
+            .map(|r| {
+                let closed_ms = r.value().total_ms.load(Ordering::Relaxed);
+                let open_ms = r
+                    .value()
+                    .since
+                    .lock()
+                    .ok()
+                    .and_then(|g| g.map(|s| s.elapsed().as_millis().min(u64::MAX as u128) as u64))
+                    .unwrap_or(0);
+                (r.key().clone(), (closed_ms + open_ms) / 1000)
+            })
+            .collect()
+    }
+
+    /// Record that a background token-refresh task was spawned for `service`
+    /// (one per refresh episode — the coordinator deduplicates concurrent
+    /// expirations before calling this).
+    pub fn record_token_refresh(&self, service: &str) {
+        let entry = self
+            .token_refreshes
+            .entry(service.to_string())
+            .or_insert_with(|| AtomicUsize::new(0));
+        entry.value().fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Per-service count of mid-dump token-refresh episodes.
+    pub fn token_refreshes_by_service(&self) -> BTreeMap<String, u64> {
+        self.token_refreshes
+            .iter()
+            .map(|r| (r.key().clone(), r.value().load(Ordering::Relaxed) as u64))
+            .collect()
+    }
+
+    /// Record one stall-watchdog firing (no coordinator event for
+    /// `stallDetectionTimeout` with requests in flight).
+    pub fn record_stall(&self) {
+        self.stall_events.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Number of stall-watchdog firings over the run.
+    pub fn stall_events(&self) -> usize {
+        self.stall_events.load(Ordering::Relaxed)
+    }
+
+    /// Record one non-HTTP (`status == 0`) entry written to `errors.json`.
+    pub fn record_non_http_error(&self) {
+        self.non_http_errors.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Exact count of non-HTTP (`status == 0`) `errors.json` entries.
+    pub fn non_http_errors(&self) -> usize {
+        self.non_http_errors.load(Ordering::Relaxed)
     }
 
     /// Set the per-bucket no-progress ceiling (seconds) for the liveness check.
@@ -241,13 +471,111 @@ impl Stats {
         self.liveness_ceiling_secs.store(secs, Ordering::Relaxed);
     }
 
+    pub fn set_breaker_threshold(&self, threshold: usize) {
+        self.breaker_threshold.store(threshold, Ordering::Relaxed);
+    }
+
     /// Record *progress* for a bucket: a 2xx response that wrote data. Resets the
     /// per-bucket liveness timer so an actively-draining endpoint is never
     /// abandoned. Must be called ONLY on a data-writing success — never on a 429
     /// or an error (those write nothing and must not reset the timer, or a
-    /// pure-429 bucket would never trip the ceiling).
+    /// pure-429 bucket would never trip the ceiling). Also marks the bucket as
+    /// having delivered data, which permanently disarms the expected-error
+    /// breaker for it (and restarts its streak).
     pub fn note_progress(&self, service: &str, api: &str) {
         self.progress.insert(api_key(service, api), Instant::now());
+        self.with_api(service, api, |stats| {
+            stats.ever_wrote.store(true, Ordering::Relaxed);
+            stats.expected_streak.store(0, Ordering::Relaxed);
+        });
+    }
+
+    /// Counts one schema-declared *expected* error response into the bucket's
+    /// consecutive streak. Returns `true` exactly once per bucket: when the
+    /// streak reaches the configured breaker threshold while the bucket has
+    /// never written a page — the signal to drop its remaining URLs as
+    /// *skipped* (every one of them would return the same declared-benign
+    /// error). A bucket that ever delivered data never trips; a `0` threshold
+    /// disables the breaker.
+    ///
+    /// The caller feeds this only for errors the schema flags
+    /// `breaker_eligible` — a tenant-wide all-or-nothing failure, where every
+    /// URL of the bucket gets the same answer. Per-object errors (a resource
+    /// gone, an account type lacking a feature) are left unflagged and must not
+    /// be counted here, or they would skip the data-bearing siblings of the
+    /// same bucket.
+    pub fn record_expected_error_streak(&self, service: &str, api: &str) -> bool {
+        let threshold = self.breaker_threshold.load(Ordering::Relaxed);
+        if threshold == 0 {
+            return false;
+        }
+        let mut tripped_now = false;
+        self.with_api(service, api, |stats| {
+            if stats.ever_wrote.load(Ordering::Relaxed)
+                || stats.breaker_tripped.load(Ordering::Relaxed)
+            {
+                return;
+            }
+            let streak = stats.expected_streak.fetch_add(1, Ordering::Relaxed) + 1;
+            if streak >= threshold && !stats.breaker_tripped.swap(true, Ordering::Relaxed) {
+                tripped_now = true;
+            }
+        });
+        tripped_now
+    }
+
+    /// Counts URLs dropped by the expected-error breaker for a bucket.
+    pub fn record_breaker_skipped(&self, service: &str, api: &str, count: usize) {
+        if count == 0 {
+            return;
+        }
+        self.with_api(service, api, |stats| {
+            stats.breaker_skipped.fetch_add(count, Ordering::Relaxed);
+        });
+    }
+
+    /// Per-bucket count of breaker-skipped URLs (key `"{service}/{api}"`),
+    /// surfaced in `metadata.json` as `breaker_skipped_by_api`. Skipped URLs
+    /// are not losses (each would have returned the bucket's schema-declared
+    /// expected error) and never make the verdict PARTIAL.
+    pub fn breaker_skipped_by_api(&self) -> BTreeMap<String, u64> {
+        self.apis
+            .iter()
+            .filter(|e| e.value().breaker_skipped.load(Ordering::Relaxed) > 0)
+            .map(|e| {
+                (
+                    e.key().clone(),
+                    e.value().breaker_skipped.load(Ordering::Relaxed) as u64,
+                )
+            })
+            .collect()
+    }
+
+    /// Per-bucket count of `$expand` parents re-fetched per-object after hitting
+    /// the API cap (key `"{service}/{api}"`), surfaced in `metadata.json` as
+    /// `expand_cap_hits_by_api`. An entry means the fallback recovered a possibly
+    /// truncated collection in full — the direct "no data lost" proof for the
+    /// `$expand` extraction path.
+    pub fn expand_cap_hits_by_api(&self) -> BTreeMap<String, u64> {
+        self.apis
+            .iter()
+            .filter(|e| e.value().expand_cap_hits.load(Ordering::Relaxed) > 0)
+            .map(|e| {
+                (
+                    e.key().clone(),
+                    e.value().expand_cap_hits.load(Ordering::Relaxed) as u64,
+                )
+            })
+            .collect()
+    }
+
+    /// Number of buckets whose expected-error breaker fired (for the periodic
+    /// memory/throttling sample line).
+    pub fn breaker_tripped_count(&self) -> usize {
+        self.apis
+            .iter()
+            .filter(|e| e.value().breaker_tripped.load(Ordering::Relaxed))
+            .count()
     }
 
     /// Liveness decision for a *transient* (429 / network) retry: `true` when the
@@ -443,10 +771,48 @@ impl Stats {
         dominant.map(|(code, _)| (total, code))
     }
 
+    /// Total lost-data failures across all APIs (sum of every
+    /// `lost_data_by_code` counter). The run-level companion to the per-API
+    /// breakdown, persisted in `metadata.json` as `lost_data_errors`.
+    pub fn total_lost_data(&self) -> usize {
+        self.apis
+            .iter()
+            .map(|entry| {
+                entry
+                    .value()
+                    .lost_data_by_code
+                    .iter()
+                    .map(|c| c.value().load(Ordering::Relaxed))
+                    .sum::<usize>()
+            })
+            .sum()
+    }
+
     /// Record a network/JSON error before the HTTP layer produced a status.
     pub fn record_network_error(&self, service: &str, api: &str) {
         self.with_api(service, api, |stats| {
             stats.network_errors.fetch_add(1, Ordering::Relaxed);
+        });
+    }
+
+    /// Record the *cause* of one transport failure for `service` (one per failed
+    /// HTTP call, like `record_http_call_failure` — not per attributed sub-URL).
+    pub fn record_network_error_kind(&self, service: &str, kind: NetworkErrorKind) {
+        self.with_service(service, |svc| {
+            let counter = match kind {
+                NetworkErrorKind::Timeout => &svc.network_timeout_errors,
+                NetworkErrorKind::Connect => &svc.network_connect_errors,
+                NetworkErrorKind::Other => &svc.network_other_errors,
+            };
+            counter.fetch_add(1, Ordering::Relaxed);
+        });
+    }
+
+    /// Accumulate one transient-retry backoff sleep (ms) for `service` — the
+    /// wall-clock cost of transport-level retries, distinct from 429 cooldowns.
+    pub fn record_backoff_wait(&self, service: &str, ms: u64) {
+        self.with_service(service, |svc| {
+            svc.backoff_wait_ms_total.fetch_add(ms, Ordering::Relaxed);
         });
     }
 
@@ -488,16 +854,53 @@ impl Stats {
         });
     }
 
+    /// Record one 2xx response for `(service, api)` whose value array was empty.
+    /// The endpoint answered but held no objects; counting these separates a
+    /// legitimately empty endpoint from one that errored, so per-API yield
+    /// (objects written / requests sent) reads correctly.
+    pub fn record_empty_response(&self, service: &str, api: &str) {
+        self.with_api(service, api, |stats| {
+            stats.empty_responses.fetch_add(1, Ordering::Relaxed);
+        });
+    }
+
+    /// Record one parent whose `$expand`ed collection reached the API cap and
+    /// was re-fetched in full per-object. Proves no data was lost to truncation:
+    /// `0` means no parent could have been truncated; `> 0` means the fallback
+    /// recovered the complete collection.
+    pub fn record_expand_cap_hit(&self, service: &str, api: &str) {
+        self.with_api(service, api, |stats| {
+            stats.expand_cap_hits.fetch_add(1, Ordering::Relaxed);
+        });
+    }
+
     /// Record one HTTP round-trip latency (ms). Always counts at the service level;
     /// `api` is `Some` only for single (non-batch) calls, where per-endpoint latency
     /// is meaningful (a batch envelope's latency cannot be attributed to one sub-URL).
-    pub fn record_http_latency(&self, service: &str, api: Option<&str>, elapsed_ms: u64) {
+    /// `status` is the HTTP status of the round-trip: 2xx responses additionally
+    /// feed the success-only `*_ok_*` trio, which keeps fast 429/4xx turnarounds
+    /// from skewing the mean of data-delivering calls.
+    pub fn record_http_latency(
+        &self,
+        service: &str,
+        api: Option<&str>,
+        elapsed_ms: u64,
+        status: u16,
+    ) {
+        let ok = (200..300).contains(&status);
         self.with_service(service, |svc| {
             svc.http_latency_sum_ms
                 .fetch_add(elapsed_ms, Ordering::Relaxed);
             svc.http_latency_max_ms
                 .fetch_max(elapsed_ms, Ordering::Relaxed);
             svc.http_latency_count.fetch_add(1, Ordering::Relaxed);
+            if ok {
+                svc.http_latency_ok_sum_ms
+                    .fetch_add(elapsed_ms, Ordering::Relaxed);
+                svc.http_latency_ok_max_ms
+                    .fetch_max(elapsed_ms, Ordering::Relaxed);
+                svc.http_latency_ok_count.fetch_add(1, Ordering::Relaxed);
+            }
         });
         if let Some(api) = api {
             self.with_api(service, api, |stats| {
@@ -508,6 +911,15 @@ impl Stats {
                     .http_latency_max_ms
                     .fetch_max(elapsed_ms, Ordering::Relaxed);
                 stats.http_latency_count.fetch_add(1, Ordering::Relaxed);
+                if ok {
+                    stats
+                        .http_latency_ok_sum_ms
+                        .fetch_add(elapsed_ms, Ordering::Relaxed);
+                    stats
+                        .http_latency_ok_max_ms
+                        .fetch_max(elapsed_ms, Ordering::Relaxed);
+                    stats.http_latency_ok_count.fetch_add(1, Ordering::Relaxed);
+                }
             });
         }
     }
@@ -647,7 +1059,7 @@ impl Serialize for Stats {
         let ended_at = self.ended_at.lock().ok().and_then(|g| *g);
         let duration_seconds = ended_at.map(|e| (e - started_at).num_seconds().max(0));
 
-        let mut map = serializer.serialize_map(Some(8))?;
+        let mut map = serializer.serialize_map(Some(7))?;
         map.serialize_entry("started_at", &fmt_time(started_at))?;
         map.serialize_entry("ended_at", &ended_at.map(fmt_time))?;
         map.serialize_entry("duration_seconds", &duration_seconds)?;
@@ -694,7 +1106,7 @@ struct ServiceStatsView<'a>(&'a ServiceStats);
 
 impl Serialize for ServiceStatsView<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut map = serializer.serialize_map(Some(10))?;
+        let mut map = serializer.serialize_map(Some(17))?;
         map.serialize_entry(
             "http_batch_calls",
             &self.0.http_batch_calls.load(Ordering::Relaxed),
@@ -720,6 +1132,18 @@ impl Serialize for ServiceStatsView<'_> {
             &self.0.http_latency_count.load(Ordering::Relaxed),
         )?;
         map.serialize_entry(
+            "http_latency_ok_sum_ms",
+            &self.0.http_latency_ok_sum_ms.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
+            "http_latency_ok_max_ms",
+            &self.0.http_latency_ok_max_ms.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
+            "http_latency_ok_count",
+            &self.0.http_latency_ok_count.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
             "retry_after_server_count",
             &self.0.retry_after_server_count.load(Ordering::Relaxed),
         )?;
@@ -734,6 +1158,22 @@ impl Serialize for ServiceStatsView<'_> {
         map.serialize_entry(
             "batch_subrequests_total",
             &self.0.batch_subrequests_total.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
+            "network_timeout_errors",
+            &self.0.network_timeout_errors.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
+            "network_connect_errors",
+            &self.0.network_connect_errors.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
+            "network_other_errors",
+            &self.0.network_other_errors.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
+            "backoff_wait_ms_total",
+            &self.0.backoff_wait_ms_total.load(Ordering::Relaxed),
         )?;
         map.end()
     }
@@ -766,7 +1206,7 @@ impl Serialize for ApiStatsView<'_> {
             a.condition_checks.iter().map(|r| r.key().clone()).collect();
         cond_keys.sort();
 
-        let mut map = serializer.serialize_map(Some(23))?;
+        let mut map = serializer.serialize_map(Some(30))?;
         map.serialize_entry("service", &a.service)?;
         map.serialize_entry("api", &a.api)?;
         map.serialize_entry("requests_sent", &a.requests_sent.load(Ordering::Relaxed))?;
@@ -819,6 +1259,18 @@ impl Serialize for ApiStatsView<'_> {
             &a.http_latency_count.load(Ordering::Relaxed),
         )?;
         map.serialize_entry(
+            "http_latency_ok_sum_ms",
+            &a.http_latency_ok_sum_ms.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
+            "http_latency_ok_max_ms",
+            &a.http_latency_ok_max_ms.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
+            "http_latency_ok_count",
+            &a.http_latency_ok_count.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
             "condition_checks",
             &ConditionsSeq(&a.condition_checks, &cond_keys),
         )?;
@@ -846,6 +1298,28 @@ impl Serialize for ApiStatsView<'_> {
         map.serialize_entry(
             "child_urls_generated",
             &a.child_urls_generated.load(Ordering::Relaxed),
+        )?;
+        let mut lost_keys: Vec<String> = a
+            .lost_data_by_code
+            .iter()
+            .map(|r| r.key().clone())
+            .collect();
+        lost_keys.sort();
+        map.serialize_entry(
+            "lost_data_by_code",
+            &CountMap(&a.lost_data_by_code, &lost_keys),
+        )?;
+        map.serialize_entry(
+            "breaker_skipped",
+            &a.breaker_skipped.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
+            "empty_responses",
+            &a.empty_responses.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
+            "expand_cap_hits",
+            &a.expand_cap_hits.load(Ordering::Relaxed),
         )?;
         map.end()
     }

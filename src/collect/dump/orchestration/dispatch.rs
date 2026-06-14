@@ -19,7 +19,8 @@ use tokio::sync::mpsc::{Permit, Sender};
 pub static REQUEST_ID_GEN: AtomicU32 = AtomicU32::new(1);
 
 /// Upper bound on the number of URLs consumed by a single `ApiCall::from()` call.
-/// Graph and Resources batch up to 20 URLs per call; the default handler pops exactly 1.
+/// Graph and Resources batch up to 20 URLs per call, Exchange up to 10; the default
+/// handler pops exactly 1.
 /// Used to limit the tail-slice clone to O(20) instead of O(N) per dispatch iteration.
 const MAX_BATCH_SIZE: usize = 20;
 
@@ -150,12 +151,13 @@ pub async fn dispatch_requests(
                                     }
                                     match (api_call.is_batch, &api_call.batch_data) {
                                         (true, Some(batch_data)) => {
-                                            // Graph and Resources batches are
-                                            // always single-service; the wrapper
-                                            // URL carries that service. Pass it
-                                            // explicitly so service-level counters
-                                            // stay correct even if the inner map
-                                            // is unexpectedly empty.
+                                            // Graph, Resources and Exchange
+                                            // batches are always single-service;
+                                            // the wrapper URL carries that
+                                            // service. Pass it explicitly so
+                                            // service-level counters stay correct
+                                            // even if the inner map is
+                                            // unexpectedly empty.
                                             let pairs: Vec<(String, String)> = batch_data
                                                 .initial_data
                                                 .values()
@@ -202,19 +204,16 @@ pub async fn dispatch_requests(
                                     let dominant_code = dumper
                                         .stats
                                         .dominant_upstream_code(&url.service_name, &url.api);
-                                    // `check_retry_exhaustion` only abandons on
-                                    // the *permanent* budget (real 4xx/5xx in
-                                    // `retry_number`); 429 / network do not
-                                    // exhaust here (they are
-                                    // bounded by the liveness ceiling and
-                                    // abandoned as ThrottleStalled / NetworkStalled
-                                    // at the re-queue sites). So a `UrlRetryLimit`
-                                    // reaching this branch is always a real-error
-                                    // exhaustion — never throttling.
-                                    let rate_limit_exhausted = false;
-                                    // Surface the give-up in stats.json so a
-                                    // user inspecting an archive can see which
-                                    // APIs exhausted their retry budget.
+                                    // A `UrlRetryLimit` abandonment is always a
+                                    // real-error (4xx/5xx) exhaustion: 429 / network
+                                    // do not exhaust the `retry_number` budget (they
+                                    // are bounded by the liveness ceiling and
+                                    // abandoned as ThrottleStalled / NetworkStalled at
+                                    // the re-queue sites).
+                                    //
+                                    // Surface the give-up in stats.json so a user
+                                    // inspecting an archive can see which APIs
+                                    // exhausted their retry budget.
                                     dumper.stats.record_upstream_error_code(
                                         &url.service_name,
                                         &url.api,
@@ -224,7 +223,6 @@ pub async fn dispatch_requests(
                                         crate::utils::errors::human_retry_exhaustion_message(
                                             &url,
                                             dominant_code.as_deref(),
-                                            rate_limit_exhausted,
                                         );
                                     // Surface the give-up in the log (not just in
                                     // stats.json / errors.json): a URL abandoned

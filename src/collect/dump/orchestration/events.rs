@@ -39,6 +39,13 @@ pub enum CoordinatorEvent {
         new_urls: Vec<Url>,
         count: usize,
     },
+    /// The expected-error breaker fired for one `(service, api)` bucket: it
+    /// accumulated the configured number of consecutive schema-declared
+    /// expected errors without ever writing a page. The coordinator drops the
+    /// bucket's remaining pool URLs (and any that get re-queued later) as
+    /// *skipped* — every one of them would return the same declared-benign
+    /// error, so they are not data losses and do not affect the verdict.
+    BreakerTripped { service: Arc<str>, api: String },
     /// A background prerequisite re-check completed; contains the outcome.
     PrereqResult(Arc<str>, PrereqOutcome),
     /// Resume dispatching URLs for a service (sent after rate-limit sleep or user prompt).

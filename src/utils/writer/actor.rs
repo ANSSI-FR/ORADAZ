@@ -24,6 +24,12 @@ pub(crate) const WRITER_CHANNEL_CAPACITY: usize = 8192;
 /// growing memory. Log writes are exempt (they stay non-blocking, drop-on-full).
 pub(crate) const WRITER_MEMORY_BUDGET_BYTES: usize = 256 * 1024 * 1024;
 
+// `write_file` derives semaphore permits from a byte count cast to `u32`
+// (`acquire_many_owned` takes a `u32`). A budget above `u32::MAX` would make
+// that cast truncate silently and break the backpressure accounting; fail the
+// build instead if the constant is ever raised that high.
+const _: () = assert!(WRITER_MEMORY_BUDGET_BYTES <= u32::MAX as usize);
+
 /// Count of log records dropped without being written: either by
 /// [`WriterHandle::try_write_log`] because the writer channel was full, or by the
 /// actor because the writer was already closed (finalized / marked broken).
@@ -55,6 +61,17 @@ static WRITER_BUDGET_BLOCKED_NANOS: AtomicU64 = AtomicU64::new(0);
 /// Number of `write_file` calls that blocked ≥ [`WRITER_BUDGET_BLOCK_THRESHOLD`]
 /// on the byte budget. Pairs with the total to tell one long stall from many short.
 static WRITER_BUDGET_BLOCKED_COUNT: AtomicU64 = AtomicU64::new(0);
+/// Total nanoseconds producers spent blocked on the writer *channel* send in
+/// `write_file` (only waits ≥ [`WRITER_BUDGET_BLOCK_THRESHOLD`]). The channel is
+/// bounded by message count ([`WRITER_CHANNEL_CAPACITY`]), so a service writing
+/// many tiny pages can saturate it without ever filling the byte budget — this
+/// counter, unlike the byte-budget one, catches that small-page case. Non-zero
+/// means the writer actor could not drain the queue fast enough.
+static WRITER_SEND_BLOCKED_NANOS: AtomicU64 = AtomicU64::new(0);
+/// Number of `write_file` calls whose channel send blocked ≥
+/// [`WRITER_BUDGET_BLOCK_THRESHOLD`]. Pairs with the total to separate one long
+/// stall from many short ones.
+static WRITER_SEND_BLOCKED_COUNT: AtomicU64 = AtomicU64::new(0);
 
 /// Peak writer-channel saturation percentage (0–100) observed over the run.
 pub fn peak_writer_queue_pct() -> u64 {
@@ -71,6 +88,14 @@ pub fn writer_budget_blocked_nanos() -> u64 {
 /// Number of `write_file` calls that stalled on the writer byte budget.
 pub fn writer_budget_blocked_count() -> u64 {
     WRITER_BUDGET_BLOCKED_COUNT.load(Ordering::Relaxed)
+}
+/// Total nanoseconds producers spent blocked on the writer channel send.
+pub fn writer_send_blocked_nanos() -> u64 {
+    WRITER_SEND_BLOCKED_NANOS.load(Ordering::Relaxed)
+}
+/// Number of `write_file` calls whose channel send stalled.
+pub fn writer_send_blocked_count() -> u64 {
+    WRITER_SEND_BLOCKED_COUNT.load(Ordering::Relaxed)
 }
 
 /// Messages that can be sent to the OradazWriter actor.
@@ -161,7 +186,14 @@ impl WriterHandle {
             WRITER_MEMORY_BUDGET_BYTES.saturating_sub(self.byte_budget.available_permits());
         PEAK_WRITER_INFLIGHT_BYTES.fetch_max(inflight as u64, Ordering::Relaxed);
         PEAK_WRITER_QUEUE_PCT.fetch_max(self.queue_usage_pct(), Ordering::Relaxed);
-        self.sender
+        // Time the channel send separately from the byte-budget acquire above: a
+        // non-trivial wait here means the bounded writer channel is full because
+        // the actor cannot drain it fast enough. This catches the many-tiny-pages
+        // case (e.g. graph) that saturates the message-count channel without ever
+        // filling the byte budget.
+        let send_start = Instant::now();
+        let res = self
+            .sender
             .send(WriterMsg::WriteFile {
                 folder,
                 file,
@@ -169,7 +201,16 @@ impl WriterHandle {
                 _permit: permit,
             })
             .await
-            .map_err(|_| Error::WriterLock)
+            .map_err(|_| Error::WriterLock);
+        let send_waited = send_start.elapsed();
+        if send_waited >= WRITER_BUDGET_BLOCK_THRESHOLD {
+            WRITER_SEND_BLOCKED_NANOS.fetch_add(
+                send_waited.as_nanos().min(u64::MAX as u128) as u64,
+                Ordering::Relaxed,
+            );
+            WRITER_SEND_BLOCKED_COUNT.fetch_add(1, Ordering::Relaxed);
+        }
+        res
     }
 
     /// Finalizes the archive and waits for the result.

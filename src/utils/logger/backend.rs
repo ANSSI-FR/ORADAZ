@@ -192,21 +192,26 @@ impl MyLogger {
                 err_text("ERROR"),
                 err
             );
+            // Mirror bail_fatal!: pause stdout logging and the progress ticker
+            // BEFORE printing the fatal block, so a ticker frame cannot repaint
+            // over it or over the "Press Enter" prompt below.
+            config::DUMP_PAUSED.fetch_add(1, Ordering::Relaxed);
             let fatal_err = Error::WriterLock;
             crate::utils::ui::fatal(
                 fatal_err.title(),
                 fatal_err.context().as_deref(),
                 fatal_err.remediation_steps(),
             );
-            // Mirror bail_fatal!: suppress further stdout logs, then wait for the
-            // operator on an interactive terminal before exiting.
-            config::DUMP_PAUSED.fetch_add(1, Ordering::Relaxed);
             crate::utils::fatal_handling::wait_if_interactive();
             std::process::exit(1);
         }
     }
 
     /// Writes a log record to the configured file writer with a timestamp and log level.
+    /// The rendered message is sanitized (newlines and `" | "` collapsed): the file
+    /// log is one-entry-per-line and `" | "`-delimited, and an upstream error
+    /// `Display` embedding either would split or corrupt the entry for the
+    /// inspect parser.
     fn handle_file(&mut self, record: &Record) {
         let Some(writer) = &self.writer else { return };
 
@@ -215,7 +220,7 @@ impl MyLogger {
             "{}  |  {:5}  | {}\n",
             now.format(config::LOG_TIMESTAMP_FORMAT),
             record.level().to_string(),
-            record.args()
+            crate::utils::logger::sanitize_log_field(&record.args().to_string())
         );
 
         let w = writer.clone();

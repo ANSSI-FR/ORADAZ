@@ -1,9 +1,8 @@
 // Progress UI implementation for the dumper.
 use crate::collect::dump::request::{BACKOFF_ACTIVE, RETRY_COUNT};
-use crate::utils::logger::config::warning_count;
+use crate::utils::logger::config::{DUMP_PAUSED, warning_count};
 use crate::utils::logger::{
-    LiveRegionState, PROGRESS_LINE_ACTIVE, STDOUT_LOGS_DURING_DUMP, calculate_rendered_lines,
-    redraw_live_region, update_live_region_state, update_live_region_text,
+    LiveRegionState, PROGRESS_LINE_ACTIVE, STDOUT_LOGS_DURING_DUMP, replace_live_region,
 };
 use crate::utils::mutex::lock_force;
 use crate::utils::ui::{Icon, UiMode, blue, dim, icon, mode};
@@ -206,15 +205,11 @@ pub fn start_ticker(
                 let s = lock_force(&state);
                 render(&s, verbosity)
             };
-            update_live_region_text(&txt);
-            update_live_region_state(LiveRegionState::Progress {
-                lines: calculate_rendered_lines(&txt),
-            });
-            // Paint the first frame through redraw_live_region (not println) so it sets
+            // Paint the first frame through the live region (not println) so it sets
             // PROGRESS_LINE_ACTIVE = true. The ticker loop reads that flag to choose
             // in-place overwrite vs. fresh print; leaving it false here would make the
             // first tick reprint a duplicate block.
-            redraw_live_region(false);
+            replace_live_region(&txt, false, |lines| LiveRegionState::Progress { lines });
         }
         // Ticker loop
         while !stop.load(Ordering::Relaxed) {
@@ -223,8 +218,11 @@ pub fn start_ticker(
             // Skip rendering and clock advancement while paused (a SIGINT menu or an
             // interactive prereq prompt is showing). The pause tears the live region
             // down (clearing PROGRESS_LINE_ACTIVE), which is what drives the fresh-print
-            // decision below on resume.
-            if paused.load(Ordering::Relaxed) > 0 {
+            // decision below on resume. DUMP_PAUSED (process-wide stdout suppression)
+            // is honored too: a fatal block raises it before printing and never
+            // releases it, so the ticker must not repaint below the block — or over
+            // the "Press Enter to exit" prompt — while the process waits to exit.
+            if paused.load(Ordering::Relaxed) > 0 || DUMP_PAUSED.load(Ordering::Relaxed) > 0 {
                 continue;
             }
 
@@ -271,22 +269,12 @@ pub fn start_ticker(
             // (Sampling `paused` cannot detect a menu opened and dismissed within a
             // single tick, which is why this uses the persistent flag instead.)
             if PROGRESS_LINE_ACTIVE.load(Ordering::Relaxed) {
-                // In place: redraw first — it moves up by the *previous* frame's line
-                // count — then record the new line count.
-                update_live_region_text(&txt);
-                redraw_live_region(true);
-                update_live_region_state(LiveRegionState::Progress {
-                    lines: calculate_rendered_lines(&txt),
-                });
+                // In place: overwrite the previous frame (cursor-up by its height).
+                replace_live_region(&txt, true, |lines| LiveRegionState::Progress { lines });
             } else {
-                // Fresh print after a pause: set the state first so `redraw_live_region`
-                // actually paints (it no-ops on a torn-down `None` region), then print at
-                // the current cursor without moving up.
-                update_live_region_text(&txt);
-                update_live_region_state(LiveRegionState::Progress {
-                    lines: calculate_rendered_lines(&txt),
-                });
-                redraw_live_region(false);
+                // Fresh print after a pause: paint at the current cursor without
+                // moving up.
+                replace_live_region(&txt, false, |lines| LiveRegionState::Progress { lines });
             }
         }
     })

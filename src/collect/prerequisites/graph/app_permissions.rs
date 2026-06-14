@@ -8,7 +8,7 @@ use crate::collect::prerequisites::jwt_claims::parse_token_grants;
 use crate::collect::prerequisites::models::AppRoleAssignmentResponse;
 use crate::utils::errors::Error;
 
-use log::{debug, error};
+use log::{debug, error, warn};
 use reqwest::Client;
 use std::collections::HashSet;
 
@@ -138,13 +138,25 @@ pub async fn check_app_permissions_for_managed_identity(
         return Err((Error::MissingServicePrincipalObjectId, vec![]));
     }
 
+    // Bounded so a cyclic or pathological `@odata.nextLink` cannot loop forever —
+    // exit must not depend solely on the server (mirrors the subscriptions probe).
+    const MAX_APP_ROLE_PAGES: usize = 1000;
     let mut granted_ids: HashSet<String> = HashSet::new();
     let mut next_url: Option<String> = Some(format!(
         "{graph_base_url}/v1.0/servicePrincipals/{}/appRoleAssignments",
         token.user_id
     ));
+    let mut page_count: usize = 0;
 
     while let Some(url_str) = next_url {
+        page_count += 1;
+        if page_count > MAX_APP_ROLE_PAGES {
+            warn!(
+                "{:FL$}Stopped paginating appRoleAssignments after {} pages (possible cyclic nextLink); proceeding with the assignments gathered so far",
+                "Prerequisites", MAX_APP_ROLE_PAGES
+            );
+            break;
+        }
         let url = match url::Url::parse(&url_str) {
             Ok(u) => u,
             Err(err) => {

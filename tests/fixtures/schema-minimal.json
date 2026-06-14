@@ -1,0 +1,22 @@
+{
+  "oradaz_version": "{{ORADAZ_VERSION}}",
+  "schema_version": "1.0.0",
+  "services": [
+    {
+      "name": "graph",
+      "scopes": [
+        "https://graph.microsoft.com/.default"
+      ],
+      "mandatory_auth": true,
+      "url_scheme": "https://graph.microsoft.com",
+      "default_api_behavior": {},
+      "apis": [
+        {
+          "name": "applications",
+          "uri": "/v1.0/applications",
+          "api_behavior": {}
+        }
+      ]
+    }
+  ]
+}

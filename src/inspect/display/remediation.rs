@@ -18,7 +18,7 @@
 use super::{
     dim, format_thousands, mid_sep, rule, section_line_with_verdict, str_field, u64_field,
 };
-use crate::inspect::analysis::{ErrorCategory, aggregate_errors, compute_verdict};
+use crate::inspect::analysis::{ErrorCategory, aggregate_errors, compute_verdict, has_lost_data};
 use crate::inspect::hints::get_hint;
 use crate::inspect::loader::LogSource;
 use crate::inspect::log_parser::{LogLevel, last_plain_failure_context, parse_log};
@@ -37,6 +37,7 @@ pub fn print_remediation_section(
         source.metadata.as_ref(),
         source.stats.as_ref(),
         source.is_broken,
+        has_lost_data(&source.dump_errors),
     );
     out.push(section_line_with_verdict("REMEDIATION", verdict));
     out.push(String::new());
@@ -148,8 +149,8 @@ fn collect_fatals(source: &LogSource, service_filter: Option<&str>) -> Vec<Item>
             headline: "Archive interrupted — collection did not complete".to_string(),
             explanation: "Only partial data is in this archive (.broken extension).".to_string(),
             details: take_bullets(&mut log_bullets),
-            action: "Inspect the last log entries with `oradaz inspect logs --debug --last 50` \
-                     to find what triggered the abort, then re-run the collection."
+            action: "Review the final entries in `oradaz.log` to find what triggered the abort, \
+                     then re-run the collection."
                 .to_string(),
         });
     }
@@ -164,8 +165,8 @@ fn collect_fatals(source: &LogSource, service_filter: Option<&str>) -> Vec<Item>
             headline: format!("{auth_errors} authentication error(s) during the run"),
             explanation: "One or more services failed to obtain a valid access token.".to_string(),
             details: take_bullets(&mut log_bullets),
-            action: "Open `oradaz inspect logs --info --service graph` (and equivalents) to \
-                     see the failing service; check the app registration credentials, then re-run."
+            action: "Identify the failing service in the lines above (or `oradaz.log`); check \
+                     the app registration credentials, then re-run."
                 .to_string(),
         });
     }
@@ -247,19 +248,25 @@ fn unexpected_item(g: &crate::inspect::analysis::ErrorGroup) -> Item {
     };
     let sep = mid_sep();
     let code = if g.code.is_empty() { "—" } else { &g.code };
-    // `status == 0` is a lost-data (non-HTTP) terminal failure — there is no HTTP
-    // status to show, so render the code with an explicit "data lost" marker
-    // instead of a confusing literal `0`.
-    let headline = if g.status == 0 {
-        format!(
-            "{}/{}{sep}{code} (data lost){count_suffix}",
-            g.service, g.api
-        )
+    // "service/api", or just "service" when the api name is empty (a per-service
+    // non-HTTP event such as MissingTokenForRelationships).
+    let target = if g.api.is_empty() {
+        g.service.clone()
     } else {
-        format!(
-            "{}/{}{sep}{} {code}{count_suffix}",
-            g.service, g.api, g.status
-        )
+        format!("{}/{}", g.service, g.api)
+    };
+    let headline = if g.status == 0 {
+        // A non-HTTP terminal failure: there is no HTTP status to show. Genuine
+        // lost-data abandonments get an explicit "data lost" marker;
+        // MissingTokenForRelationships is excluded — its page was already written,
+        // only relationship expansion was skipped.
+        if g.code == "MissingTokenForRelationships" {
+            format!("{target}{sep}{code}{count_suffix}")
+        } else {
+            format!("{target}{sep}{code} (data lost){count_suffix}")
+        }
+    } else {
+        format!("{target}{sep}{} {code}{count_suffix}", g.status)
     };
     let (explanation, action) = match get_hint(Some(g.status), Some(g.code.as_str())) {
         Some(h) => (h.explanation.to_string(), h.remediation.to_string()),

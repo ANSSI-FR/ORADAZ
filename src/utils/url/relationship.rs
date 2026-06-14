@@ -289,17 +289,20 @@ impl RelationshipUrl {
                                 }
                             }
                             None => {
-                                if let Some(c) = &key.conditions {
-                                    // Allow for placeholder keys if required to check a condition
-                                    if !self
-                                        .key_passes_conditions(
-                                            condition_checker,
-                                            token,
-                                            c,
-                                            data_value,
-                                            request_id,
-                                        )
-                                        .await
+                                // A placeholder key never appears in the URL; it
+                                // exists only to gate the relationship on a
+                                // condition evaluated against the parent value.
+                                if key.name == PLACEHOLDER_KEY {
+                                    if let Some(c) = &key.conditions
+                                        && !self
+                                            .key_passes_conditions(
+                                                condition_checker,
+                                                token,
+                                                c,
+                                                data_value,
+                                                request_id,
+                                            )
+                                            .await
                                     {
                                         // Skip relationship if data does not match condition
                                         trace!(
@@ -316,6 +319,11 @@ impl RelationshipUrl {
                                         return String::new();
                                     }
                                 } else {
+                                    // A real key whose parent value is not a
+                                    // string cannot be substituted, so its token
+                                    // would remain literally in the dispatched
+                                    // URL. Skip rather than send a malformed
+                                    // request.
                                     debug!(
                                         "{:FL$}Could not convert url key {:?} to str for relationship {:?} of API {:?} for service {:?} (id: {})",
                                         "RelationshipUrl",

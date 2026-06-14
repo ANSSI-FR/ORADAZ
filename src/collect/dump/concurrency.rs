@@ -55,9 +55,7 @@ struct ServiceWindow {
     /// this service. The **symmetric** companion to `decrease_count`: together
     /// they say whether the window *recovered* after a collapse (increases ≈
     /// decreases → healthy ramp) or stayed hammered down (decreases ≫ increases →
-    /// stuck). The signal that verifies the cooldown-order fix actually let the
-    /// window re-ramp, and a key input to the per-bucket re-key (B) decision.
-    /// Observability only.
+    /// stuck). Observability only.
     increase_count: AtomicU64,
     /// Millis since `created_at` at which the window most recently *entered* its
     /// floor (`min_window`) via a 429 halving; `0` when not currently at the
@@ -68,11 +66,9 @@ struct ServiceWindow {
     floor_since_ms: AtomicU64,
     /// Total nanoseconds the window spent collapsed at its floor (`min_window`).
     /// **Duration** companion to `decrease_count` (a count) and `min_window_reached`
-    /// (a depth): a window that collapses once and sits at the floor for 18 min
-    /// (the run_001 pathology) looks identical to a brief dip in the count alone —
-    /// this distinguishes them. The direct measure of the B-trigger symptom
-    /// ("fast endpoints stuck at the floor during convergence"). Observability
-    /// only, and **best-effort**: it may slightly *under*-count (never over-count)
+    /// (a depth): a window that collapses once and sits at the floor for minutes
+    /// looks identical to a brief dip in the count alone — this distinguishes them.
+    /// Observability only, and **best-effort**: it may slightly *under*-count (never over-count)
     /// under a cross-thread enter/leave reorder — see the accumulation site in
     /// `report_success`.
     time_at_floor_nanos: AtomicU64,
@@ -544,8 +540,7 @@ impl ConcurrencyController {
     /// Returns the number of effective AIMD additive increases per service (the
     /// symmetric companion to `get_all_decreases`): increases ≈ decreases means
     /// the window recovered after each collapse; decreases ≫ increases means it
-    /// stayed hammered down. Observability for the cooldown-fix verification and
-    /// the per-bucket re-key (B) decision.
+    /// stayed hammered down. Observability only.
     pub fn get_all_increases(&self) -> HashMap<String, u64> {
         self.service_windows
             .iter()
@@ -560,8 +555,8 @@ impl ConcurrencyController {
 
     /// Returns the whole seconds each service's window spent collapsed at its
     /// floor (`min_window`). The **duration** of collapse — distinguishes a brief
-    /// dip from a window pinned at the floor for many minutes (the run_001
-    /// pathology). Closes any segment still open at end of dump. Call after the
+    /// dip from a window pinned at the floor for many minutes. Closes any segment
+    /// still open at end of dump. Call after the
     /// pipeline has drained (single-threaded, race-free).
     pub fn get_all_time_at_floor_secs(&self) -> HashMap<String, u64> {
         self.service_windows

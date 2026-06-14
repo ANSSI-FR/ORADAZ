@@ -29,6 +29,55 @@ const DEFAULT_MAX_RETRY_AFTER_SECS: u64 = 900;
 /// of requests without materially extending a short storm cooldown.
 const MAX_COOLDOWN_JITTER_MS: u64 = 2000;
 
+/// Forward-jitter ceiling (ms) for a 429 cooldown of `duration_ms` for a service
+/// whose `rateLimitMaxWaitSecs` is `max_wait_secs`. Capped at half the cooldown,
+/// the absolute `MAX_COOLDOWN_JITTER_MS`, and the headroom to `rateLimitMaxWaitSecs`
+/// — so a near-max cooldown plus jitter can't push the sleep past
+/// `stallDetectionTimeout` (kept ≥ that cap by config advice). Pure for testing.
+fn jitter_ceiling_ms(duration_ms: u64, max_wait_secs: u64) -> u64 {
+    let headroom_ms = max_wait_secs
+        .saturating_mul(1000)
+        .saturating_sub(duration_ms);
+    (duration_ms / 2)
+        .min(MAX_COOLDOWN_JITTER_MS)
+        .min(headroom_ms)
+}
+
+/// Consecutive 429s on one `(service, api)` bucket after which each further
+/// wait doubles. Microsoft throttles some endpoint *categories* on quotas whose
+/// refill window is much longer than the `Retry-After` they serve: retrying a
+/// stuck endpoint at the served pace re-consumes its quota and keeps it at 429
+/// until the per-bucket liveness ceiling abandons it. Escalating the wait gives
+/// the category quota room to refill while the rest of the service keeps its
+/// normal pacing.
+const ESCALATION_STREAK_DOUBLING: u32 = 4;
+/// Maximum multiplier applied to a bucket's base cooldown by the escalation.
+const ESCALATION_MAX_FACTOR: u64 = 12;
+/// Hard cap (seconds) on a single escalated bucket wait — keeps a stuck bucket
+/// probing several times within `livenessCeilingSecs` rather than sleeping it
+/// away entirely.
+const ESCALATION_MAX_WAIT_SECS: u64 = 120;
+
+/// Escalation multiplier for a bucket that has seen `streak` consecutive 429s:
+/// ×1 below [`ESCALATION_STREAK_DOUBLING`], then doubling every further
+/// [`ESCALATION_STREAK_DOUBLING`] 429s, capped at [`ESCALATION_MAX_FACTOR`].
+fn escalation_factor(streak: u32) -> u64 {
+    // The shift is bounded (≤ 6) before the cap, so it cannot overflow.
+    (1u64 << (streak / ESCALATION_STREAK_DOUBLING).min(6)).min(ESCALATION_MAX_FACTOR)
+}
+
+/// Per-`(service, api)` escalation state: consecutive 429s without a written
+/// page, and the resulting earliest next attempt for that bucket.
+struct BucketEscalation {
+    /// Earliest time a request for this bucket may fire (in addition to the
+    /// service-wide cooldown).
+    not_before: Instant,
+    /// Consecutive 429s since the bucket last wrote a page.
+    streak: u32,
+    /// Highest streak reached over the run (telemetry; never reset).
+    max_streak: u32,
+}
+
 /// Manages rate limiting for different services.
 ///
 /// It tracks the next allowed request time for each service to avoid sending
@@ -40,6 +89,10 @@ const MAX_COOLDOWN_JITTER_MS: u64 = 2000;
 /// without inflating the global default.
 pub struct RateLimitManager {
     limits: Arc<DashMap<String, ServiceLimit>>,
+    /// Per-`(service, api)` 429-escalation state. Usually empty (only buckets
+    /// throttled repeatedly without progress appear here); `wait_if_needed`
+    /// fast-paths on emptiness so the per-request cost is one `is_empty` check.
+    bucket_escalations: Arc<DashMap<(String, String), BucketEscalation>>,
     default_retry_after: u64,
     /// Per-service fallback Retry-After (seconds) for 429 responses that come
     /// back without an explicit `Retry-After` header. Services not in the map
@@ -73,6 +126,12 @@ struct ServiceLimit {
     /// to ~1 only if AIMD collapses the window toward 1. Surfaced in
     /// `metadata.json` as `cooldown_active_secs_by_service`.
     cooldown_active_nanos: AtomicU64,
+    /// Number of 429 reports whose effective cooldown was clamped down to the
+    /// service's `rateLimitMaxWaitSecs` cap. Each clamped cooldown resumes
+    /// earlier than the server requested and risks an immediate re-429, so a
+    /// high count flags a cap set below what the server actually demands.
+    /// Surfaced in `metadata.json` as `retry_after_clamped_by_service`.
+    clamped_count: AtomicU64,
 }
 
 impl RateLimitManager {
@@ -84,6 +143,7 @@ impl RateLimitManager {
     pub fn new(default_retry_after: u64) -> Self {
         Self {
             limits: Arc::new(DashMap::new()),
+            bucket_escalations: Arc::new(DashMap::new()),
             default_retry_after,
             per_service_default: HashMap::new(),
             max_wait_secs: DEFAULT_MAX_RETRY_AFTER_SECS,
@@ -101,6 +161,7 @@ impl RateLimitManager {
     ) -> Self {
         Self {
             limits: Arc::new(DashMap::new()),
+            bucket_escalations: Arc::new(DashMap::new()),
             default_retry_after,
             per_service_default,
             max_wait_secs,
@@ -147,36 +208,47 @@ impl RateLimitManager {
     /// Long individual parks in such a pathological run are expected; the
     /// coordinator's stall watchdog (which logs and continues, never aborts) is
     /// the outer safety net.
-    pub async fn wait_if_needed(&self, service: &str) {
+    ///
+    /// `apis` are the API buckets the caller is about to hit (one for a single
+    /// request, the distinct sub-request APIs for a batch): the wait also
+    /// honours each bucket's escalated `not_before` (see
+    /// [`report_429_bucket`](Self::report_429_bucket)), so a bucket stuck on a
+    /// long-refill server quota is paced without slowing the rest of the
+    /// service.
+    pub async fn wait_if_needed(&self, service: &str, apis: &[&str]) {
         loop {
-            let duration = match self.limits.get(service) {
-                Some(limit) => {
-                    let now = Instant::now();
-                    if limit.next_allowed_request > now {
-                        limit.next_allowed_request - now
-                    } else {
-                        return;
+            let now = Instant::now();
+            let mut until: Option<Instant> = None;
+            if let Some(limit) = self.limits.get(service)
+                && limit.next_allowed_request > now
+            {
+                until = Some(limit.next_allowed_request);
+            }
+            // Fast path: no bucket has ever escalated → skip the keyed lookups.
+            if !self.bucket_escalations.is_empty() {
+                for api in apis {
+                    if let Some(esc) = self
+                        .bucket_escalations
+                        .get(&(service.to_string(), (*api).to_string()))
+                        && esc.not_before > now
+                    {
+                        until = Some(match until {
+                            Some(u) => u.max(esc.not_before),
+                            None => esc.not_before,
+                        });
                     }
                 }
+            }
+            let duration = match until {
+                Some(u) => u - now,
                 None => return,
             };
 
             // Proportional *forward* jitter to desynchronise the workers that
-            // wake together when a shared cooldown expires. Spread forward only
-            // (never before the cooldown ends) and capped both absolutely
-            // (`MAX_COOLDOWN_JITTER_MS`) and by the headroom to the service's
-            // `rateLimitMaxWaitSecs`, so a near-max cooldown can't push the sleep
-            // past `stallDetectionTimeout` (kept ≥ that cap by config advice).
+            // wake together when a shared cooldown expires (see `jitter_ceiling_ms`).
             let duration_ms = duration.as_millis().min(u64::MAX as u128) as u64;
-            let headroom_ms = self
-                .max_wait_for(service)
-                .saturating_mul(1000)
-                .saturating_sub(duration_ms);
-            let jitter_ceiling_ms = (duration_ms / 2)
-                .min(MAX_COOLDOWN_JITTER_MS)
-                .min(headroom_ms);
-            let jitter =
-                Duration::from_millis((rand::random::<f64>() * jitter_ceiling_ms as f64) as u64);
+            let ceiling = jitter_ceiling_ms(duration_ms, self.max_wait_for(service));
+            let jitter = Duration::from_millis((rand::random::<f64>() * ceiling as f64) as u64);
             let total = duration + jitter;
             if total >= Duration::from_secs(1) {
                 debug!(
@@ -210,10 +282,10 @@ impl RateLimitManager {
     /// If `retry_after` is provided, it uses that value. Otherwise, it defaults
     /// to the per-service fallback if defined, else to the global default.
     pub fn report_429(&self, service: &str, retry_after: Option<u64>) {
-        // `effective_retry_after` resolves the fallback AND clamps to the
+        // `resolve_retry_after` resolves the fallback AND clamps to the
         // per-service cap, so `now + Duration::from_secs(delay)` below can
         // neither freeze the service for hours nor overflow.
-        let delay = self.effective_retry_after(service, retry_after);
+        let (delay, clamped) = self.resolve_retry_after(service, retry_after);
         let now = Instant::now();
         let new_allowed = now + Duration::from_secs(delay);
 
@@ -223,7 +295,15 @@ impl RateLimitManager {
             .or_insert(ServiceLimit {
                 next_allowed_request: now,
                 cooldown_active_nanos: AtomicU64::new(0),
+                clamped_count: AtomicU64::new(0),
             });
+        if clamped {
+            // Counted here (one increment per 429 *report*) rather than in
+            // `resolve_retry_after`, which is also called by the response path
+            // to compute the same value for stats — counting there would tally
+            // one clamp several times.
+            limit.clamped_count.fetch_add(1, Ordering::Relaxed);
+        }
 
         if new_allowed > limit.next_allowed_request {
             // Telemetry: accumulate this 429's *incremental* contribution to
@@ -251,15 +331,100 @@ impl RateLimitManager {
         }
     }
 
+    /// [`report_429`](Self::report_429) plus per-bucket escalation: counts this
+    /// 429 into the `(service, api)` bucket's consecutive streak and, once the
+    /// streak passes [`ESCALATION_STREAK_DOUBLING`], arms a bucket-specific
+    /// `not_before` of `Retry-After × 2^(streak/4)` (capped at
+    /// [`ESCALATION_MAX_WAIT_SECS`] and the service's `rateLimitMaxWaitSecs`).
+    /// `wait_if_needed` then paces this bucket's next attempt without slowing
+    /// the rest of the service. A written page resets the streak via
+    /// [`note_bucket_progress`](Self::note_bucket_progress); the per-bucket
+    /// liveness ceiling remains the only abandonment bound.
+    ///
+    /// Callers with a batch *envelope* 429 must use plain `report_429` instead:
+    /// the envelope is not a data bucket (its sub-requests span many APIs) and
+    /// nothing would ever reset its streak.
+    pub fn report_429_bucket(&self, service: &str, api: &str, retry_after: Option<u64>) {
+        self.report_429(service, retry_after);
+        let (delay, _) = self.resolve_retry_after(service, retry_after);
+        let now = Instant::now();
+        let mut esc = self
+            .bucket_escalations
+            .entry((service.to_string(), api.to_string()))
+            .or_insert(BucketEscalation {
+                not_before: now,
+                streak: 0,
+                max_streak: 0,
+            });
+        esc.streak = esc.streak.saturating_add(1);
+        esc.max_streak = esc.max_streak.max(esc.streak);
+        let factor = escalation_factor(esc.streak);
+        if factor > 1 {
+            let wait = delay
+                .saturating_mul(factor)
+                .min(ESCALATION_MAX_WAIT_SECS)
+                .min(self.max_wait_for(service));
+            let new_not_before = now + Duration::from_secs(wait);
+            if new_not_before > esc.not_before {
+                esc.not_before = new_not_before;
+                debug!(
+                    "{:FL$}Escalated cooldown {}s (×{}, streak {}) for bucket {:?}/{:?}",
+                    "RateLimitManager", wait, factor, esc.streak, service, api
+                );
+            }
+        }
+    }
+
+    /// Resets a bucket's escalation after it wrote a page: the consecutive-429
+    /// streak restarts and any armed `not_before` is lifted (`max_streak` is
+    /// kept for telemetry). Call alongside `Stats::note_progress`.
+    pub fn note_bucket_progress(&self, service: &str, api: &str) {
+        if self.bucket_escalations.is_empty() {
+            return;
+        }
+        if let Some(mut esc) = self
+            .bucket_escalations
+            .get_mut(&(service.to_string(), api.to_string()))
+        {
+            esc.streak = 0;
+            esc.not_before = Instant::now();
+        }
+    }
+
+    /// Buckets whose 429 streak ever reached the escalation threshold, keyed
+    /// `service/api` with the highest streak observed. Surfaced in
+    /// `metadata.json` as `cooldown_escalated_by_api`: crossed with
+    /// `lost_data_by_code` it tells whether escalated buckets recovered (absent
+    /// from losses) or still hit the liveness ceiling.
+    pub fn get_escalated_buckets(&self) -> HashMap<String, u64> {
+        self.bucket_escalations
+            .iter()
+            .filter(|r| r.value().max_streak >= ESCALATION_STREAK_DOUBLING)
+            .map(|r| {
+                let (service, api) = r.key();
+                (format!("{service}/{api}"), u64::from(r.value().max_streak))
+            })
+            .collect()
+    }
+
     /// Resolve the effective cooldown (seconds) for a 429: the server-provided
-    /// `retry_after` when present, else the per-service (or global) configured
-    /// fallback, finally **clamped** to the service's `rateLimitMaxWaitSecs`
-    /// cap. Centralises the "absent/unparseable Retry-After ⇒ configured
-    /// default" rule so callers never pass `Some(0)` (which would defeat the
-    /// fallback and disable the cooldown), and the upper clamp so a huge or
-    /// hostile `Retry-After` cannot freeze the service or overflow `Instant`.
+    /// `retry_after` when present and non-zero, else the per-service (or global)
+    /// configured fallback, finally **clamped** to the service's
+    /// `rateLimitMaxWaitSecs` cap. A zero `Retry-After` is treated as absent and
+    /// falls back to the configured default: a zero cooldown would disable pacing
+    /// and spin a hot 429 retry loop. The upper clamp ensures a huge or hostile
+    /// `Retry-After` cannot freeze the service or overflow `Instant`.
     pub fn effective_retry_after(&self, service: &str, retry_after: Option<u64>) -> u64 {
-        let raw = retry_after.unwrap_or_else(|| self.default_for(service));
+        self.resolve_retry_after(service, retry_after).0
+    }
+
+    /// `effective_retry_after` plus whether the value was clamped by the
+    /// service's `rateLimitMaxWaitSecs` cap, so `report_429` can count clamp
+    /// events exactly once per 429 report.
+    fn resolve_retry_after(&self, service: &str, retry_after: Option<u64>) -> (u64, bool) {
+        let raw = retry_after
+            .filter(|&s| s > 0)
+            .unwrap_or_else(|| self.default_for(service));
         let capped = raw.min(self.max_wait_for(service));
         if capped < raw {
             debug!(
@@ -267,7 +432,7 @@ impl RateLimitManager {
                 "RateLimitManager", raw, capped, service
             );
         }
-        capped
+        (capped, capped < raw)
     }
 
     /// Returns the wall-clock seconds each service spent under an **active** 429
@@ -285,6 +450,22 @@ impl RateLimitManager {
                 (
                     r.key().clone(),
                     r.value().cooldown_active_nanos.load(Ordering::Relaxed) / 1_000_000_000,
+                )
+            })
+            .collect()
+    }
+
+    /// Per-service count of 429 reports whose cooldown was clamped to the
+    /// `rateLimitMaxWaitSecs` cap, surfaced in `metadata.json` as
+    /// `retry_after_clamped_by_service`. Non-zero means the server demanded
+    /// longer waits than the configured cap allows.
+    pub fn get_all_clamped_counts(&self) -> HashMap<String, u64> {
+        self.limits
+            .iter()
+            .map(|r| {
+                (
+                    r.key().clone(),
+                    r.value().clamped_count.load(Ordering::Relaxed),
                 )
             })
             .collect()
@@ -343,7 +524,7 @@ mod tests {
 
         // Wait the window out (advances to t=90), then a fresh 429 after the gap
         // opens a brand-new segment (+10s). → 100s total.
-        manager.wait_if_needed("graph").await;
+        manager.wait_if_needed("graph", &[]).await;
         manager.report_429("graph", Some(10));
         assert_eq!(
             active("graph"),
@@ -375,7 +556,7 @@ mod tests {
         let m2 = Arc::clone(&manager);
         let waiter = tokio::spawn(async move {
             let start = Instant::now();
-            m2.wait_if_needed("graph").await;
+            m2.wait_if_needed("graph", &[]).await;
             start.elapsed()
         });
 
@@ -407,7 +588,7 @@ mod tests {
         // plus a forward jitter capped at MAX_COOLDOWN_JITTER_MS (2s), so the
         // elapsed time lands in [60s, 60s + cap].
         let start = Instant::now();
-        manager.wait_if_needed(service).await;
+        manager.wait_if_needed(service, &[]).await;
         let elapsed = start.elapsed();
 
         assert!(elapsed >= Duration::from_secs(60));
@@ -423,10 +604,43 @@ mod tests {
         manager.report_429(service, None);
 
         let start = Instant::now();
-        manager.wait_if_needed(service).await;
+        manager.wait_if_needed(service, &[]).await;
         let elapsed = start.elapsed();
 
-        assert!(elapsed >= Duration::from_secs(2));
+        // The default fallback is 5 s (no Retry-After). Assert the full delay,
+        // plus the jitter upper bound (≤ MAX_COOLDOWN_JITTER_MS), so a regression
+        // collapsing the fallback to a smaller value is caught.
+        assert!(elapsed >= Duration::from_secs(5));
+        assert!(elapsed <= Duration::from_secs(5) + Duration::from_millis(MAX_COOLDOWN_JITTER_MS));
+    }
+
+    #[test]
+    fn jitter_ceiling_ms_caps_at_half_then_abs_then_headroom() {
+        // Half-the-cooldown bound: 1000/2 = 500 (< 2000 abs, < 899_000 headroom).
+        assert_eq!(jitter_ceiling_ms(1000, 900), 500);
+        // Absolute MAX_COOLDOWN_JITTER_MS bound: 10_000/2 = 5000 capped to 2000.
+        assert_eq!(jitter_ceiling_ms(10_000, 900), 2000);
+        // Headroom bound: 900_000 − 899_500 = 500 (< 449_750 half, < 2000 abs).
+        assert_eq!(jitter_ceiling_ms(899_500, 900), 500);
+        // No headroom (cooldown == cap): no jitter can extend past the cap.
+        assert_eq!(jitter_ceiling_ms(900_000, 900), 0);
+    }
+
+    /// A server-sent `Retry-After: 0` must not bypass the cooldown: `report_429`
+    /// treats it as absent and arms the configured default delay instead of
+    /// leaving the service free to retry immediately.
+    #[tokio::test]
+    async fn test_report_429_zero_retry_after_uses_default() {
+        pause();
+        let manager = RateLimitManager::new(5); // default fallback = 5s
+        let service = "test_service";
+
+        manager.report_429(service, Some(0));
+
+        let start = Instant::now();
+        manager.wait_if_needed(service, &[]).await;
+
+        assert!(start.elapsed() >= Duration::from_secs(5));
     }
 
     /// When `report_429` is called without an explicit `Retry-After`, the
@@ -443,14 +657,14 @@ mod tests {
         // resources uses its own 30s default.
         manager.report_429("resources", None);
         let start = Instant::now();
-        manager.wait_if_needed("resources").await;
+        manager.wait_if_needed("resources", &[]).await;
         assert!(start.elapsed() >= Duration::from_secs(30));
 
         // graph falls back to the global 5s default (plus the forward jitter,
         // capped at MAX_COOLDOWN_JITTER_MS).
         manager.report_429("graph", None);
         let start = Instant::now();
-        manager.wait_if_needed("graph").await;
+        manager.wait_if_needed("graph", &[]).await;
         let elapsed = start.elapsed();
         assert!(elapsed >= Duration::from_secs(5));
         assert!(elapsed <= Duration::from_secs(5) + Duration::from_millis(MAX_COOLDOWN_JITTER_MS));
@@ -476,6 +690,115 @@ mod tests {
         // `Instant + Duration::from_secs(u64::MAX)` would overflow, so
         // `report_429` with `u64::MAX` must not panic.
         manager.report_429("svc", Some(u64::MAX));
+    }
+
+    /// A `Retry-After: 0` is treated as absent and resolves to the configured
+    /// default — a zero cooldown would disable pacing on the 429 path.
+    #[test]
+    fn test_zero_retry_after_falls_back_to_default() {
+        let manager = RateLimitManager::new(5); // default fallback = 5s
+        assert_eq!(manager.effective_retry_after("svc", Some(0)), 5);
+        assert_eq!(manager.effective_retry_after("svc", None), 5);
+        // A non-zero value under the cap is still returned unchanged.
+        assert_eq!(manager.effective_retry_after("svc", Some(3)), 3);
+    }
+
+    /// The escalation multiplier: ×1 below the threshold, doubling every
+    /// `ESCALATION_STREAK_DOUBLING` consecutive 429s, capped at
+    /// `ESCALATION_MAX_FACTOR`.
+    #[test]
+    fn test_escalation_factor_table() {
+        for streak in 0..ESCALATION_STREAK_DOUBLING {
+            assert_eq!(escalation_factor(streak), 1, "streak {streak}");
+        }
+        assert_eq!(escalation_factor(4), 2);
+        assert_eq!(escalation_factor(8), 4);
+        assert_eq!(escalation_factor(12), 8);
+        assert_eq!(escalation_factor(16), 12, "capped at ESCALATION_MAX_FACTOR");
+        assert_eq!(escalation_factor(1000), 12);
+    }
+
+    /// A bucket stuck on consecutive 429s is paced individually: once the
+    /// service-wide cooldown has expired, a healthy bucket proceeds immediately
+    /// while the stuck bucket still waits out its escalated `not_before`.
+    #[tokio::test(start_paused = true)]
+    async fn test_bucket_escalation_paces_only_the_stuck_bucket() {
+        let manager = RateLimitManager::new(5);
+
+        // 8 consecutive 429s (Retry-After 10s) on one bucket: streak 8 →
+        // factor 4 → bucket not_before = 40s. Service-wide cooldown stays 10s.
+        for _ in 0..8 {
+            manager.report_429_bucket("graph", "stuck", Some(10));
+        }
+
+        // Past the service-wide cooldown, a healthy bucket is not delayed.
+        advance(Duration::from_secs(15)).await;
+        let start = Instant::now();
+        manager.wait_if_needed("graph", &["healthy"]).await;
+        assert!(
+            start.elapsed() < Duration::from_secs(1),
+            "a healthy bucket must not inherit another bucket's escalation"
+        );
+
+        // The stuck bucket still waits out the remaining ~25s of its 40s window.
+        let start = Instant::now();
+        manager.wait_if_needed("graph", &["stuck"]).await;
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed >= Duration::from_secs(24),
+            "stuck bucket must wait its escalated window, waited {elapsed:?}"
+        );
+        assert!(
+            elapsed <= Duration::from_secs(25) + Duration::from_millis(MAX_COOLDOWN_JITTER_MS),
+            "escalated wait must stay bounded, waited {elapsed:?}"
+        );
+    }
+
+    /// A written page (`note_bucket_progress`) lifts a bucket's escalation:
+    /// the streak restarts and the armed `not_before` no longer delays it.
+    #[tokio::test(start_paused = true)]
+    async fn test_note_bucket_progress_resets_escalation() {
+        let manager = RateLimitManager::new(5);
+        for _ in 0..8 {
+            manager.report_429_bucket("graph", "stuck", Some(10));
+        }
+        advance(Duration::from_secs(15)).await; // past the service cooldown
+
+        manager.note_bucket_progress("graph", "stuck");
+        let start = Instant::now();
+        manager.wait_if_needed("graph", &["stuck"]).await;
+        assert!(
+            start.elapsed() < Duration::from_secs(1),
+            "progress must lift the escalated pacing"
+        );
+
+        // Telemetry keeps the highest streak ever reached.
+        let escalated = manager.get_escalated_buckets();
+        assert_eq!(escalated.get("graph/stuck"), Some(&8));
+    }
+
+    /// Plain `report_429` (batch envelopes) never creates escalation buckets,
+    /// and a bucket below the threshold is not reported in the telemetry.
+    #[test]
+    fn test_escalation_telemetry_thresholds() {
+        let manager = RateLimitManager::new(5);
+        manager.report_429("graph", Some(10));
+        manager.report_429("graph", Some(10));
+        assert!(manager.get_escalated_buckets().is_empty());
+
+        for _ in 0..ESCALATION_STREAK_DOUBLING - 1 {
+            manager.report_429_bucket("graph", "brief", Some(10));
+        }
+        assert!(
+            manager.get_escalated_buckets().is_empty(),
+            "a streak below the threshold is noise, not telemetry"
+        );
+
+        manager.report_429_bucket("graph", "brief", Some(10));
+        assert_eq!(
+            manager.get_escalated_buckets().get("graph/brief"),
+            Some(&u64::from(ESCALATION_STREAK_DOUBLING))
+        );
     }
 
     /// A per-service `rateLimitMaxWaitSecs` cap overrides the global cap.

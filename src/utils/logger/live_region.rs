@@ -228,6 +228,39 @@ pub fn redraw_live_region_raw(move_up: bool) {
     }
 }
 
+/// Atomically replaces the live region content and repaints it.
+///
+/// The text update, the repaint and the line-count state update all happen under
+/// a single [`RENDER_LOCK`] acquisition. Performing those three steps as separate
+/// calls (as a ticker frame otherwise would) leaves a window where a concurrently
+/// printed log line clears the region using a line count that does not match what
+/// is on screen — whenever the region height just changed, one frame line then
+/// survives above the log line, or the log line itself is eaten.
+///
+/// * `move_up` — `true` overwrites the previous frame in place: the repaint moves
+///   the cursor up by the *previous* state's line count, so the state is updated
+///   *after* the repaint. `false` paints fresh at the current cursor: the state is
+///   set *before* the repaint (which no-ops on a torn-down `None` region).
+/// * `to_state` — builds the new region state from the rendered line count of
+///   `text`.
+pub fn replace_live_region(
+    text: &str,
+    move_up: bool,
+    to_state: impl FnOnce(u16) -> LiveRegionState,
+) {
+    with_render_lock(|| {
+        update_live_region_text(text);
+        let lines = calculate_rendered_lines(text);
+        if move_up {
+            redraw_live_region_raw(true);
+            update_live_region_state(to_state(lines));
+        } else {
+            update_live_region_state(to_state(lines));
+            redraw_live_region_raw(false);
+        }
+    });
+}
+
 pub fn update_live_region_text(text: &str) {
     // No `is_empty` guard: passing "" must be able to *clear* the live-region
     // text, not be silently ignored.

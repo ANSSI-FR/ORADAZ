@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <tenant>12345678-4321-4321-4321-123456789012</tenant>
+  <appId>12345678-1234-1234-1234-123456789012</appId>
+  <outputFiles>1</outputFiles>
+  <outputMLA>true</outputMLA>
+  <concurrencyMinWindow>2</concurrencyMinWindow>
+  <concurrencyMaxWindow>30</concurrencyMaxWindow>
+  <rateLimitRetryLimit>50</rateLimitRetryLimit>
+  <rateLimitMaxWaitSecs>900</rateLimitMaxWaitSecs>
+  <defaultRetryAfterSeconds>2</defaultRetryAfterSeconds>
+  <httpTimeoutSeconds>30</httpTimeoutSeconds>
+  <serviceOverrides>
+    <service name="resources">
+      <concurrencyMaxWindow>20</concurrencyMaxWindow>
+      <rateLimitRetryLimit>100</rateLimitRetryLimit>
+      <rateLimitMaxWaitSecs>1800</rateLimitMaxWaitSecs>
+      <defaultRetryAfterSeconds>5</defaultRetryAfterSeconds>
+    </service>
+    <service name="graph">
+      <concurrencyMaxWindow>100</concurrencyMaxWindow>
+      <rateLimitRetryLimit>20</rateLimitRetryLimit>
+    </service>
+    <service name="exchange">
+      <httpTimeoutSeconds>60</httpTimeoutSeconds>
+    </service>
+  </serviceOverrides>
+</root>

@@ -14,6 +14,21 @@ pub struct OradazClient {
     pub client: Client,
 }
 
+/// Hosts that must bypass any configured proxy: the link-local IMDS endpoint, the
+/// loopback addresses, and (on App Service / Container Apps) the host of the
+/// localhost `IDENTITY_ENDPOINT`. IMDS is only reachable directly.
+fn imds_no_proxy() -> Option<reqwest::NoProxy> {
+    let mut hosts = String::from("169.254.169.254,localhost,127.0.0.1");
+    if let Ok(endpoint) = std::env::var("IDENTITY_ENDPOINT")
+        && let Ok(parsed) = Url::parse(&endpoint)
+        && let Some(host) = parsed.host_str()
+    {
+        hosts.push(',');
+        hosts.push_str(host);
+    }
+    reqwest::NoProxy::from_string(&hosts)
+}
+
 impl OradazClient {
     pub fn new(config: &Config) -> Result<Self, Error> {
         let mut proxy_username = "";
@@ -49,7 +64,9 @@ impl OradazClient {
                 };
                 let prox: Proxy = match Proxy::all(url) {
                     Ok(p) => {
-                        if !proxy_username.trim().is_empty() && !proxy_password.trim().is_empty() {
+                        let p = if !proxy_username.trim().is_empty()
+                            && !proxy_password.trim().is_empty()
+                        {
                             debug!(
                                 "{:FL$}Using proxy at url {:?} with Basic authentication",
                                 "OradazClient", proxy
@@ -61,7 +78,13 @@ impl OradazClient {
                                 "OradazClient", proxy
                             );
                             p
-                        }
+                        };
+                        // Never route the instance metadata service (IMDS) or the
+                        // App Service localhost IDENTITY_ENDPOINT through the proxy:
+                        // the link-local 169.254.169.254 and loopback endpoints are
+                        // unreachable via any proxy, which would break managed
+                        // identity behind a corporate proxy.
+                        p.no_proxy(imds_no_proxy())
                     }
                     Err(err) => {
                         error!("{:FL$}Error while creating proxy", "OradazClient");
@@ -136,6 +159,7 @@ mod tests {
             proxy: None,
             output_files: Some(false),
             output_mla: Some(false),
+            output: None,
             no_check: None,
             use_device_code: None,
             listener_address: None,
@@ -165,6 +189,9 @@ mod tests {
             additional_mla_keys: None,
             shuffle_urls: None,
             concurrency_slow_start: None,
+            response_workers_max: None,
+            response_memory_budget_bytes: None,
+            expected_error_breaker_threshold: None,
             logs_days_filter: None,
         }
     }
@@ -181,6 +208,7 @@ mod tests {
             }),
             output_files: Some(false),
             output_mla: Some(false),
+            output: None,
             no_check: None,
             use_device_code: None,
             listener_address: None,
@@ -210,6 +238,9 @@ mod tests {
             additional_mla_keys: None,
             shuffle_urls: None,
             concurrency_slow_start: None,
+            response_workers_max: None,
+            response_memory_budget_bytes: None,
+            expected_error_breaker_threshold: None,
             logs_days_filter: None,
         }
     }

@@ -210,11 +210,8 @@ impl Schema {
                             network_retries += 1;
                             let delay_ms = SCHEMA_NETWORK_RETRY_BASE_MS << (network_retries - 1);
                             warn!(
-                                "{:FL$}Schema download failed (network error, attempt {}/{}), retrying in {}ms",
-                                "Schema",
-                                network_retries,
-                                SCHEMA_NETWORK_RETRY_MAX + 1,
-                                delay_ms
+                                "{:FL$}Schema download failed (network error, retry {}/{}), retrying in {}ms",
+                                "Schema", network_retries, SCHEMA_NETWORK_RETRY_MAX, delay_ms
                             );
                             debug!("{:FL$}Network error: {:?}", "Schema", err);
                             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
@@ -236,14 +233,15 @@ impl Schema {
                 if status.as_u16() == 429 {
                     if rate_limit_retries < SCHEMA_RATE_LIMIT_RETRY_MAX {
                         rate_limit_retries += 1;
-                        let retry_after =
-                            parse_retry_after(res.headers()).unwrap_or(default_retry_after);
+                        // Clamp to the configured ceiling so a huge or hostile
+                        // Retry-After (e.g. a far-future HTTP-date) cannot freeze
+                        // startup for hours.
+                        let retry_after = parse_retry_after(res.headers())
+                            .unwrap_or(default_retry_after)
+                            .min(Config::rate_limit_max_wait_secs(config));
                         warn!(
-                            "{:FL$}Schema download throttled (attempt {}/{}), retrying in {}s",
-                            "Schema",
-                            rate_limit_retries,
-                            SCHEMA_RATE_LIMIT_RETRY_MAX + 1,
-                            retry_after
+                            "{:FL$}Schema download throttled (retry {}/{}), retrying in {}s",
+                            "Schema", rate_limit_retries, SCHEMA_RATE_LIMIT_RETRY_MAX, retry_after
                         );
                         tokio::time::sleep(Duration::from_secs(retry_after)).await;
                         continue;
@@ -273,7 +271,7 @@ impl Schema {
                     Ok(t) => break t,
                     Err(err) => {
                         error!(
-                            "{:FL$}Cannot parse read while retrieving schema file from {:?}",
+                            "{:FL$}Cannot read response body while retrieving schema file from {:?}",
                             "Schema", schema_url
                         );
                         debug!(

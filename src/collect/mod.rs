@@ -23,8 +23,9 @@ use regex::Regex;
 use serde_json::Value;
 use std::fs;
 use std::io;
-use std::path::Path;
-use std::sync::atomic::Ordering;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 /// Resolves the application (client) ID to use for the run.
@@ -64,6 +65,40 @@ pub fn resolve_app_id(config: &Config, cli_app_id: Option<&str>) -> Result<Optio
         ));
     }
     Ok(None)
+}
+
+/// Resolves the output directory: the CLI `--output` value wins, else the config
+/// `<output>` element, else the current directory. An empty value (e.g. a bare
+/// `<output></output>` element) is treated as unset rather than as a path —
+/// `PathBuf::from("")` would later fail directory creation with a confusing
+/// empty-path error.
+pub fn resolve_output_dir(cli_output: Option<&str>, config: &Config) -> PathBuf {
+    cli_output
+        .filter(|s| !s.is_empty())
+        .or(config.output.as_deref().filter(|s| !s.is_empty()))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Builds the archive base name `{tenant}_{YYYYMMDD-HHMMSS}` from the resolved
+/// tenant GUID and the run start time.
+///
+/// The tenant is lowercased: GUIDs are case-insensitive, but the archive name is
+/// later matched against a fixed lowercase-hex pattern when the `.mla.tmp` file is
+/// renamed to its final `.mla`/`.broken` form, so the name must be lowercase for
+/// that rename to succeed.
+pub fn build_archive_name(tenant: &str, now: DateTime<Utc>) -> String {
+    let (_, year) = now.year_ce();
+    format!(
+        "{}_{}{:02}{:02}-{:02}{:02}{:02}",
+        tenant.to_lowercase(),
+        year,
+        now.month(),
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second()
+    )
 }
 
 /// Orchestrates the overall collection process.
@@ -122,22 +157,6 @@ pub async fn collect(
         ui::icon(Icon::RightBottomTable)
     );
 
-    let output = match output.as_deref() {
-        Some(o) => Path::new(o),
-        None => Path::new("."),
-    };
-    // Create the output folder if it does not exist (idempotent), then confirm
-    // it is a usable directory.
-    if !output.is_dir()
-        && let Err(err) = std::fs::create_dir_all(output)
-    {
-        error!(
-            "{:FL$}Could not create output folder {:?}: {}",
-            "collect", output, err
-        );
-        bail_fatal!(Error::FolderCreation);
-    }
-
     let config_parser: ConfigParser = match ConfigParser::new(&config_file) {
         Ok(o) => o,
         Err(error) => {
@@ -150,6 +169,21 @@ pub async fn collect(
             bail_fatal!(error);
         }
     };
+
+    // Output directory: CLI `--output` wins, else the config `<output>`, else cwd.
+    // Resolved after parsing so the config value is available.
+    let output: PathBuf = resolve_output_dir(output.as_deref(), &config);
+    // Create the output folder if it does not exist (idempotent), then confirm
+    // it is a usable directory.
+    if !output.is_dir()
+        && let Err(err) = std::fs::create_dir_all(&output)
+    {
+        error!(
+            "{:FL$}Could not create output folder {:?}: {}",
+            "collect", output, err
+        );
+        bail_fatal!(Error::FolderCreation);
+    }
 
     if cli_verbosity == Verbosity::Trace {
         config.trace_logs = Some(true);
@@ -299,16 +333,10 @@ pub async fn collect(
         };
     }
 
-    let archive_name: String = format!(
-        "{}_{}{:02}{:02}-{:02}{:02}{:02}",
-        tenant,
-        year,
-        now.month(),
-        now.day(),
-        now.hour(),
-        now.minute(),
-        now.second()
-    );
+    // Tenant GUIDs are case-insensitive; canonicalise to lowercase so the archive
+    // name and every downstream consumer (auth endpoints, Dumper) share one form.
+    let tenant = tenant.to_lowercase();
+    let archive_name: String = build_archive_name(&tenant, now);
 
     let app_id: String = match resolve_app_id(&config, app_id.as_deref()) {
         Ok(Some(id)) => id,
@@ -336,6 +364,16 @@ pub async fn collect(
             }
         };
     logger::add_writer(&writer);
+    // Guard the window between archive creation and the start of the dump (schema
+    // download, authentication, prerequisites — minutes for interactive flows): a
+    // Ctrl+C or SIGTERM there would otherwise kill the process and strand the
+    // `.mla.tmp`. The guard marks it `.broken` and exits cleanly, then goes inert
+    // once the dump installs its own signal handling.
+    let dump_started = Arc::new(AtomicBool::new(false));
+    dump::orchestration::dump::spawn_pre_dump_signal_guard(
+        writer.clone(),
+        Arc::clone(&dump_started),
+    );
     info!(
         "{:FL$}Output archive: {:?}",
         "collect",
@@ -395,7 +433,7 @@ pub async fn collect(
     // Full `DateTime<Utc>` (not `.time()`): a `NaiveTime` diff wraps at midnight
     // and would report a wrong/negative duration for collections crossing 00:00.
     let start: DateTime<Utc> = Utc::now();
-    if let Err(error) = dumper.dump().await {
+    if let Err(error) = dumper.dump(dump_started).await {
         let _ = writer.set_broken().await;
         bail_fatal!(error);
     };
@@ -460,6 +498,35 @@ pub async fn collect(
         blocked_count,
         crate::collect::dump::request::peak_backoff_active()
     );
+    // Reliability counters at debug: the same figures land in metadata.json,
+    // but emitting them here keeps the log self-sufficient for after-the-fact
+    // reading. `key=value` / `svc:n` formats match the `Memory sample:` line.
+    {
+        let fmt_map = |m: &std::collections::BTreeMap<String, u64>| -> String {
+            if m.is_empty() {
+                return "none".to_string();
+            }
+            m.iter()
+                .map(|(k, v)| format!("{k}:{v}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        let clamped: std::collections::BTreeMap<String, u64> = dumper
+            .ratelimit_manager
+            .get_all_clamped_counts()
+            .into_iter()
+            .filter(|(_, n)| *n > 0)
+            .collect();
+        debug!(
+            "{:FL$}Reliability counters during dump: lost_data={} stall_events={} pause_secs={} token_refreshes={} retry_after_clamped={}",
+            "collect",
+            dumper.stats.total_lost_data(),
+            dumper.stats.stall_events(),
+            fmt_map(&dumper.stats.pause_secs_by_service()),
+            fmt_map(&dumper.stats.token_refreshes_by_service()),
+            fmt_map(&clamped)
+        );
+    }
     if ui::mode() == ui::UiMode::NoColor {
         println!("\n{}", ui::section_sub("Packaging results"));
     }
@@ -573,11 +640,24 @@ pub async fn collect(
     }
     error_details.sort_by(|a, b| a.service.cmp(&b.service).then(a.api.cmp(&b.api)));
     incomplete_apis.sort_by(|a, b| a.service.cmp(&b.service).then(a.api.cmp(&b.api)));
+    // APIs whose remaining URLs were skipped by the expected-error breaker:
+    // informative (saved round-trips on declared-benign failures, not losses).
+    let mut breaker_skipped: Vec<(String, usize)> = dumper
+        .stats
+        .apis
+        .iter()
+        .filter_map(|entry| {
+            let api = entry.value();
+            let skipped = api.breaker_skipped.load(Ordering::Relaxed);
+            (skipped > 0).then(|| (format!("{} / {}", api.service, api.api), skipped))
+        })
+        .collect();
+    breaker_skipped.sort();
 
     logger::remove_writer();
     // Time the MLA finalize (single-core compression flush): excluded from
     // `total_duration_secs` (measured before this) and from metadata.json (written
-    // above). A non-trivial value on a large archive is part of the §3.8
+    // above). A non-trivial value on a large archive is part of the
     // writer-bottleneck picture, so surface it at debug in oradaz.log.
     let finalize_start = std::time::Instant::now();
     if let Err(err) = writer.finalize().await {
@@ -605,10 +685,31 @@ pub async fn collect(
         expected_errors: total_expected,
         error_details: &error_details,
         incomplete_apis: &incomplete_apis,
+        breaker_skipped: &breaker_skipped,
         archive_path: &final_path,
         size_mib,
         duration_secs,
         total_http_requests: dumper.requests_number,
         verbosity,
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_archive_name;
+
+    use chrono::{TimeZone, Utc};
+
+    /// An uppercase tenant GUID must yield a fully lowercase archive name so the
+    /// `.mla.tmp` → `.mla`/`.broken` rename (which matches a lowercase-hex pattern)
+    /// always succeeds.
+    #[test]
+    fn archive_name_lowercases_tenant_guid() {
+        let now = Utc
+            .with_ymd_and_hms(2026, 6, 10, 17, 50, 13)
+            .single()
+            .expect("valid timestamp");
+        let name = build_archive_name("ABCDEF12-3456-7890-ABCD-EF1234567890", now);
+        assert_eq!(name, "abcdef12-3456-7890-abcd-ef1234567890_20260610-175013");
+    }
 }

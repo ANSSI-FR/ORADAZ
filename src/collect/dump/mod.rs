@@ -38,7 +38,7 @@ use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 
 /// An abstraction over interactive user input, enabling test injection.
 pub trait InteractivePrompt: Send + Sync {
@@ -166,6 +166,86 @@ pub fn inject_arg_post_body(
             injected,
             subscription_ids.len()
         );
+    }
+}
+
+/// Appends a query parameter to a URL, inserting `?` or `&` as needed. The
+/// caller must percent-encode any spaces in `param` as `%20`: an Exchange
+/// `$batch` sub-URL is embedded verbatim in the batch body and is not normalised
+/// by the HTTP client, so a raw space would reach the server unencoded.
+fn append_query(url: &str, param: &str) -> String {
+    let sep = if url.contains('?') { '&' } else { '?' };
+    format!("{url}{sep}{param}")
+}
+
+/// Expands a partitioned seed into one disjoint sub-query per declared value
+/// plus a catch-all for everything else, turning a single slow sequential
+/// enumeration (one chained `@odata.nextLink`, one occupied slot) into several
+/// independent paginated streams that fill the service's concurrency window.
+///
+/// A seed opts in through its `api_behavior`: `partition_field` (the OData
+/// property to filter on) and `partition_values` (a comma-separated, closed list
+/// of its values). The expansion is **exhaustive by construction**: the per-value
+/// `eq` sub-queries are mutually disjoint (each object has exactly one value), and
+/// the trailing catch-all (`<field> ne 'v1' and <field> ne 'v2' and …`) collects
+/// any value outside the list, so no object is dropped even if a new value
+/// appears. Pagination preserves each sub-query's filter because the server
+/// echoes it in the `@odata.nextLink` that drives the next page.
+///
+/// **Precondition: `partition_field` must be non-nullable.** Under OData
+/// three-valued logic a null value satisfies neither `eq` nor `ne`, so it would
+/// escape every sub-query *and* the catch-all. `RecipientTypeDetails` (the only
+/// current user) is always populated; any future field must be too, or carry an
+/// explicit `eq null` clause.
+pub fn expand_partition_seeds(current_urls: &Arc<DashMap<Arc<str>, Vec<Url>>>) {
+    for mut entry in current_urls.iter_mut() {
+        let urls = entry.value_mut();
+        if !urls
+            .iter()
+            .any(|u| u.api_behavior.contains_key("partition_field"))
+        {
+            continue;
+        }
+        let mut expanded: Vec<Url> = Vec::with_capacity(urls.len());
+        for url in urls.drain(..) {
+            match (
+                url.api_behavior.get("partition_field"),
+                url.api_behavior.get("partition_values"),
+            ) {
+                (Some(field), Some(values)) if !field.is_empty() && !values.is_empty() => {
+                    let vals: Vec<&str> = values
+                        .split(',')
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    // Spaces are written as `%20`: these exchange seeds dispatch
+                    // through the `$batch` path, which embeds the URL verbatim
+                    // (no client-side normalisation), so a raw space would break
+                    // the OData `$filter`.
+                    for v in &vals {
+                        let mut u = url.clone();
+                        u.url = append_query(&url.url, &format!("$filter={field}%20eq%20'{v}'"));
+                        expanded.push(u);
+                    }
+                    let catch_all = vals
+                        .iter()
+                        .map(|v| format!("{field}%20ne%20'{v}'"))
+                        .collect::<Vec<_>>()
+                        .join("%20and%20");
+                    let mut u = url.clone();
+                    u.url = append_query(&url.url, &format!("$filter={catch_all}"));
+                    expanded.push(u);
+                    debug!(
+                        "{:FL$}Partitioned {:?} into {} type sub-quer(ies) + 1 catch-all",
+                        "Dumper",
+                        url.api,
+                        vals.len()
+                    );
+                }
+                _ => expanded.push(url),
+            }
+        }
+        *urls = expanded;
     }
 }
 
@@ -375,12 +455,13 @@ impl Dumper {
                 (0, Vec::new())
             }
             _ => {
-                // Wrapped in `Option` so the live region (with its spinner ticker
-                // thread) can be torn down before printing a retry warning —
-                // otherwise the ticker repaints over it within 500 ms and the
-                // user has no visible feedback during the throttle sleep.
-                let mut live: Option<ui::prereq::PrereqLive> =
-                    Some(ui::prereq::PrereqLive::start());
+                // The live region stays up across 429 retries: tearing it down
+                // and respawning it would reprint `start()`'s blank separator
+                // lines on every retry, shifting the display down — and the
+                // retry `warn!` below is file-only outside the During phase, so
+                // it gives no on-screen feedback on its own. The cooldown
+                // countdown is rendered inside the live region instead.
+                let mut live = ui::prereq::PrereqLive::start();
                 let mut retries = 0;
                 const MAX_PREREQ_RETRIES: usize = 10;
                 let (errors, items, sub_ids) = loop {
@@ -397,41 +478,37 @@ impl Dumper {
                         Ok(res) => break res,
                         Err((Error::TooManyRequestsDuringPrerequisites(sec), _)) => {
                             retries += 1;
+                            // Clamp to the configured ceiling so a huge or hostile
+                            // Retry-After cannot freeze startup for hours.
+                            let sec = sec.min(Config::rate_limit_max_wait_secs(config));
                             if retries > MAX_PREREQ_RETRIES {
-                                drop(live.take());
+                                drop(live);
                                 return Err(Error::StringError(format!(
                                     "Reached maximum retries ({}) for prerequisites check due to rate limiting",
                                     MAX_PREREQ_RETRIES
                                 )));
                             }
-                            // Tear down the spinner before the warn so it
-                            // survives on screen, and respawn a fresh one
-                            // after the sleep.
-                            drop(live.take());
                             warn!(
                                 "{:FL$}Too many requests during prerequisites check. Retrying in {} seconds... (Attempt {}/{})",
                                 "Dumper", sec, retries, MAX_PREREQ_RETRIES
                             );
+                            live.set_throttle_notice(sec, retries, MAX_PREREQ_RETRIES);
                             tokio::time::sleep(std::time::Duration::from_secs(sec)).await;
-                            live = Some(ui::prereq::PrereqLive::start());
+                            live.clear_throttle_notice();
                         }
                         Err((err, partial_items)) => {
-                            if let Some(mut l) = live.take() {
-                                for item in partial_items.iter() {
-                                    l.report(item.clone());
-                                }
-                                l.finalize(partial_items);
+                            for item in partial_items.iter() {
+                                live.report(item.clone());
                             }
+                            live.finalize(partial_items);
                             return Err(err);
                         }
                     }
                 };
-                if let Some(mut l) = live.take() {
-                    for item in items.iter() {
-                        l.report(item.clone());
-                    }
-                    l.finalize(items);
+                for item in items.iter() {
+                    live.report(item.clone());
                 }
+                live.finalize(items);
                 (errors, sub_ids)
             }
         };
@@ -442,6 +519,9 @@ impl Dumper {
         // network) retries — wire it from config so a stalled
         // bucket is abandoned and the run always terminates.
         stats.set_liveness_ceiling_secs(Config::liveness_ceiling_secs(config));
+        // Expected-error breaker: consecutive declared-benign errors on a
+        // never-succeeding bucket after which its remaining URLs are skipped.
+        stats.set_breaker_threshold(Config::expected_error_breaker_threshold(config));
 
         // Init condition checker
         let step = ui::StepLive::start("Conditions");
@@ -506,6 +586,11 @@ impl Dumper {
         // rather than POST an invalid body — ARG requires a non-empty
         // `subscriptions` array.
         inject_arg_post_body(&current_urls, &subscription_ids);
+
+        // Split slow sequential enumerations (Exchange recipients/mailboxes) into
+        // parallel per-type paginated streams; exhaustive by construction (see
+        // `expand_partition_seeds`).
+        expand_partition_seeds(&current_urls);
 
         // Updating token metadata
         let mut tokens_metadata: Vec<TokenMetadata> = Vec::new();
@@ -728,7 +813,7 @@ impl Dumper {
         }
     }
 
-    pub async fn dump(&mut self) -> Result<(), Error> {
-        process_dump(self).await
+    pub async fn dump(&mut self, dump_started: Arc<AtomicBool>) -> Result<(), Error> {
+        process_dump(self, dump_started).await
     }
 }

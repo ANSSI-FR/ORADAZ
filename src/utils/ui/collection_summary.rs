@@ -9,6 +9,17 @@ const HEADER_PARTIAL: &str = "  PARTIAL COLLECTION";
 /// Width of the summary box interior (excluding the two border characters).
 const INNER_WIDTH: usize = 69;
 
+/// The end-of-collection box-header title: PARTIAL when any API lost data, else
+/// COMPLETE. Pure so the title selection is unit-testable (the renderers are
+/// `println!`-only).
+fn header_for(partial: bool) -> &'static str {
+    if partial {
+        HEADER_PARTIAL
+    } else {
+        HEADER_COMPLETE
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServiceStatus {
     Enabled,
@@ -61,7 +72,7 @@ fn incomplete_label(item: &IncompleteApi) -> String {
 /// Map a lost-data `DumpError` code to a short human-readable cause.
 pub fn lost_reason(code: &str) -> &'static str {
     match code {
-        "UrlRetryLimit" => "retry budget exhausted — network/throttling",
+        "UrlRetryLimit" => "retry budget exhausted — persistent 4xx/5xx",
         "NoTokenForApiCall" => "authentication token unavailable",
         "MissingTokenForRelationships" => "token unavailable for relationships",
         "nextLinkParsingError" => "pagination interrupted",
@@ -81,6 +92,11 @@ pub struct CollectionSummaryData<'a> {
     /// APIs whose data is (partly) missing because URLs were abandoned. When
     /// non-empty, the summary header reads "PARTIAL COLLECTION".
     pub incomplete_apis: &'a [IncompleteApi],
+    /// Per-API (`"service / api"`) URLs skipped by the expected-error breaker.
+    /// Informative only: each skipped URL would have returned the bucket's
+    /// schema-declared expected error, so these are saved round-trips, not
+    /// missing data — they never make the header read "PARTIAL".
+    pub breaker_skipped: &'a [(String, usize)],
     pub archive_path: &'a str,
     pub size_mib: f64,
     pub duration_secs: i64,
@@ -175,11 +191,7 @@ fn print_color(data: &CollectionSummaryData<'_>) {
     // Box header — "PARTIAL COLLECTION" (yellow + bold) when data is missing.
     println!("┌{}┐", "─".repeat(INNER_WIDTH));
     let partial = !data.incomplete_apis.is_empty();
-    let title = if partial {
-        HEADER_PARTIAL
-    } else {
-        HEADER_COMPLETE
-    };
+    let title = header_for(partial);
     // Padding is computed from the raw title length; the ANSI styling is applied
     // afterwards so the escape bytes do not break the box alignment.
     let padding = INNER_WIDTH.saturating_sub(title.len());
@@ -224,6 +236,12 @@ fn print_color(data: &CollectionSummaryData<'_>) {
     // Unexpected error block (always shown when errors exist)
     if data.unexpected_errors > 0 {
         print_error_block_color(data);
+        println!("  {}", dim("─"));
+    }
+
+    // Expected-error breaker block (informative — saved round-trips, not losses)
+    if !data.breaker_skipped.is_empty() {
+        print_breaker_block(data);
         println!("  {}", dim("─"));
     }
 
@@ -313,7 +331,29 @@ fn print_incomplete_block_color(data: &CollectionSummaryData<'_>) {
     println!(
         "     {}  Re-run the collection to fill the gaps, or inspect details: {}",
         dim("→"),
-        dim("oradaz inspect logs --http 0")
+        dim("oradaz inspect hints")
+    );
+}
+
+/// Expected-error breaker block, identical in color and no-color modes (plain
+/// informative text, no icon/styling needed).
+fn print_breaker_block(data: &CollectionSummaryData<'_>) {
+    let total: usize = data.breaker_skipped.iter().map(|(_, n)| n).sum();
+    println!(
+        "  {} request(s) skipped on {} API(s) returning only declared expected errors:",
+        format_number(total),
+        format_number(data.breaker_skipped.len())
+    );
+    for (label, count) in data.breaker_skipped {
+        println!(
+            "     {} : {} request(s) saved",
+            label,
+            format_number(*count)
+        );
+    }
+    println!(
+        "     {}",
+        dim("Not data losses: each skipped request would have returned the same benign error.")
     );
 }
 
@@ -376,11 +416,7 @@ fn print_error_block_color(data: &CollectionSummaryData<'_>) {
 
 fn print_no_color(data: &CollectionSummaryData<'_>) {
     println!("{}", "-".repeat(INNER_WIDTH + 2));
-    if data.incomplete_apis.is_empty() {
-        println!("{}", HEADER_COMPLETE);
-    } else {
-        println!("{}", HEADER_PARTIAL);
-    }
+    println!("{}", header_for(!data.incomplete_apis.is_empty()));
     println!("{}", "-".repeat(INNER_WIDTH + 2));
 
     let name_width = data
@@ -411,6 +447,11 @@ fn print_no_color(data: &CollectionSummaryData<'_>) {
 
     if data.unexpected_errors > 0 {
         print_error_block_no_color(data);
+        println!("  ---");
+    }
+
+    if !data.breaker_skipped.is_empty() {
+        print_breaker_block(data);
         println!("  ---");
     }
 
@@ -476,7 +517,7 @@ fn print_incomplete_block_no_color(data: &CollectionSummaryData<'_>) {
 
     println!("\n      These endpoints were abandoned before their data could be collected.");
     println!(
-        "      -> Re-run the collection to fill the gaps, or inspect details: oradaz inspect logs --http 0"
+        "      -> Re-run the collection to fill the gaps, or inspect details: oradaz inspect hints"
     );
 }
 
@@ -522,6 +563,15 @@ fn print_error_block_no_color(data: &CollectionSummaryData<'_>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn header_for_selects_partial_or_complete_and_fits_box() {
+        assert_eq!(header_for(false), HEADER_COMPLETE);
+        assert_eq!(header_for(true), HEADER_PARTIAL);
+        // Both titles must fit the box (padding = INNER_WIDTH - title.len()).
+        assert!(HEADER_COMPLETE.len() <= INNER_WIDTH);
+        assert!(HEADER_PARTIAL.len() <= INNER_WIDTH);
+    }
 
     #[test]
     fn test_format_number_below_thousand() {
@@ -624,7 +674,7 @@ mod tests {
     fn test_lost_reason_known_codes() {
         assert_eq!(
             lost_reason("UrlRetryLimit"),
-            "retry budget exhausted — network/throttling"
+            "retry budget exhausted — persistent 4xx/5xx"
         );
         assert_eq!(
             lost_reason("NoTokenForApiCall"),

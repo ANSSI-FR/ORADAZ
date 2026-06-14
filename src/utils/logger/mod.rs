@@ -7,8 +7,9 @@ pub use config::{DumpPhase, NO_COLOR, Verbosity, WARN_COUNT, should_emit};
 pub use live_region::{
     ACTIVE_LIVE_REGION, LIVE_REGION_TEXT, LiveRegionState, PROGRESS_LINE_ACTIVE,
     calculate_rendered_lines, clear_live_region_lines, clear_live_region_lines_raw,
-    clear_progress_line, redraw_live_region, redraw_live_region_raw, tear_down_live_region,
-    update_live_region_state, update_live_region_text, with_render_lock,
+    clear_progress_line, redraw_live_region, redraw_live_region_raw, replace_live_region,
+    tear_down_live_region, tear_down_live_region_raw, update_live_region_state,
+    update_live_region_text, with_render_lock,
 };
 
 use crate::bail_fatal;
@@ -23,6 +24,18 @@ use crate::utils::ui::err_text;
 use crate::utils::writer::actor::WriterHandle;
 
 use std::sync::atomic::Ordering;
+
+/// Collapses characters that would break the single-line, `" | "`-delimited file
+/// log format: a newline would split the entry across lines (the continuation
+/// lines fail the inspect parser's header match and vanish), and an embedded
+/// `" | "` would be mis-read as a field boundary. Azure error messages can
+/// contain both. Applied by both file-log write paths — the `log` facade
+/// backend and the consolidated `dump_event` line.
+pub(crate) fn sanitize_log_field(s: &str) -> String {
+    s.replace("\r\n", "\t")
+        .replace(['\n', '\r'], "\t")
+        .replace(" | ", " ¦ ")
+}
 
 /// Disables ANSI color output in the terminal.
 pub fn set_no_color(disable: bool) {

@@ -23,8 +23,11 @@ pub enum Verdict {
     NoData,
     /// `auth_errors > 0` — authentication failed for at least one service.
     AuthFailed,
-    /// Unexpected HTTP errors, prerequisite errors, or a service disabled by
-    /// a failed prerequisite during the run.
+    /// Data that was meant to be collected is missing: unexpected HTTP errors
+    /// or a lost-data abandonment (see [`has_lost_data`]). A service skipped by a
+    /// *non-fatal* prerequisite failure is deliberately NOT Partial — the run
+    /// completed and the gap is surfaced in COVERAGE / ATTENTION — so the badge
+    /// stays consistent with the collector's `COLLECTION COMPLETE`.
     Partial,
     /// No anomaly recorded — proceed with downstream analysis.
     Complete,
@@ -48,10 +51,18 @@ impl Verdict {
 /// Inputs are all optional so the function works on partial archives (older
 /// collections may lack `stats.json`). Source of each signal:
 /// - `is_broken` — file extension `.broken` (set by `loader`).
-/// - `auth_errors`, `unexpected_errors`, `prerequisites_errors`, `services`
-///   map — read from `metadata.json` top-level.
+/// - `auth_errors`, `unexpected_errors` — read from `metadata.json` top-level.
 /// - `stats` is a fallback for `unexpected_errors` when the metadata field is
 ///   absent (older archives) — summed across `apis[]`.
+/// - `has_lost_data` — see [`has_lost_data`]: lost-data abandonments carry no
+///   HTTP status, so they never reach `unexpected_errors`; without this signal a
+///   run the collector badged PARTIAL COLLECTION would be reported `Complete`.
+///
+/// A service skipped by a non-fatal prerequisite failure (`prerequisites_errors`
+/// / a `disabled_by_prerequisite_failure` status) is **not** treated as Partial:
+/// the collector deems it a known scope gap and finishes the run as `COLLECTION
+/// COMPLETE`. Matching that, the gap is surfaced in COVERAGE / ATTENTION (and
+/// `hints`) instead of the verdict, so the badge agrees with the collector.
 ///
 /// The first matching rule wins, in the order listed by the [`Verdict`] enum
 /// variants.
@@ -59,6 +70,7 @@ pub fn compute_verdict(
     metadata: Option<&Value>,
     stats: Option<&Value>,
     is_broken: bool,
+    has_lost_data: bool,
 ) -> Verdict {
     if is_broken {
         return Verdict::Interrupted;
@@ -73,13 +85,21 @@ pub fn compute_verdict(
     let unexpected = metadata
         .and_then(|m| m.get("unexpected_errors").and_then(|v| v.as_u64()))
         .unwrap_or_else(|| stats_total_unexpected(stats));
-    let prereq_errors = metadata_u64(metadata, "prerequisites_errors");
-    let any_prereq_disabled = service_status_contains(metadata, "disabled_by_prerequisite_failure");
-    if unexpected > 0 || prereq_errors > 0 || any_prereq_disabled {
+    if unexpected > 0 || has_lost_data {
         Verdict::Partial
     } else {
         Verdict::Complete
     }
+}
+
+/// True when any error means data the user expected is missing from the archive
+/// (`DumpError::is_lost_data`): a non-HTTP terminal abandonment such as
+/// `ThrottleStalled`, `NetworkStalled`, or `UrlRetryLimit`. These carry no HTTP
+/// status, so they never reach `unexpected_errors` in `metadata.json`; the
+/// verdict consults the `errors.json` records directly to match the collect-time
+/// PARTIAL badge.
+pub fn has_lost_data(errors: &[DumpError]) -> bool {
+    errors.iter().any(|e| e.is_lost_data())
 }
 
 // ─── per-service object inventory ────────────────────────────────────────
@@ -153,8 +173,9 @@ pub struct ErrorGroup {
 /// Group and categorise `DumpError` entries.
 ///
 /// Returns groups sorted by severity (`Unexpected` first), then count
-/// descending, then `service`/`api`/`status` ascending — stable, ready to
-/// render.
+/// descending, then `service`/`api`/`status`/`code` ascending — a total order,
+/// so the output is deterministic across runs (groups originate from a
+/// `HashMap`, whose iteration order is not).
 pub fn aggregate_errors(errors: &[DumpError]) -> Vec<ErrorGroup> {
     type Key = (String, String, u16, String, bool);
     let mut buckets: HashMap<Key, ErrorGroup> = HashMap::new();
@@ -196,6 +217,7 @@ pub fn aggregate_errors(errors: &[DumpError]) -> Vec<ErrorGroup> {
             .then_with(|| a.service.cmp(&b.service))
             .then_with(|| a.api.cmp(&b.api))
             .then_with(|| a.status.cmp(&b.status))
+            .then_with(|| a.code.cmp(&b.code))
     });
     out
 }
@@ -233,11 +255,4 @@ fn stats_total_unexpected(stats: Option<&Value>) -> u64 {
                 .sum()
         })
         .unwrap_or(0)
-}
-
-fn service_status_contains(metadata: Option<&Value>, expected_status: &str) -> bool {
-    metadata
-        .and_then(|m| m.get("services"))
-        .and_then(|s| s.as_object())
-        .is_some_and(|map| map.values().any(|v| v.as_str() == Some(expected_status)))
 }

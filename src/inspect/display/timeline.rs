@@ -14,7 +14,7 @@ use super::{
     INDENT, api_activity_seconds, api_label, dim, fmt_duration, mid_sep, print_timeline, rule,
     section_line, section_line_with_verdict, severity_icon, str_field, transition_arrow, u64_field,
 };
-use crate::inspect::analysis::compute_verdict;
+use crate::inspect::analysis::{compute_verdict, has_lost_data};
 use crate::inspect::loader::LogSource;
 use crate::inspect::log_parser::LogEntry;
 
@@ -45,6 +45,7 @@ pub fn print_timeline_view(
         source.metadata.as_ref(),
         source.stats.as_ref(),
         source.is_broken,
+        has_lost_data(&source.dump_errors),
     );
 
     out.push(section_line_with_verdict("TIMELINE", verdict));

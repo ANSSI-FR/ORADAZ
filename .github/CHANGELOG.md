@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.06.14-beta] - 2026-06-14
+
+### Added/Changed/Fixed
+
+- Improved token renewal handling during collection 
+- Exchange Online API batching 
+- API breaker for users permissionGrants API
+- New telemetry metrics for debugging purpose 
+- Add configurable limits for response workers to limit memory usage on initial peak 
+- Work on the schema to reduce collect duration
+- Bugfix invalid condition in groups relationships
+- Add previously unciommited tests
+
 ## [3.0.06.09-beta] - 2026-06-09
 
 ### Added/Changed/Fixed

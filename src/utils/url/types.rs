@@ -91,6 +91,23 @@ pub struct Relationship {
 pub struct ExpectedErrorCode {
     pub status: u16,
     pub code: Option<String>,
+    /// Opt-in to the expected-error breaker: when `true`, this declared error is
+    /// a **tenant-wide all-or-nothing** signal — every URL of the endpoint
+    /// returns it (e.g. a feature/permission disabled for the whole tenant), so
+    /// once `expectedErrorBreakerThreshold` of them land consecutively on a
+    /// bucket that never wrote a page, the bucket's remaining URLs are wasted
+    /// and the coordinator skips them. Leave `false` (the default) for
+    /// per-object errors (a resource gone, an account type lacking a feature):
+    /// those say nothing about the endpoint's other URLs and must never trip an
+    /// API-wide skip. Absent in the schema ⇒ `false`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub breaker_eligible: bool,
+}
+
+/// `skip_serializing_if` predicate so a `false` `breaker_eligible` is omitted
+/// from the serialised form, keeping the wire shape unchanged for the common case.
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 /// Represents a parameter to be passed to an API call, potentially

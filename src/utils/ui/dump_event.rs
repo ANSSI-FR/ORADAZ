@@ -5,7 +5,9 @@
 //   * File:     a single consolidated line via `logger::write_log`, bypassing
 //               the `log::*!` facade to avoid double-writes.
 use crate::FL;
-use crate::utils::logger::{self, ACTIVE_LIVE_REGION, DumpPhase, LiveRegionState, WARN_COUNT};
+use crate::utils::logger::{
+    self, ACTIVE_LIVE_REGION, DumpPhase, LiveRegionState, WARN_COUNT, sanitize_log_field,
+};
 use crate::utils::mutex::lock_force;
 use crate::utils::ui::{Icon, Paint, UiMode, dim, icon, mode, paint};
 
@@ -63,7 +65,12 @@ fn write_to_terminal(msg: &str) {
             logger::clear_live_region_lines_raw();
         }
 
-        let _ = std::io::stdout().lock().write_all(msg.as_bytes());
+        if std::io::stdout().lock().write_all(msg.as_bytes()).is_ok() {
+            // Record that the dump phase produced terminal output, mirroring
+            // `backend::handle_stdout`. The end-of-dump label rewrite is skipped
+            // when this is set, so it cannot overwrite a real event line.
+            logger::STDOUT_LOGS_DURING_DUMP.store(true, Ordering::Relaxed);
+        }
 
         if has_region {
             logger::redraw_live_region_raw(false);
@@ -169,6 +176,7 @@ pub fn emit_line(level: log::Level, module_label: &str, message: &str) {
 /// ([`crate::inspect::log_parser::parse_log`]) matches these lines and surfaces
 /// the API error/warning stream. Kept pure (takes `now`) so it can be unit‑tested.
 fn file_line(event: &DumpEvent, now: DateTime<Utc>) -> String {
+    let message = sanitize_log_field(&event.message);
     let tail = if !event.service.is_empty() || !event.api.is_empty() {
         let svc_api = format!("{}{}{}", event.service, SERVICE_API_SEPARATOR, event.api);
         let url_part = event
@@ -183,29 +191,30 @@ fn file_line(event: &DumpEvent, now: DateTime<Utc>) -> String {
             .call_id
             .map(|id| format!(" | ID {}", id))
             .unwrap_or_default();
-        match (event.http_status, &event.upstream_code) {
+        // The upstream code is sanitized too: it can become a bare middle
+        // segment (the `(None, Some)` arm), where an embedded delimiter would
+        // be mis-read as a field boundary by the inspect parser.
+        let code = event.upstream_code.as_deref().map(sanitize_log_field);
+        match (event.http_status, &code) {
             (Some(s), Some(c)) => {
                 format!(
                     "{} | HTTP {} {}{}{} | {}",
-                    svc_api, s, c, url_part, id_part, event.message
+                    svc_api, s, c, url_part, id_part, message
                 )
             }
             (Some(s), None) => {
                 format!(
                     "{} | HTTP {}{}{} | {}",
-                    svc_api, s, url_part, id_part, event.message
+                    svc_api, s, url_part, id_part, message
                 )
             }
             (None, Some(c)) => {
-                format!(
-                    "{} | {}{}{} | {}",
-                    svc_api, c, url_part, id_part, event.message
-                )
+                format!("{} | {}{}{} | {}", svc_api, c, url_part, id_part, message)
             }
-            (None, None) => format!("{}{}{} | {}", svc_api, url_part, id_part, event.message),
+            (None, None) => format!("{}{}{} | {}", svc_api, url_part, id_part, message),
         }
     } else {
-        event.message.to_string()
+        message
     };
 
     format!(
@@ -380,6 +389,64 @@ mod tests {
         );
         assert_eq!(plain_entries[0].module, "Dumper");
         assert_eq!(plain_entries[0].message, "Collection finished");
+    }
+
+    /// A message containing the field delimiter `" | "` or a newline must not
+    /// corrupt the parsed entry: the line stays single-line and every structured
+    /// field still extracts, with the message sanitised.
+    #[test]
+    fn file_line_sanitises_message_delimiters_and_newlines() {
+        use crate::inspect::log_parser::parse_log;
+
+        let now = Utc::now();
+        let event = DumpEvent {
+            level: log::Level::Warn,
+            module_label: String::from("ResponseThread"),
+            service: String::from("graph"),
+            api: String::from("users"),
+            http_status: Some(500),
+            upstream_code: Some(String::from("InternalServerError")),
+            url: Some(String::from("https://graph.microsoft.com/v1.0/users")),
+            call_id: Some(7),
+            message: String::from("part one | part two\nsecond line"),
+        };
+        let line = file_line(&event, now);
+        // The trailing newline is the only newline — the entry stays on one line.
+        assert_eq!(
+            line.matches('\n').count(),
+            1,
+            "embedded newline must be neutralised: {line:?}"
+        );
+        let entries = parse_log(&line);
+        assert_eq!(entries.len(), 1, "must parse as a single entry: {line:?}");
+        let e = &entries[0];
+        assert_eq!(e.service.as_deref(), Some("graph"));
+        assert_eq!(e.api.as_deref(), Some("users"));
+        assert_eq!(e.http_status, Some(500));
+        assert_eq!(e.upstream_code.as_deref(), Some("InternalServerError"));
+        assert_eq!(
+            e.url.as_deref(),
+            Some("https://graph.microsoft.com/v1.0/users")
+        );
+        // The message no longer carries a raw delimiter or newline, but its text
+        // is preserved.
+        assert!(
+            !e.message.contains(" | "),
+            "raw delimiter left: {:?}",
+            e.message
+        );
+        assert!(
+            !e.message.contains('\n'),
+            "raw newline left: {:?}",
+            e.message
+        );
+        assert!(e.message.contains("part one"), "text lost: {:?}", e.message);
+        assert!(e.message.contains("part two"), "text lost: {:?}", e.message);
+        assert!(
+            e.message.contains("second line"),
+            "text after newline lost: {:?}",
+            e.message
+        );
     }
 
     #[test]

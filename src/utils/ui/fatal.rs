@@ -9,13 +9,21 @@ use std::io::{self, Write};
 /// * `context` – optional structured context extracted from the error (shown below the title)
 /// * `steps`   – zero or more actionable remedy steps, each rendered with a `→` bullet
 pub fn fatal(title: &str, context: Option<&str>, steps: &[&str]) {
-    match ui::mode() {
+    let out = match ui::mode() {
         UiMode::Color => fatal_color(title, context, steps),
         UiMode::NoColor => fatal_no_color(title, context, steps),
-    }
+    };
+    // Emit the whole block under RENDER_LOCK so a concurrent progress-ticker frame
+    // cannot interleave with the write. Tearing the live region down first clears any
+    // spinner lines and resets PROGRESS_LINE_ACTIVE, so the ticker repaints *below*
+    // the block on its next frame instead of cursor-up-overwriting it.
+    crate::utils::logger::with_render_lock(|| {
+        crate::utils::logger::tear_down_live_region_raw();
+        let _ = io::stdout().write_all(out.as_bytes());
+    });
 }
 
-fn fatal_color(title: &str, context: Option<&str>, steps: &[&str]) {
+fn fatal_color(title: &str, context: Option<&str>, steps: &[&str]) -> String {
     let err = ui::icon(Icon::Err);
     let mut out = String::from("\n");
 
@@ -52,10 +60,10 @@ fn fatal_color(title: &str, context: Option<&str>, steps: &[&str]) {
     // Footer
     let footer = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
     out.push_str(&format!("{}\n", ui::dim(footer)));
-    let _ = io::stdout().write_all(out.as_bytes());
+    out
 }
 
-fn fatal_no_color(title: &str, context: Option<&str>, steps: &[&str]) {
+fn fatal_no_color(title: &str, context: Option<&str>, steps: &[&str]) -> String {
     let mut out = String::from("\n");
 
     // Header
@@ -85,5 +93,5 @@ fn fatal_no_color(title: &str, context: Option<&str>, steps: &[&str]) {
 
     // Footer
     out.push_str("----------------------------------------------------------------\n");
-    let _ = io::stdout().write_all(out.as_bytes());
+    out
 }

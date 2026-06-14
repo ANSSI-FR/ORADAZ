@@ -3,8 +3,7 @@
 // authorization code flow. The banner is cleared automatically on success or
 // failure.
 use crate::utils::logger::{
-    LiveRegionState, calculate_rendered_lines, redraw_live_region, tear_down_live_region,
-    update_live_region_state, update_live_region_text,
+    LiveRegionState, replace_live_region, tear_down_live_region, update_live_region_state,
 };
 use crate::utils::mutex::lock_force;
 use crate::utils::ui::{Icon, UiMode, blink_red_bold, blue, err_text, icon, mode};
@@ -98,13 +97,9 @@ impl AuthBanner {
             0,
         );
 
-        {
-            update_live_region_text(&initial_text);
-            update_live_region_state(LiveRegionState::AuthBanner {
-                lines: calculate_rendered_lines(&initial_text),
-            });
-        }
-        redraw_live_region(false);
+        replace_live_region(&initial_text, false, |lines| LiveRegionState::AuthBanner {
+            lines,
+        });
 
         let handle = thread::spawn(move || {
             let mut frame = 0;
@@ -127,11 +122,7 @@ impl AuthBanner {
                     frame,
                 );
 
-                update_live_region_text(&text);
-                redraw_live_region(true);
-                update_live_region_state(LiveRegionState::AuthBanner {
-                    lines: calculate_rendered_lines(&text),
-                });
+                replace_live_region(&text, true, |lines| LiveRegionState::AuthBanner { lines });
                 thread::sleep(Duration::from_millis(300));
             }
         });
@@ -199,6 +190,23 @@ impl AuthBanner {
         // Print final line
         if !ok {
             println!("{}", err_text(err_msg));
+        }
+    }
+}
+
+impl Drop for AuthBanner {
+    fn drop(&mut self) {
+        // A still-present ticker handle means the banner was dropped without an
+        // explicit success()/failure() — typically because an authentication
+        // error propagated with `?`. Stop the thread and tear down the live
+        // region so the "AUTHENTICATION REQUIRED" block cannot keep repainting
+        // over subsequent output (and the ticker thread cannot leak). Nothing is
+        // printed: a dropped banner reports no outcome of its own.
+        if let Some(handle) = self.handle.take() {
+            self.stop_flag.store(true, Ordering::Relaxed);
+            let _ = handle.join();
+            tear_down_live_region();
+            update_live_region_state(LiveRegionState::None);
         }
     }
 }
@@ -314,7 +322,39 @@ fn render_static_auth_banner(
 
 #[cfg(test)]
 mod tests {
-    use super::render_static_auth_banner;
+    use super::{AuthBanner, render_static_auth_banner};
+    use crate::utils::logger::live_region::LIVE_REGION_TEST_LOCK;
+    use crate::utils::logger::{ACTIVE_LIVE_REGION, LiveRegionState};
+    use crate::utils::mutex::lock_force;
+    use crate::utils::ui::{UiMode, set_mode};
+
+    /// Dropping a banner without calling `success()`/`failure()` (the path an
+    /// auth error takes when it propagates with `?`) must still stop the ticker
+    /// and reset the live region, so a half-painted banner cannot keep repainting
+    /// over later output.
+    #[test]
+    fn drop_clears_live_region_when_not_finished() {
+        let _guard = LIVE_REGION_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        // Color mode is required for begin() to start the ticker and own the live
+        // region; it is the process default but force it to be deterministic.
+        set_mode(UiMode::Color);
+
+        let mut banner = AuthBanner::new();
+        banner.begin(
+            "graph",
+            "https://example.test/devicelogin",
+            "ABC-123",
+            "Device code",
+        );
+        drop(banner);
+
+        assert!(matches!(
+            *lock_force(&ACTIVE_LIVE_REGION),
+            LiveRegionState::None
+        ));
+    }
 
     #[test]
     fn static_banner_shows_url_and_code_without_ansi_or_timer() {

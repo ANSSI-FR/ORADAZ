@@ -192,16 +192,20 @@ fn print_services_issues(
         } else {
             format!(" {}", g.code)
         };
+        // "svc / api", or just "svc" when the api name is empty. A non-HTTP
+        // terminal failure (status 0) drops the misleading "HTTP 0" prefix.
+        let target = if g.api.is_empty() {
+            svc.to_string()
+        } else {
+            format!("{} / {}", svc, g.api)
+        };
+        let detail = if g.status == 0 {
+            format!("{}×{}", g.count, code)
+        } else {
+            format!("{}× HTTP {}{}", g.count, g.status, code)
+        };
         let drill = format!("{} inspect logs --service {}", icon(Icon::Arrow), g.service);
-        out.push(format!(
-            "  {} / {}   {}× HTTP {}{}   {}",
-            svc,
-            g.api,
-            g.count,
-            g.status,
-            code,
-            dim(&drill)
-        ));
+        out.push(format!("  {}   {}   {}", target, detail, dim(&drill)));
     }
 }
 
@@ -284,6 +288,8 @@ fn print_observability(metadata: Option<&Value>, out: &mut Vec<String>) {
     let inflight = u64_field(m, "peak_writer_inflight_bytes");
     let blocked_secs = u64_field(m, "writer_budget_blocked_secs");
     let blocked_count = u64_field(m, "writer_budget_blocked_count");
+    let send_blocked_secs = u64_field(m, "writer_send_blocked_secs");
+    let send_blocked_count = u64_field(m, "writer_send_blocked_count");
     let backoff = u64_field(m, "peak_backoff_active");
 
     out.push(format!("  {:<27} {}%", "Writer queue peak", queue_pct));
@@ -304,10 +310,22 @@ fn print_observability(metadata: Option<&Value>, out: &mut Vec<String>) {
         "  {:<27} {} over {} stall(s)",
         "Writer budget-blocked", blocked_disp, blocked_count
     ));
+    // Channel-send blocking is the small-page complement of byte-budget blocking:
+    // non-zero here with a zero byte-budget figure means the writer was the
+    // bottleneck on a many-tiny-pages service.
+    let send_disp = if send_blocked_secs == 0 && send_blocked_count > 0 {
+        "<1s".to_string()
+    } else {
+        format!("{}s", send_blocked_secs)
+    };
+    out.push(format!(
+        "  {:<27} {} over {} stall(s)",
+        "Writer send-blocked", send_disp, send_blocked_count
+    ));
     out.push(format!("  {:<27} {}", "Backoff slots peak", backoff));
 
     // Data volume + phase/runtime context: total uncompressed bytes written (the
-    // §3.8 writer-saturation correlate), the auth+prereq phase length (explains the
+    // writer-saturation correlate), the auth+prereq phase length (explains the
     // total−dump delta), and the available CPU parallelism (one core feeds the MLA
     // writer). All `#[serde(default)]` → 0/"n/a" on older archives.
     let total_bytes = u64_field(m, "total_bytes_written");
@@ -433,6 +451,102 @@ fn print_observability(metadata: Option<&Value>, out: &mut Vec<String>) {
             out.extend(rows);
         }
     }
+
+    // Per-service map sections that only matter when non-zero: cooldowns clamped
+    // by rateLimitMaxWaitSecs, wall-clock paused on prereq/token gating, and
+    // mid-dump token-refresh episodes. Absent on archives predating the fields.
+    let map_rows = |key: &str, fmt: &dyn Fn(&str, u64) -> String| -> Vec<String> {
+        let mut rows: Vec<String> = m
+            .get(key)
+            .and_then(|v| v.as_object())
+            .map(|obj| {
+                obj.iter()
+                    .filter_map(|(svc, v)| {
+                        let n = v.as_u64().unwrap_or(0);
+                        (n > 0).then(|| fmt(svc, n))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        rows.sort();
+        rows
+    };
+    let clamped = map_rows("retry_after_clamped_by_service", &|svc, n| {
+        format!("  {:<27} {} clamped cooldown(s)", svc, n)
+    });
+    if !clamped.is_empty() {
+        out.push(format!("  {:<27}", "Retry-After clamped:"));
+        out.extend(clamped);
+    }
+    let pauses = map_rows("pause_secs_by_service", &|svc, n| {
+        format!("  {:<27} {}s paused", svc, n)
+    });
+    if !pauses.is_empty() {
+        out.push(format!("  {:<27}", "Service pauses (prereq/token):"));
+        out.extend(pauses);
+    }
+    let refreshes = map_rows("token_refreshes_by_service", &|svc, n| {
+        format!(
+            "  {:<27} {} refresh{}",
+            svc,
+            n,
+            if n == 1 { "" } else { "es" }
+        )
+    });
+    if !refreshes.is_empty() {
+        out.push(format!("  {:<27}", "Token refreshes (mid-dump):"));
+        out.extend(refreshes);
+    }
+    let stalls = u64_field(m, "stall_events");
+    if stalls > 0 {
+        out.push(format!("  {:<27} {}", "Stall watchdog fired", stalls));
+    }
+    // Expected-error breaker: URLs skipped per bucket. Skipped ≠ lost — every
+    // skipped URL would have returned the bucket's schema-declared expected
+    // error, so this is informative, not a data-quality flag.
+    let skipped = map_rows("breaker_skipped_by_api", &|api, n| {
+        format!("  {:<27} {} URL(s) skipped", api, n)
+    });
+    if !skipped.is_empty() {
+        out.push(format!("  {:<27}", "Expected-error breaker:"));
+        out.extend(skipped);
+    }
+    // `$expand` parents re-fetched in full after hitting the API cap. An entry
+    // means the per-object fallback recovered a possibly truncated collection —
+    // informative proof of no data lost, not a quality flag. Absence means no
+    // parent could have been truncated on this run.
+    let expand_caps = map_rows("expand_cap_hits_by_api", &|api, n| {
+        format!("  {:<27} {} parent(s) re-fetched", api, n)
+    });
+    if !expand_caps.is_empty() {
+        out.push(format!("  {:<27}", "$expand cap re-fetches:"));
+        out.extend(expand_caps);
+    }
+    // Buckets whose per-bucket 429 escalation engaged (consecutive-429 streak
+    // reached the doubling threshold). Cross with lost_data_by_code in
+    // stats.json: listed here but absent from losses = recovered by the
+    // escalated pacing.
+    let escalated = map_rows("cooldown_escalated_by_api", &|api, n| {
+        format!("  {:<27} max streak {}", api, n)
+    });
+    if !escalated.is_empty() {
+        out.push(format!("  {:<27}", "429 escalation engaged:"));
+        out.extend(escalated);
+    }
+    let sem_wait_ms = u64_field(m, "resp_sem_wait_ms_total");
+    if sem_wait_ms > 0 {
+        out.push(format!(
+            "  {:<27} {}ms total",
+            "Response admission wait", sem_wait_ms
+        ));
+    }
+    let mem_wait_ms = u64_field(m, "resp_mem_wait_ms_total");
+    if mem_wait_ms > 0 {
+        out.push(format!(
+            "  {:<27} {}ms total",
+            "Response byte-budget wait", mem_wait_ms
+        ));
+    }
 }
 
 fn print_error_counters(metadata: Option<&Value>, out: &mut Vec<String>) {
@@ -445,9 +559,14 @@ fn print_error_counters(metadata: Option<&Value>, out: &mut Vec<String>) {
     let errors_total = u64_field(m, "errors");
     let expected = u64_field(m, "expected_errors");
     let unexpected = u64_field(m, "unexpected_errors");
-    // README §"Format de sortie" documents this identity:
-    // errors = expected_errors + unexpected_errors + non-HTTP entries.
-    let non_http = errors_total.saturating_sub(expected + unexpected);
+    // Prefer the exact `non_http_errors` counter (newer archives). Fall back to
+    // the derived figure for archives predating that field — note the derivation
+    // underflows (clamped to 0) when 5xx retries or batch-wrapper attribution
+    // inflate the response-counted expected/unexpected sums beyond `errors`.
+    let non_http = m
+        .get("non_http_errors")
+        .and_then(|v| v.as_u64())
+        .unwrap_or_else(|| errors_total.saturating_sub(expected + unexpected));
 
     out.push(format!("  {:<25} {}", "Authentication errors", auth));
     out.push(format!("  {:<25} {}", "Prerequisite errors", prereq));
@@ -460,6 +579,16 @@ fn print_error_counters(metadata: Option<&Value>, out: &mut Vec<String>) {
         non_http,
         sep = mid_sep()
     ));
+    // Lost-data abandonments (the PARTIAL-verdict counter): a subset of the
+    // non-HTTP entries above. Absent on archives predating the field — only a
+    // measured value is worth a line (0 on an old archive would read as a
+    // clean run when the field simply did not exist).
+    if let Some(lost) = m.get("lost_data_errors").and_then(|v| v.as_u64()) {
+        out.push(format!(
+            "  {:<25} {}   (per-API breakdown: stats.json lost_data_by_code)",
+            "Lost data (abandoned)", lost
+        ));
+    }
 }
 
 fn print_data_manifest(metadata: Option<&Value>, top: usize, all: bool, out: &mut Vec<String>) {
@@ -611,6 +740,8 @@ pub const TUNING_DEFAULTS: &[(&str, u64)] = &[
     ("liveness_ceiling_secs", 900),
     ("retry_backoff_base_ms", 250),
     ("retry_backoff_cap_ms", 8000),
+    ("response_workers_max", 0),
+    ("expected_error_breaker_threshold", 25),
 ];
 
 pub fn print_config_section(

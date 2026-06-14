@@ -171,12 +171,23 @@ impl OradazWriter {
     pub fn write_file(&mut self, folder: String, file: String, data: String) -> Result<(), Error> {
         match Path::new(&folder).join(&file).to_str() {
             Some(filepath) => {
-                if let Some(mla_writer) = &mut self.mla_writer {
-                    mla_writer.write_file(filepath, data.clone())?;
-                };
-                if let Some(file_writer) = &mut self.file_writer {
-                    file_writer.write_file(&folder, &file, data.clone())?;
-                };
+                // This is the hottest write path (one call per collected response).
+                // Only clone the payload when both outputs are enabled; when a single
+                // output is active (the common case) move it straight into that
+                // consumer with no copy.
+                match (&mut self.mla_writer, &mut self.file_writer) {
+                    (Some(mla_writer), Some(file_writer)) => {
+                        mla_writer.write_file(filepath, data.clone())?;
+                        file_writer.write_file(&folder, &file, data)?;
+                    }
+                    (Some(mla_writer), None) => {
+                        mla_writer.write_file(filepath, data)?;
+                    }
+                    (None, Some(file_writer)) => {
+                        file_writer.write_file(&folder, &file, data)?;
+                    }
+                    (None, None) => {}
+                }
             }
             None => {
                 error!(

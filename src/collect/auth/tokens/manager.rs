@@ -97,6 +97,7 @@ impl Tokens {
                                 error: err.to_string(),
                             });
                             if service.mandatory_auth {
+                                Self::persist_auth_errors_best_effort(writer, &auth_errors).await;
                                 return Err(err);
                             }
                         }
@@ -116,29 +117,7 @@ impl Tokens {
                 tokens.len(),
                 auth_errors.len()
             );
-            if !auth_errors.is_empty() {
-                let mut multiline_string: String = String::new();
-                for error in auth_errors {
-                    match serde_json::to_string(&error) {
-                        Err(err) => {
-                            error!("{:FL$}Could not convert auth_errors to json", "Tokens");
-                            debug!(
-                                "{:FL$}Auth errors JSON serialization error: {:?}",
-                                "Tokens", err
-                            );
-                            return Err(Error::AuthErrorsToJSON);
-                        }
-                        Ok(j) => multiline_string = format!("{multiline_string}{j}\n"),
-                    };
-                }
-                writer
-                    .write_file(
-                        String::new(),
-                        "auth_errors.json".to_string(),
-                        multiline_string,
-                    )
-                    .await?;
-            }
+            Self::write_auth_errors(writer, &auth_errors).await?;
             return Ok(tokens);
         }
 
@@ -165,6 +144,7 @@ impl Tokens {
                     api: String::from("graph"),
                     error: err.to_string(),
                 });
+                Self::persist_auth_errors_best_effort(writer, &auth_errors).await;
                 return Err(Error::TokenAcquisitionError);
             }
             Ok(token) => token,
@@ -197,6 +177,7 @@ impl Tokens {
                             error: err.to_string(),
                         });
                         if service.mandatory_auth {
+                            Self::persist_auth_errors_best_effort(writer, &auth_errors).await;
                             return Err(Error::TokenAcquisitionError);
                         }
                     }
@@ -216,30 +197,52 @@ impl Tokens {
             tokens.len(),
             auth_errors.len()
         );
-        if !auth_errors.is_empty() {
-            let mut multiline_string: String = String::new();
-            for error in auth_errors {
-                match serde_json::to_string(&error) {
-                    Err(err) => {
-                        error!("{:FL$}Could not convert auth_errors to json", "Tokens");
-                        debug!(
-                            "{:FL$}Auth errors JSON serialization error: {:?}",
-                            "Tokens", err
-                        );
-
-                        return Err(Error::AuthErrorsToJSON);
-                    }
-                    Ok(j) => multiline_string = format!("{multiline_string}{j}\n"),
-                };
-            }
-            writer
-                .write_file(
-                    String::new(),
-                    "auth_errors.json".to_string(),
-                    multiline_string,
-                )
-                .await?;
-        }
+        Self::write_auth_errors(writer, &auth_errors).await?;
         Ok(tokens)
+    }
+
+    /// Serialises the accumulated authentication errors to `auth_errors.json` in the
+    /// archive (one JSON object per line); a no-op when there are none. Called at the
+    /// end of token initialisation and, best-effort, on the mandatory-service failure
+    /// path so the archive always records why authentication failed.
+    async fn write_auth_errors(
+        writer: &WriterHandle,
+        auth_errors: &[AuthError],
+    ) -> Result<(), Error> {
+        if auth_errors.is_empty() {
+            return Ok(());
+        }
+        let mut multiline_string: String = String::new();
+        for error in auth_errors {
+            match serde_json::to_string(error) {
+                Err(err) => {
+                    error!("{:FL$}Could not convert auth_errors to json", "Tokens");
+                    debug!(
+                        "{:FL$}Auth errors JSON serialization error: {:?}",
+                        "Tokens", err
+                    );
+                    return Err(Error::AuthErrorsToJSON);
+                }
+                Ok(j) => multiline_string = format!("{multiline_string}{j}\n"),
+            };
+        }
+        writer
+            .write_file(
+                String::new(),
+                "auth_errors.json".to_string(),
+                multiline_string,
+            )
+            .await
+    }
+
+    /// Best-effort wrapper used on the fatal paths: persists the accumulated auth
+    /// errors but never masks the original authentication failure if the write fails.
+    async fn persist_auth_errors_best_effort(writer: &WriterHandle, auth_errors: &[AuthError]) {
+        if let Err(err) = Self::write_auth_errors(writer, auth_errors).await {
+            warn!(
+                "{:FL$}Could not persist auth_errors.json before aborting: {:?}",
+                "Tokens", err
+            );
+        }
     }
 }

@@ -7,6 +7,7 @@ use crate::utils::url::{ApiCall, ExpectedErrorCode, RelationshipUrl, Url};
 
 use log::{debug, info, trace, warn};
 use serde_json::{Value, json};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -163,49 +164,73 @@ pub async fn handle_next_link(
     None
 }
 
+/// Serialise each record as a single JSON line for the archive, tagging it with
+/// its parent reference when the relationship carries one.
+///
+/// An object (or null) record receives the `_ORADAZ_PARENT_` field by direct
+/// assignment — a null is promoted to an object holding just that field. A scalar
+/// or array record (possible if an endpoint returns an array of primitives) is
+/// instead wrapped in a `{"result": …}` object so the tag has somewhere to live:
+/// string-indexing those JSON values would otherwise panic.
+fn records_to_lines(value_field: &[Value], parent: Option<&HashMap<String, String>>) -> String {
+    value_field
+        .iter()
+        .map(|x| match parent {
+            Some(parent) => match x {
+                Value::Object(_) | Value::Null => {
+                    let mut data = x.clone();
+                    data["_ORADAZ_PARENT_"] = json!(parent);
+                    format!("{data}\n")
+                }
+                _ => format!("{}\n", json!({ "result": x, "_ORADAZ_PARENT_": parent })),
+            },
+            None => format!("{x}\n"),
+        })
+        .collect()
+}
+
 pub async fn handle_values(
     this: &ResponseThread,
     response: &Response,
     api_call: &ApiCall,
 ) -> Result<Vec<Value>, Error> {
-    let value_field: Vec<Value> = match response.content.pointer(&api_call.value_pointer) {
-        // The pointer resolved to an array: use it as-is.
-        Some(Value::Array(r)) => r.clone(),
+    // Resolve the records to write. The common case — a JSON array at the value
+    // pointer — is borrowed straight from the response: writing the page and
+    // counting its rows need only a shared view. The rarer single-object,
+    // scalar, or whole-body fallback shapes are wrapped into a one-element owned
+    // vec (a present non-array value is one record — wrapping it avoids silently
+    // dropping it, which `as_array()` would do).
+    let records: Cow<[Value]> = match response.content.pointer(&api_call.value_pointer) {
+        Some(Value::Array(r)) => Cow::Borrowed(r.as_slice()),
         // A present-but-`null` field carries no records.
-        Some(Value::Null) => Vec::new(),
-        // A present non-array value (single object or scalar) is one record —
-        // wrap it instead of silently dropping it (`as_array()` would have
-        // yielded an empty vec, losing the data with no error).
-        Some(Value::Object(o)) => vec![Value::Object(o.clone())],
-        Some(other) => vec![json!({"result": other.clone()})],
+        Some(Value::Null) => Cow::Owned(Vec::new()),
+        Some(Value::Object(o)) => Cow::Owned(vec![Value::Object(o.clone())]),
+        Some(other) => Cow::Owned(vec![json!({"result": other.clone()})]),
         // The pointer did not resolve: fall back to the whole response body.
         None => match &response.content {
-            Value::Array(r) => r.clone(),
-            Value::Object(o) => vec![Value::Object(o.clone())],
-            _ => vec![json!({"result": response.content.clone()})],
+            Value::Array(r) => Cow::Borrowed(r.as_slice()),
+            Value::Object(o) => Cow::Owned(vec![Value::Object(o.clone())]),
+            _ => Cow::Owned(vec![json!({"result": response.content.clone()})]),
         },
     };
 
-    if value_field.is_empty() {
+    if records.is_empty() {
+        // A 2xx response with no objects: the endpoint answered but the server
+        // held nothing for it. Counted so per-API yield (objects written /
+        // requests sent) distinguishes a legitimately empty endpoint from one
+        // that errored.
+        this.context
+            .stats
+            .record_empty_response(&api_call.url.service_name, &api_call.url.api);
         return Ok(Vec::new());
     }
 
     // Create a multiline string from vector of json data
     let parent_ref = api_call.url.parent.as_ref();
-    let multiline_string: String = value_field
-        .iter()
-        .map(|x| match parent_ref {
-            Some(parent) => {
-                let mut data = x.clone();
-                data["_ORADAZ_PARENT_"] = json!(parent);
-                format!("{data}\n")
-            }
-            None => format!("{x}\n"),
-        })
-        .collect();
+    let multiline_string: String = records_to_lines(&records, parent_ref);
     // Capture the uncompressed byte length before `multiline_string` is moved into
     // `write_file`; accumulated per table for data-volume analysis (writer-saturation
-    // correlation §3.8 and heavy-table identification → `$select` candidates).
+    // correlation and heavy-table identification → `$select` candidates).
     let written_bytes = multiline_string.len();
 
     // Write the string to the correct file
@@ -233,7 +258,7 @@ pub async fn handle_values(
     trace!(
         "{:FL$}{} object(s) written to {:?}/{:?} [ID: {}]",
         "ResponseThread",
-        value_field.len(),
+        records.len(),
         api_call.url.service_name,
         api_call.url.api,
         api_call.id
@@ -254,11 +279,234 @@ pub async fn handle_values(
                 count: 0,
                 bytes: 0,
             });
-        entry.count += value_field.len();
+        entry.count += records.len();
         entry.bytes += written_bytes;
     }
+    // Cumulative write-throughput gauges sampled by the periodic
+    // `Memory sample:` line (trajectory companion to the per-table totals).
+    crate::utils::sysmem::record_written(records.len() as u64, written_bytes as u64);
 
-    Ok(value_field)
+    // Relationship expansion consumes an owned record list; a leaf endpoint (no
+    // relationships) never needs one, so it returns empty and skips cloning the
+    // borrowed page out of the response.
+    if api_call.url.relationships.is_empty() {
+        Ok(Vec::new())
+    } else {
+        Ok(records.into_owned())
+    }
+}
+
+/// Projects an expanded child to the requested fields (or keeps it whole when no
+/// projection is configured) and tags it with its parent's key, matching the
+/// `_ORADAZ_PARENT_` shape produced by the relationship writer.
+///
+/// The `@odata.type` discriminator is always preserved when present, even under a
+/// field projection: a polymorphic collection (e.g. an object's `owners`, which
+/// may be users or service principals) carries it to identify each element's
+/// concrete type, and the server returns it automatically alongside an explicit
+/// `$select` — so dropping it would lose the element type the per-object call kept.
+fn project_child(
+    child: &Value,
+    project: Option<&[&str]>,
+    parent_key: &str,
+    parent_id: &str,
+) -> Value {
+    let mut obj = match project {
+        Some(fields) => {
+            let mut m = serde_json::Map::new();
+            for f in fields {
+                if let Some(v) = child.get(*f) {
+                    m.insert((*f).to_string(), v.clone());
+                }
+            }
+            if let Some(t) = child.get("@odata.type") {
+                m.insert("@odata.type".to_string(), t.clone());
+            }
+            m
+        }
+        None => match child {
+            Value::Object(o) => o.clone(),
+            other => {
+                let mut m = serde_json::Map::new();
+                m.insert("result".to_string(), other.clone());
+                m
+            }
+        },
+    };
+    obj.insert(
+        "_ORADAZ_PARENT_".to_string(),
+        json!({ parent_key: parent_id }),
+    );
+    Value::Object(obj)
+}
+
+/// Builds the per-object fallback URL for a parent whose `$expand`ed collection
+/// hit the API cap. The seed URL is `<base>/<entity>?…&$expand=<extract>`; the
+/// fallback re-fetches that one parent's collection paginably as
+/// `<base>/<entity>/<parent id>/<extract>?$top=999[&$select=…]`. Its
+/// `api_behavior` is empty so it flows through the standard value handler (it
+/// returns a flat `value[]`, not parents-with-expand), writing to the same file.
+fn build_expand_fallback(
+    seed: &Url,
+    parent_id: &str,
+    parent_key: &str,
+    extract: &str,
+    project: Option<&[&str]>,
+) -> Url {
+    let base = seed.url.split('?').next().unwrap_or(seed.url.as_str());
+    let select = project.map(|p| p.join(",")).unwrap_or_default();
+    let url = if select.is_empty() {
+        format!("{base}/{parent_id}/{extract}?$top=999")
+    } else {
+        format!("{base}/{parent_id}/{extract}?$top=999&$select={select}")
+    };
+    let mut parent = HashMap::new();
+    parent.insert(parent_key.to_string(), parent_id.to_string());
+    Url {
+        service_name: seed.service_name.clone(),
+        service_scopes: seed.service_scopes.clone(),
+        service_mandatory_auth: seed.service_mandatory_auth,
+        api: seed.api.clone(),
+        url,
+        conditions: None,
+        relationships: Arc::new(vec![]),
+        api_behavior: Arc::new(HashMap::new()),
+        expected_error_codes: seed.expected_error_codes.clone(),
+        parent: Some(parent),
+        retry_number: 0,
+        rate_limit_retry_number: 0,
+        rate_limit_total_wait_secs: 0,
+        network_retry_number: 0,
+        post_body: None,
+    }
+}
+
+/// Handles an `$expand` extraction seed: each top-level object carries an
+/// expanded child collection (`api_behavior.expand_extract`) which is flattened
+/// to this API's file — one projected child per line, tagged with its parent's
+/// key. `$expand` on directory-object relationships silently caps the collection
+/// (20 for directory objects; 100 only for `/users?$expand=registeredDevices`),
+/// so a parent at the cap (`expand_max`) may be
+/// truncated: instead of writing its partial rows, the child is re-fetched in
+/// full through a per-object fallback URL (returned for dispatch), guaranteeing
+/// no child is lost. Returns the fallback URLs to dispatch.
+pub async fn handle_expand_extract(
+    this: &ResponseThread,
+    response: &Response,
+    api_call: &ApiCall,
+) -> Result<Vec<Url>, Error> {
+    let behavior = &api_call.url.api_behavior;
+    let extract = match behavior.get("expand_extract") {
+        Some(e) if !e.is_empty() => e.as_str(),
+        _ => return Ok(Vec::new()),
+    };
+    let parent_key = behavior
+        .get("expand_parent_key")
+        .map(|s| s.as_str())
+        .unwrap_or("id");
+    let project: Option<Vec<&str>> = behavior.get("expand_project").map(|s| {
+        s.split(',')
+            .map(|f| f.trim())
+            .filter(|f| !f.is_empty())
+            .collect()
+    });
+    let expand_max: usize = behavior
+        .get("expand_max")
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(usize::MAX);
+
+    let parents = match response
+        .content
+        .pointer(&api_call.value_pointer)
+        .and_then(|v| v.as_array())
+    {
+        Some(p) => p,
+        None => return Ok(Vec::new()),
+    };
+
+    let service = &api_call.url.service_name;
+    let api = &api_call.url.api;
+
+    let mut multiline = String::new();
+    let mut written = 0usize;
+    let mut fallbacks: Vec<Url> = Vec::new();
+
+    for parent in parents {
+        let Some(parent_id) = parent.get(parent_key).and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(children) = parent.get(extract).and_then(|v| v.as_array()) else {
+            continue;
+        };
+        if children.len() >= expand_max {
+            this.context.stats.record_expand_cap_hit(service, api);
+            fallbacks.push(build_expand_fallback(
+                &api_call.url,
+                parent_id,
+                parent_key,
+                extract,
+                project.as_deref(),
+            ));
+            continue;
+        }
+        for child in children {
+            let record = project_child(child, project.as_deref(), parent_key, parent_id);
+            multiline.push_str(&format!("{record}\n"));
+            written += 1;
+        }
+    }
+
+    if written > 0 {
+        let written_bytes = multiline.len();
+        if let Err(err) = this
+            .context
+            .writer
+            .write_file(service.clone(), format!("{api}.json"), multiline)
+            .await
+        {
+            warn!(
+                "{:FL$}Error writing $expand extraction to {:?} (id: {}) in folder {:?}, retrying the page",
+                "ResponseThread", api, api_call.id, service
+            );
+            debug!(
+                "{:FL$}File write error [ID: {}]: {:?}",
+                "ResponseThread", api_call.id, err
+            );
+            return Err(Error::WriteFile);
+        }
+        {
+            let mut metadata = lock_fatal(&this.context.metadata, Error::MetadataLock);
+            let entry = metadata
+                .entry(format!("{service}_{api}"))
+                .or_insert(TableMetadata {
+                    name: format!("{service}_{api}"),
+                    folder: service.clone(),
+                    file: format!("{api}.json"),
+                    count: 0,
+                    bytes: 0,
+                });
+            entry.count += written;
+            entry.bytes += written_bytes;
+        }
+        crate::utils::sysmem::record_written(written as u64, written_bytes as u64);
+    }
+
+    if written > 0 || !fallbacks.is_empty() {
+        // The page made progress (wrote children, or deferred full re-fetches),
+        // so reset the bucket's liveness timer; the fallbacks write into the same
+        // bucket and reset it again as they complete.
+        this.context.stats.note_progress(service, api);
+        if written > 0 {
+            this.context
+                .ratelimit_manager
+                .note_bucket_progress(service, api);
+        }
+    } else {
+        // No children on any parent this page: a genuine empty page (yield).
+        this.context.stats.record_empty_response(service, api);
+    }
+
+    Ok(fallbacks)
 }
 
 pub async fn handle_relationships(
@@ -521,5 +769,54 @@ mod tests {
         let response = make_response(json!({ "@odata.count": "not-a-number", "value": [] }));
         let api_call = make_api_call("https://graph.microsoft.com/v1.0/users?$count=true");
         log_count_if_present(&response, &api_call);
+    }
+
+    fn parent_map() -> HashMap<String, String> {
+        HashMap::from([("id".to_string(), "parent-id".to_string())])
+    }
+
+    #[test]
+    fn records_to_lines_tags_object_records_inline() {
+        let parent = parent_map();
+        let records = vec![json!({ "id": "a" })];
+        let out = records_to_lines(&records, Some(&parent));
+        let parsed: Value = serde_json::from_str(out.trim()).expect("one JSON line");
+        assert_eq!(parsed["id"], json!("a"));
+        assert_eq!(parsed["_ORADAZ_PARENT_"]["id"], json!("parent-id"));
+    }
+
+    #[test]
+    fn records_to_lines_wraps_scalar_records_without_panicking() {
+        // An array of primitives must not panic when a parent tag is injected:
+        // each scalar is wrapped in `{"result": …, "_ORADAZ_PARENT_": …}`.
+        let parent = parent_map();
+        let records = vec![json!("scalar"), json!(7)];
+        let out = records_to_lines(&records, Some(&parent));
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines.len(), 2);
+        let first: Value = serde_json::from_str(lines[0]).expect("valid JSON line");
+        assert_eq!(first["result"], json!("scalar"));
+        assert_eq!(first["_ORADAZ_PARENT_"]["id"], json!("parent-id"));
+        let second: Value = serde_json::from_str(lines[1]).expect("valid JSON line");
+        assert_eq!(second["result"], json!(7));
+    }
+
+    #[test]
+    fn records_to_lines_tags_null_record_inline() {
+        // A null record is promoted to an object carrying only the parent tag,
+        // matching serde_json's index-assignment on a null value.
+        let parent = parent_map();
+        let out = records_to_lines(&[Value::Null], Some(&parent));
+        let parsed: Value = serde_json::from_str(out.trim()).expect("one JSON line");
+        assert!(parsed.get("result").is_none());
+        assert_eq!(parsed["_ORADAZ_PARENT_"]["id"], json!("parent-id"));
+    }
+
+    #[test]
+    fn records_to_lines_without_parent_is_verbatim() {
+        let records = vec![json!({ "id": "a" }), json!("scalar")];
+        let out = records_to_lines(&records, None);
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines, vec![r#"{"id":"a"}"#, r#""scalar""#]);
     }
 }

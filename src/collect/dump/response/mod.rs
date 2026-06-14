@@ -30,7 +30,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
 
 /// Details of an error encountered during the dump process that should be recorded in the archive.
@@ -67,11 +69,12 @@ pub struct DumpError {
 impl DumpError {
     /// True when this error means data the user expected is missing from the
     /// archive: a non-HTTP terminal failure (`status == 0`, not `expected`)
-    /// where the request never yielded its data — `UrlRetryLimit` (URL
-    /// abandoned), `NoTokenForApiCall`, `nextLinkParsingError`,
-    /// `MissingBatchData`, `UnknownApiCallCreationError`. These bypass
-    /// `unexpected_errors` (which needs an HTTP status ≥ 400) and feed the
-    /// end-of-collection "PARTIAL COLLECTION" summary.
+    /// where the request never yielded its data — `UrlRetryLimit` (real-error
+    /// budget exhausted), `ThrottleStalled` / `NetworkStalled` (transient 429 /
+    /// network retries hit the per-bucket liveness ceiling), `NoTokenForApiCall`,
+    /// `nextLinkParsingError`, `MissingBatchData`, `UnknownApiCallCreationError`.
+    /// These bypass `unexpected_errors` (which needs an HTTP status ≥ 400) and
+    /// feed the end-of-collection "PARTIAL COLLECTION" summary.
     ///
     /// Excludes `MissingTokenForRelationships`: it fires *after* the endpoint's
     /// own page was already written to the archive (only relationship/child-URL
@@ -178,6 +181,13 @@ impl ResponseContext {
                 "Failed to write DumpError to archive".into(),
             ));
         }
+        // Count every non-HTTP (`status == 0`) entry exactly, so the inspect
+        // metadata view reports the real figure rather than deriving it from
+        // `errors - (expected + unexpected)`, which underflows to 0 when 5xx
+        // retries or batch-wrapper attribution inflate the response-counted sums.
+        if dump_error.status == 0 {
+            self.stats.record_non_http_error();
+        }
         // Record lost-data failures (data never obtained) for the end-of-collection
         // "PARTIAL COLLECTION" summary. These bypass `unexpected_errors` (which needs an
         // HTTP status ≥ 400), so without this they would be invisible in the summary.
@@ -196,6 +206,80 @@ pub struct ResponseModule {
     receiver: Receiver<ResponseMsg>,
     sender: Sender<CoordinatorEvent>,
     pub context: ResponseContext,
+    /// Maximum number of worker tasks processing responses concurrently
+    /// (`responseWorkersMax`; 0 = unbounded). Each worker holds a parsed JSON
+    /// page until it is written, so this bound caps peak memory when responses
+    /// arrive faster than the single-stream archive writer drains them; the
+    /// wait for a permit backpressures the request→response channel.
+    workers_max: usize,
+    /// Byte budget for in-flight parsed pages (`responseMemoryBudgetBytes`;
+    /// 0 = disabled). Independent of `workers_max`: a worker acquires permits
+    /// sized to its page before processing, so a few very large pages serialise
+    /// while many small ones still run at full width — bounding peak RSS where
+    /// the worker-count bound cannot (large pages, e.g. Azure Resource Graph).
+    mem_budget_bytes: usize,
+}
+
+/// Waits for a worker permit when a bound is configured. Returns `None` either
+/// when unbounded (no semaphore) or if the semaphore is closed — the caller
+/// spawns without a permit in both cases, keeping the pipeline alive. Time
+/// spent waiting is accumulated in the response-worker admission-wait counter.
+async fn acquire_worker_permit(semaphore: &Option<Arc<Semaphore>>) -> Option<OwnedSemaphorePermit> {
+    let sem = semaphore.as_ref()?;
+    let started = Instant::now();
+    match Arc::clone(sem).acquire_owned().await {
+        Ok(permit) => {
+            let waited = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+            if waited > 0 {
+                crate::utils::sysmem::record_resp_sem_wait_ms(waited);
+            }
+            Some(permit)
+        }
+        Err(_) => None,
+    }
+}
+
+/// Approximate in-memory footprint of a parsed JSON page, used to weight the
+/// response byte budget. Tracks the JSON text size closely enough to pace a few
+/// very large pages against many small ones.
+fn estimate_value_bytes(v: &Value) -> usize {
+    match v {
+        Value::Null | Value::Bool(_) => 4,
+        Value::Number(_) => 8,
+        Value::String(s) => s.len() + 2,
+        Value::Array(a) => 2 + a.iter().map(estimate_value_bytes).sum::<usize>(),
+        Value::Object(o) => {
+            2 + o
+                .iter()
+                .map(|(k, val)| k.len() + 4 + estimate_value_bytes(val))
+                .sum::<usize>()
+        }
+    }
+}
+
+/// Waits on the response byte budget when one is configured, acquiring permits
+/// sized to the page (capped at the whole budget so a page larger than the
+/// budget still gets admitted — serialised — rather than deadlocking on permits
+/// it can never obtain, mirroring the writer byte budget). Time spent waiting is
+/// accumulated in the response byte-budget admission-wait counter.
+async fn acquire_mem_permit(
+    budget: &Option<Arc<Semaphore>>,
+    budget_cap: usize,
+    content: &Value,
+) -> Option<OwnedSemaphorePermit> {
+    let sem = budget.as_ref()?;
+    let weight = estimate_value_bytes(content).clamp(1, budget_cap.max(1)) as u32;
+    let started = Instant::now();
+    match Arc::clone(sem).acquire_many_owned(weight).await {
+        Ok(permit) => {
+            let waited = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+            if waited > 0 {
+                crate::utils::sysmem::record_resp_mem_wait_ms(waited);
+            }
+            Some(permit)
+        }
+        Err(_) => None,
+    }
 }
 
 impl ResponseModule {
@@ -203,11 +287,15 @@ impl ResponseModule {
         receiver: Receiver<ResponseMsg>,
         sender: Sender<CoordinatorEvent>,
         context: ResponseContext,
+        workers_max: usize,
+        mem_budget_bytes: usize,
     ) -> Self {
         ResponseModule {
             receiver,
             sender,
             context,
+            workers_max,
+            mem_budget_bytes,
         }
     }
 
@@ -219,6 +307,17 @@ impl ResponseModule {
         let sender = self.sender;
         let context = self.context.clone();
         let mut workers = JoinSet::new();
+        // Permits are released when the worker task drops its permit, not when
+        // the JoinSet reaps it — so waiting for a permit below cannot deadlock
+        // even while reaping is paused.
+        let semaphore: Option<Arc<Semaphore>> =
+            (self.workers_max > 0).then(|| Arc::new(Semaphore::new(self.workers_max)));
+        // Byte budget for in-flight parsed pages. Capped at u32::MAX so a single
+        // page's permit request always fits `acquire_many`. Disabled (None) when
+        // `responseMemoryBudgetBytes` is 0.
+        let mem_budget_cap = self.mem_budget_bytes.min(u32::MAX as usize);
+        let mem_budget: Option<Arc<Semaphore>> =
+            (mem_budget_cap > 0).then(|| Arc::new(Semaphore::new(mem_budget_cap)));
 
         loop {
             trace!("{:FL$}Waiting for message from receiver", "ResponseModule");
@@ -250,10 +349,25 @@ impl ResponseModule {
                         break;
                     }
                     Some(ResponseMsg::ResponseData(response_data)) => {
+                        let permit = acquire_worker_permit(&semaphore).await;
+                        // Weighted byte-budget admission: a few large pages
+                        // serialise here while small pages pass freely, bounding
+                        // peak RSS. No-op when the budget is disabled.
+                        let mem_permit = acquire_mem_permit(
+                            &mem_budget,
+                            mem_budget_cap,
+                            &response_data.response.content,
+                        )
+                        .await;
                         workers.spawn({
                             let thread_sender = sender.clone();
                             let thread_context = context.clone();
                             async move {
+                                // Holds the admission permits for the lifetime of
+                                // the worker; dropping them frees a worker slot and
+                                // returns the page's bytes to the budget.
+                                let _permit = permit;
+                                let _mem_permit = mem_permit;
                                 // Tracks this worker in the response-worker gauge for
                                 // memory observability (each worker holds a parsed
                                 // JSON page); decremented when the guard drops.
@@ -268,10 +382,12 @@ impl ResponseModule {
                         });
                     }
                     Some(ResponseMsg::DumpError(dump_error, id)) => {
+                        let permit = acquire_worker_permit(&semaphore).await;
                         workers.spawn({
                             let thread_sender = sender.clone();
                             let thread_context = context.clone();
                             async move {
+                                let _permit = permit;
                                 // See the ResponseData arm: same response-worker
                                 // gauge tracking for memory observability.
                                 let _worker_guard = crate::utils::sysmem::track_response_worker();
@@ -289,10 +405,12 @@ impl ResponseModule {
                         });
                     }
                     Some(ResponseMsg::LostData(dump_error, id)) => {
+                        let permit = acquire_worker_permit(&semaphore).await;
                         workers.spawn({
                             let thread_sender = sender.clone();
                             let thread_context = context.clone();
                             async move {
+                                let _permit = permit;
                                 let _worker_guard = crate::utils::sysmem::track_response_worker();
                                 // completion_count = 0: counter-neutral. The
                                 // batch's own RequestCompleted (finalize_retry)
@@ -338,5 +456,93 @@ impl ResponseModule {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    /// Unbounded mode (no semaphore): spawning requires no permit.
+    #[tokio::test]
+    async fn acquire_permit_unbounded_returns_none() {
+        assert!(acquire_worker_permit(&None).await.is_none());
+    }
+
+    /// Bounded mode: permits cap concurrent holders, and releasing one permit
+    /// unblocks the next waiter.
+    #[tokio::test]
+    async fn acquire_permit_bounds_concurrency() {
+        let sem = Some(Arc::new(Semaphore::new(2)));
+        let p1 = acquire_worker_permit(&sem).await.expect("first permit");
+        let _p2 = acquire_worker_permit(&sem).await.expect("second permit");
+
+        // A third acquisition must wait while both permits are held…
+        let blocked = timeout(Duration::from_millis(50), acquire_worker_permit(&sem)).await;
+        assert!(blocked.is_err(), "third permit must wait at capacity");
+
+        // …and proceed once a permit is released.
+        drop(p1);
+        let p3 = timeout(Duration::from_secs(1), acquire_worker_permit(&sem))
+            .await
+            .expect("a released permit must unblock the waiter");
+        assert!(p3.is_some());
+    }
+
+    #[test]
+    fn estimate_value_bytes_tracks_payload_size() {
+        use serde_json::json;
+        let small = estimate_value_bytes(&json!({"a": 1}));
+        let big = estimate_value_bytes(&json!({"a": "x".repeat(1000)}));
+        assert!(
+            big > small + 900,
+            "string length must dominate the estimate: {big} vs {small}"
+        );
+        let arr = estimate_value_bytes(&json!(["x".repeat(100), "y".repeat(100)]));
+        assert!(arr >= 200, "an array sums its elements: {arr}");
+    }
+
+    /// The byte budget admits pages weighted by size: two ~budget-sized pages
+    /// cannot be in flight at once, and a page larger than the whole budget is
+    /// still admitted (clamped) rather than deadlocking on permits it can never
+    /// obtain.
+    #[tokio::test]
+    async fn mem_permit_bounds_by_bytes_and_never_deadlocks() {
+        use serde_json::json;
+        let cap = 64usize;
+        let budget = Some(Arc::new(Semaphore::new(cap)));
+        let big = json!({ "k": "x".repeat(cap) });
+        let p1 = acquire_mem_permit(&budget, cap, &big)
+            .await
+            .expect("first budget-sized page admitted");
+        let blocked = timeout(
+            Duration::from_millis(50),
+            acquire_mem_permit(&budget, cap, &big),
+        )
+        .await;
+        assert!(blocked.is_err(), "a second budget-sized page must wait");
+        drop(p1);
+        let huge = json!({ "k": "x".repeat(cap * 10) });
+        let p2 = timeout(
+            Duration::from_secs(1),
+            acquire_mem_permit(&budget, cap, &huge),
+        )
+        .await
+        .expect("an over-budget page must still be admitted");
+        assert!(p2.is_some());
+    }
+
+    /// A disabled budget (None) never blocks and acquires no permit.
+    #[tokio::test]
+    async fn mem_permit_disabled_returns_none() {
+        use serde_json::json;
+        assert!(
+            acquire_mem_permit(&None, 0, &json!({"a": 1}))
+                .await
+                .is_none()
+        );
     }
 }

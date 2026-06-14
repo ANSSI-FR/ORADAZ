@@ -12,6 +12,7 @@ use crate::utils::ui::{dim, err_text, warn_text};
 
 use chrono::DateTime;
 use serde_json::Value;
+use std::collections::HashMap;
 
 const API_COL: usize = 80;
 
@@ -183,6 +184,89 @@ pub fn api_activity_seconds(api: &Value) -> Option<i64> {
         str_field(api, "last_request_at").and_then(|s| DateTime::parse_from_rfc3339(s).ok())?;
     let secs = (last - first).num_seconds();
     if secs > 0 { Some(secs) } else { None }
+}
+
+/// Map of `{service}_{api}` → objects written, read from the metadata table
+/// manifest. Lets the stats view join per-API request counts (`stats.json`) with
+/// the objects actually written (`metadata.json`) to compute yield. An endpoint
+/// that wrote nothing has no manifest entry, so it reads as zero objects.
+fn table_object_counts(metadata: Option<&Value>) -> HashMap<String, u64> {
+    let mut map = HashMap::new();
+    if let Some(tables) = metadata
+        .and_then(|m| m.get("tables"))
+        .and_then(|t| t.as_array())
+    {
+        for t in tables {
+            if let Some(name) = t.get("name").and_then(|v| v.as_str()) {
+                map.insert(
+                    name.to_string(),
+                    t.get("count").and_then(|v| v.as_u64()).unwrap_or(0),
+                );
+            }
+        }
+    }
+    map
+}
+
+/// The effective AIMD max concurrency window for a service: the built-in
+/// per-service baseline (graph/exchange 150, resources 100) raised over the
+/// global `concurrencyMaxWindow` (default 30), mirroring the runtime's
+/// service-aware throttling. Per-service config overrides are not reflected, so
+/// this is the baseline window, read alongside the *achieved* concurrency to
+/// reveal an under-used window (a sequential pole).
+fn effective_max_window(service: &str, config: Option<&Value>) -> u64 {
+    let global = config
+        .and_then(|c| c.get("concurrencyMaxWindow"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(30);
+    let baseline = match service {
+        "graph" | "exchange" => 150,
+        "resources" => 100,
+        _ => global,
+    };
+    baseline.max(global)
+}
+
+/// Wall-clock span (seconds) a service was active: `max(last_request_at) −
+/// min(first_request_at)` across its APIs. `None` when no API carries usable
+/// timestamps.
+fn service_wall_span_secs(apis: &[Value], service: &str) -> Option<i64> {
+    let mut first: Option<DateTime<chrono::FixedOffset>> = None;
+    let mut last: Option<DateTime<chrono::FixedOffset>> = None;
+    for a in apis
+        .iter()
+        .filter(|a| str_field(a, "service") == Some(service))
+    {
+        if let Some(f) =
+            str_field(a, "first_request_at").and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        {
+            first = Some(first.map_or(f, |c| c.min(f)));
+        }
+        if let Some(l) =
+            str_field(a, "last_request_at").and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        {
+            last = Some(last.map_or(l, |c| c.max(l)));
+        }
+    }
+    match (first, last) {
+        (Some(f), Some(l)) => Some((l - f).num_seconds().max(0)),
+        _ => None,
+    }
+}
+
+/// Average concurrency a service actually achieved: total time spent in HTTP
+/// round-trips divided by the service's wall-clock span. ≈ the AIMD window for a
+/// well-parallelised service; ≈ 1 for a single chained pagination stream (the
+/// sequential-pole signal). `None` when the span or latency total is unavailable.
+fn achieved_concurrency(service_stats: Option<&Value>, wall_span_secs: i64) -> Option<f64> {
+    if wall_span_secs <= 0 {
+        return None;
+    }
+    let latency_ms = u64_field(service_stats?, "http_latency_sum_ms");
+    if latency_ms == 0 {
+        return None;
+    }
+    Some((latency_ms as f64 / 1000.0) / wall_span_secs as f64)
 }
 
 pub fn print_stats_section(
@@ -541,17 +625,33 @@ pub fn print_stats_section(
         };
         let mut rows: Vec<Row> = Vec::new();
         for (mean, api) in by_latency.iter().take(limit_l) {
+            // Success-only mean (2xx round-trips): the all-response mean folds in
+            // fast 429/error turnarounds, so a throttled endpoint reads faster
+            // than it serves. "—" on archives predating the ok-split counters.
+            let ok_count = u64_field(api, "http_latency_ok_count");
+            let ok_mean = if ok_count > 0 {
+                format!("{} ms", u64_field(api, "http_latency_ok_sum_ms") / ok_count)
+            } else {
+                "—".to_string()
+            };
             rows.push(Row::Cells(vec![
                 api_label(api),
                 format!("{mean} ms"),
+                ok_mean,
                 format!("{} ms", u64_field(api, "http_latency_max_ms")),
                 u64_field(api, "http_latency_count").to_string(),
             ]));
         }
         render_table(
             "  ",
-            &["API", "mean", "max", "calls"],
-            &[Align::Left, Align::Right, Align::Right, Align::Right],
+            &["API", "mean", "2xx mean", "max", "calls"],
+            &[
+                Align::Left,
+                Align::Right,
+                Align::Right,
+                Align::Right,
+                Align::Right,
+            ],
             &rows,
             out,
         );
@@ -572,6 +672,10 @@ pub fn print_stats_section(
     out.push(section_line("LATENCY & RETRY-AFTER BY SERVICE", None));
     out.push(String::new());
 
+    // Transport-failure rows are collected alongside the latency rows but
+    // rendered in their own section below, which must keep its header even when
+    // there is nothing to show (every section header always renders).
+    let mut net_rows: Vec<Row> = Vec::new();
     match services_map {
         None => out.push(format!("{}(no per-service stats recorded)", INDENT)),
         Some(map) => {
@@ -594,6 +698,13 @@ pub fn print_stats_section(
                 } else {
                     ("—".to_string(), "—".to_string())
                 };
+                // Success-only mean — see the per-API table for why the split matters.
+                let ok_count = u64_field(v, "http_latency_ok_count");
+                let ok_mean = if ok_count > 0 {
+                    format!("{} ms", u64_field(v, "http_latency_ok_sum_ms") / ok_count)
+                } else {
+                    "—".to_string()
+                };
                 let server = u64_field(v, "retry_after_server_count");
                 let default = u64_field(v, "retry_after_default_count");
                 let ra = if server + default > 0 {
@@ -604,20 +715,74 @@ pub fn print_stats_section(
                 } else {
                     "—".to_string()
                 };
-                rows.push(Row::Cells(vec![svc.clone(), mean, max, ra]));
+                rows.push(Row::Cells(vec![svc.clone(), mean, ok_mean, max, ra]));
+
+                // Transport-failure breakdown + transient-retry backoff cost. Only
+                // services that actually failed earn a row; archives predating the
+                // counters report all-zero and are skipped the same way.
+                let timeouts = u64_field(v, "network_timeout_errors");
+                let connects = u64_field(v, "network_connect_errors");
+                let others = u64_field(v, "network_other_errors");
+                let backoff_ms = u64_field(v, "backoff_wait_ms_total");
+                if timeouts + connects + others > 0 || backoff_ms > 0 {
+                    net_rows.push(Row::Cells(vec![
+                        svc.clone(),
+                        timeouts.to_string(),
+                        connects.to_string(),
+                        others.to_string(),
+                        format!("{} s", backoff_ms / 1000),
+                    ]));
+                }
             }
             if rows.is_empty() {
                 out.push(format!("{}(no matching service)", INDENT));
             } else {
                 render_table(
                     "  ",
-                    &["Service", "lat. mean", "lat. max", "Retry-After srv/def"],
-                    &[Align::Left, Align::Right, Align::Right, Align::Right],
+                    &[
+                        "Service",
+                        "lat. mean",
+                        "2xx mean",
+                        "lat. max",
+                        "Retry-After srv/def",
+                    ],
+                    &[
+                        Align::Left,
+                        Align::Right,
+                        Align::Right,
+                        Align::Right,
+                        Align::Right,
+                    ],
                     &rows,
                     out,
                 );
             }
         }
+    }
+
+    // Network reliability: where transport failures concentrated and what they
+    // cost in backoff sleep. Timeout-dominated ⇒ size `httpTimeoutSeconds`;
+    // connect-dominated ⇒ proxy/firewall trouble. Archives predating the
+    // counters report all-zero and show the empty fallback.
+    out.push(String::new());
+    out.push(section_line("NETWORK ERRORS & BACKOFF BY SERVICE", None));
+    out.push(String::new());
+    if net_rows.is_empty() {
+        out.push(format!("{}(no transport failures recorded)", INDENT));
+    } else {
+        render_table(
+            "  ",
+            &["Service", "timeouts", "connect", "other", "backoff slept"],
+            &[
+                Align::Left,
+                Align::Right,
+                Align::Right,
+                Align::Right,
+                Align::Right,
+            ],
+            &net_rows,
+            out,
+        );
     }
 
     // Request shape / amplification: how schema endpoints turn into HTTP traffic.
@@ -678,9 +843,10 @@ pub fn print_stats_section(
         }
     }
 
-    // Per-service batch fill: how full the up-to-20-per-envelope batches packed.
-    // avg fill = batch_subrequests_total / http_batch_calls. Well below 20 means
-    // a small dispatch frontier or the Graph v1.0/beta envelope split.
+    // Per-service batch fill: how full the batches packed (per-service cap: 20
+    // for Graph/ARM envelopes, 10 for Exchange). avg fill =
+    // batch_subrequests_total / http_batch_calls. Well below the cap means a
+    // small dispatch frontier or the Graph v1.0/beta envelope split.
     out.push(String::new());
     out.push(section_line("BATCH FILL BY SERVICE", None));
     out.push(String::new());
@@ -795,6 +961,148 @@ pub fn print_stats_section(
                 } else {
                     out.push(line);
                 }
+            }
+        }
+    }
+
+    // API yield: requests (stats.json) joined with objects written
+    // (metadata.json). A high-volume, low-yield endpoint is a request-reduction
+    // target ($expand, relationship pruning, a tenant-state breaker). `empty`
+    // counts 2xx responses that returned no objects. Both default to absent on
+    // archives predating this telemetry.
+    out.push(String::new());
+    out.push(section_line("API YIELD (objects / request)", None));
+    out.push(String::new());
+
+    let table_counts = table_object_counts(metadata);
+    let mut yield_rows: Vec<(u64, u64, u64, &Value)> = filtered_apis
+        .iter()
+        .filter_map(|a| {
+            let requests = u64_field(a, "requests_sent");
+            if requests == 0 {
+                return None;
+            }
+            let svc = str_field(a, "service")?;
+            let api = str_field(a, "api")?;
+            let objects = table_counts
+                .get(&format!("{svc}_{api}"))
+                .copied()
+                .unwrap_or(0);
+            // Only low-yield endpoints (fewer objects than requests) are wasteful.
+            if objects >= requests {
+                return None;
+            }
+            Some((requests, objects, u64_field(a, "empty_responses"), a))
+        })
+        .collect();
+    yield_rows.sort_by_key(|r| std::cmp::Reverse(r.0));
+
+    if yield_rows.is_empty() {
+        out.push(format!("{}(no low-yield API recorded)", INDENT));
+    } else {
+        let limit_y = if all {
+            yield_rows.len()
+        } else {
+            top.min(yield_rows.len())
+        };
+        let mut rows: Vec<Row> = Vec::new();
+        for (requests, objects, empty, api) in yield_rows.iter().take(limit_y) {
+            let ratio = *objects as f64 / *requests as f64;
+            rows.push(Row::Cells(vec![
+                api_label(api),
+                requests.to_string(),
+                objects.to_string(),
+                format!("{ratio:.2}"),
+                empty.to_string(),
+            ]));
+        }
+        render_table(
+            "  ",
+            &["API", "requests", "objects", "obj/req", "empty"],
+            &[
+                Align::Left,
+                Align::Right,
+                Align::Right,
+                Align::Right,
+                Align::Right,
+            ],
+            &rows,
+            out,
+        );
+        if !all && yield_rows.len() > limit_y {
+            out.push(format!(
+                "{}{} {} more APIs (use --all to see them)",
+                INDENT,
+                ellipsis(),
+                yield_rows.len() - limit_y
+            ));
+        }
+    }
+
+    // Achieved concurrency vs the service window. Achieved = time spent in HTTP
+    // round-trips / service wall span; far below the window means the service ran
+    // mostly sequentially. When so, the SEQUENTIAL POLE line names the paginated
+    // endpoint responsible (one chained nextLink occupies a single slot however
+    // large the window).
+    out.push(String::new());
+    out.push(section_line("ACHIEVED CONCURRENCY BY SERVICE", None));
+    out.push(String::new());
+
+    let mut svcs: Vec<&str> = filtered_apis
+        .iter()
+        .filter_map(|a| str_field(a, "service"))
+        .collect();
+    svcs.sort_unstable();
+    svcs.dedup();
+
+    if svcs.is_empty() {
+        out.push(format!("{}(no service activity recorded)", INDENT));
+    } else {
+        for svc in svcs {
+            let window = effective_max_window(svc, config);
+            let span = service_wall_span_secs(&apis, svc);
+            let svc_stats = services_map.and_then(|m| m.get(svc));
+            let achieved = span.and_then(|s| achieved_concurrency(svc_stats, s));
+            // A clearly sequential service (achieved ≈ 1) with a paginated pole
+            // covering most of its active time is the under-used-window case.
+            let pole = match (achieved, span) {
+                (Some(a), Some(total)) if a < 2.0 && total > 0 => filtered_apis
+                    .iter()
+                    .filter(|api| {
+                        str_field(api, "service") == Some(svc)
+                            && u64_field(api, "pages_followed") >= 1
+                    })
+                    .filter_map(|api| api_activity_seconds(api).map(|s| (api, s)))
+                    .max_by_key(|(_, s)| *s)
+                    .filter(|(_, pole_span)| pole_span * 2 >= total),
+                _ => None,
+            };
+            let achieved_disp = achieved
+                .map(|x| format!("{x:.1}"))
+                .unwrap_or_else(|| "—".to_string());
+            let span_disp = span.map(fmt_duration).unwrap_or_else(|| "—".to_string());
+            let line = format!(
+                "  {:<12} achieved {:>5} / window {:<4} (active {})",
+                svc, achieved_disp, window, span_disp
+            );
+            if pole.is_some() {
+                out.push(warn_text(&line));
+            } else {
+                out.push(line);
+            }
+            if let (Some((pole_api, pole_span)), Some(total)) = (pole, span)
+                && total > 0
+            {
+                let pct = (pole_span * 100 / total).min(100);
+                out.push(format!(
+                    "{}{} sequential pole: {} — {} pages over {} ({}% of service active time)",
+                    INDENT,
+                    branch_glyph(),
+                    api_label(pole_api),
+                    u64_field(pole_api, "pages_followed"),
+                    fmt_duration(pole_span),
+                    pct
+                ));
             }
         }
     }

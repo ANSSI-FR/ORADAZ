@@ -14,10 +14,12 @@
 //!    whose values differ between the two collections.
 
 use super::{
-    Align, INDENT, Row, delta_header, dim, ellipsis, format_thousands, render_table, section_line,
-    transition_arrow, u64_field, verdict_badge,
+    Align, INDENT, Row, TUNING_DEFAULTS, delta_header, dim, ellipsis, format_thousands,
+    render_table, section_line, transition_arrow, u64_field, verdict_badge,
 };
-use crate::inspect::analysis::{ServiceObjects, compute_verdict, objects_per_service};
+use crate::inspect::analysis::{
+    ServiceObjects, compute_verdict, has_lost_data, objects_per_service,
+};
 use crate::inspect::loader::LogSource;
 use crate::utils::ui::{UiMode, mode, warn_text};
 
@@ -63,7 +65,12 @@ fn source_summary_line(src: &LogSource) -> String {
         .as_ref()
         .and_then(|m| m.get("collection_date").and_then(|v| v.as_str()))
         .unwrap_or("?");
-    let verdict = compute_verdict(src.metadata.as_ref(), src.stats.as_ref(), src.is_broken);
+    let verdict = compute_verdict(
+        src.metadata.as_ref(),
+        src.stats.as_ref(),
+        src.is_broken,
+        has_lost_data(&src.dump_errors),
+    );
     let duration = src
         .metadata
         .as_ref()
@@ -99,8 +106,8 @@ fn print_quality_deltas(a: &LogSource, b: &LogSource, out: &mut Vec<String>) {
         ),
         DeltaRow::counter(
             "Expected errors",
-            metadata_u64(a, "expected_errors"),
-            metadata_u64(b, "expected_errors"),
+            expected_count(a),
+            expected_count(b),
             Direction::Neutral,
         ),
         DeltaRow::counter(
@@ -144,6 +151,29 @@ fn print_quality_deltas(a: &LogSource, b: &LogSource, out: &mut Vec<String>) {
             network_count(a),
             network_count(b),
             Direction::IncreaseIsBad,
+        ),
+        DeltaRow::counter(
+            // Lost-data abandonments (the PARTIAL-verdict counter); 0 on
+            // archives predating the field.
+            "Lost data (abandoned)",
+            metadata_u64(a, "lost_data_errors"),
+            metadata_u64(b, "lost_data_errors"),
+            Direction::IncreaseIsBad,
+        ),
+        DeltaRow::counter(
+            "Stall watchdog fires",
+            metadata_u64(a, "stall_events"),
+            metadata_u64(b, "stall_events"),
+            Direction::IncreaseIsBad,
+        ),
+        DeltaRow::counter(
+            // URLs skipped by the expected-error breaker: a *reduction* signal
+            // (round-trips saved on declared-benign failures), not a loss —
+            // neither direction is bad.
+            "Breaker-skipped URLs",
+            metadata_map_sum(a, "breaker_skipped_by_api"),
+            metadata_map_sum(b, "breaker_skipped_by_api"),
+            Direction::Neutral,
         ),
         DeltaRow::counter(
             "Authentication errors",
@@ -386,23 +416,9 @@ fn print_config_changes(a: &LogSource, b: &LogSource, out: &mut Vec<String>) {
         }
     }
 
-    // Performance-tuning numeric fields.
-    let numeric = &[
-        "concurrency_min_window",
-        "concurrency_max_window",
-        "default_retry_after_seconds",
-        "http_timeout_seconds",
-        "http_connect_timeout_seconds",
-        "dispatch_burst_cap",
-        "url_retry_limit",
-        "rate_limit_retry_limit",
-        "rate_limit_max_wait_secs",
-        "stall_detection_timeout",
-        "prereq_recheck_cache_secs",
-        "retry_backoff_base_ms",
-        "retry_backoff_cap_ms",
-    ];
-    for field in numeric {
+    // Performance-tuning numeric fields, driven by `TUNING_DEFAULTS` so the set
+    // can never drift from the inspect `config` view's tuning table.
+    for &(field, _) in TUNING_DEFAULTS {
         let av = ca.and_then(|c| c.get(field).and_then(|v| v.as_u64()));
         let bv = cb.and_then(|c| c.get(field).and_then(|v| v.as_u64()));
         if av != bv {
@@ -516,6 +532,16 @@ fn unexpected_count(src: &LogSource) -> u64 {
         .unwrap_or_else(|| stats_sum(src, "unexpected_errors"))
 }
 
+/// Same metadata-with-stats-fallback shape as [`unexpected_count`]: prefer the
+/// exact `expected_errors` metadata counter, summing `stats.apis[].expected_errors`
+/// for older archives that predate that metadata field.
+fn expected_count(src: &LogSource) -> u64 {
+    src.metadata
+        .as_ref()
+        .and_then(|m| m.get("expected_errors").and_then(|v| v.as_u64()))
+        .unwrap_or_else(|| stats_sum(src, "expected_errors"))
+}
+
 /// Same fallback caveat as [`unexpected_count`] — the per-service
 /// `http_call_failures` (avoids double-counting batched failures) is used
 /// when available, with a `stats.apis[].network_errors` sum otherwise.
@@ -543,6 +569,16 @@ fn metadata_u64(src: &LogSource, key: &str) -> u64 {
     src.metadata
         .as_ref()
         .and_then(|m| m.get(key).and_then(|v| v.as_u64()))
+        .unwrap_or(0)
+}
+
+/// Sum of the values of a metadata map field (e.g. `breaker_skipped_by_api`);
+/// 0 when the field is absent (older archives) or not a map.
+fn metadata_map_sum(src: &LogSource, key: &str) -> u64 {
+    src.metadata
+        .as_ref()
+        .and_then(|m| m.get(key).and_then(|v| v.as_object()))
+        .map(|map| map.values().filter_map(|v| v.as_u64()).sum())
         .unwrap_or(0)
 }
 

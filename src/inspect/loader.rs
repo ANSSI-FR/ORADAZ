@@ -27,6 +27,55 @@ pub(crate) fn parse_dump_errors_jsonl(text: &str) -> (Vec<DumpError>, usize) {
     (errors, dropped)
 }
 
+/// Whether a subcommand needs the (expensive) `oradaz.log` entry. In an
+/// encrypted MLA archive the log is `start_entry`'d first and appended on every
+/// API call, so its bytes are fragmented across the whole archive: reading it
+/// re-decodes nearly every compression block (orders of magnitude slower than
+/// any single contiguous entry). Most subcommands never render it, so they ask
+/// for `Never` and skip that cost entirely.
+#[derive(Clone, Copy)]
+pub enum LogNeed {
+    /// Subcommand never reads `log_text` (config/metadata/stats/services/compare).
+    Never,
+    /// Subcommand always parses the log (logs/timeline).
+    Always,
+    /// Subcommand quotes the last log lines only on a failed run — read the log
+    /// iff the archive is broken or recorded authentication errors
+    /// (summary/hints). A strict superset of their display-time condition.
+    OnFailure,
+}
+
+/// Which of the two expensive entries a subcommand consumes. The four small JSON
+/// entries (metadata/config/prerequisites/stats) are always read — they are
+/// single-write, contiguous, and cost a few milliseconds each.
+#[derive(Clone, Copy)]
+pub struct ArchiveNeeds {
+    /// Read + parse `errors.json` (`dump_errors`). Needed by everything that
+    /// aggregates errors or computes the lost-data verdict.
+    pub errors: bool,
+    /// Whether/when to read `oradaz.log`.
+    pub log: LogNeed,
+}
+
+/// Resolve a [`LogNeed`] against what is known once the (cheap) metadata is in
+/// hand. `OnFailure` mirrors the summary/hints display gate
+/// (`is_broken || auth_errors > 0`) as a superset, so the log is always present
+/// when a renderer might quote it.
+pub(crate) fn resolve_log_need(need: LogNeed, is_broken: bool, metadata: Option<&Value>) -> bool {
+    match need {
+        LogNeed::Never => false,
+        LogNeed::Always => true,
+        LogNeed::OnFailure => {
+            is_broken
+                || metadata
+                    .and_then(|m| m.get("auth_errors"))
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0)
+                    > 0
+        }
+    }
+}
+
 /// All data extracted from a log source (plain file, folder, or MLA archive).
 pub struct LogSource {
     pub log_text: String,
@@ -77,35 +126,6 @@ fn file_size_bytes(path: &Path) -> Option<u64> {
     std::fs::metadata(path).ok().map(|m| m.len())
 }
 
-/// Load an MLA archive, printing a reading banner. Exits on error.
-pub fn load_mla(path: &str, key: &str) -> mla_reader::ArchiveContents {
-    let p = Path::new(path);
-    let is_archive = matches!(
-        p.extension().and_then(|e| e.to_str()),
-        Some("mla") | Some("broken")
-    );
-    if !is_archive {
-        eprintln!(
-            "This command requires an MLA archive (.mla/.broken), got: {}",
-            path
-        );
-        std::process::exit(1);
-    }
-    let filename = p
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .into_owned();
-    eprintln!("Reading {} ... (decrypting)", filename);
-    match mla_reader::read_archive(path, key) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Failed to read archive: {}", e);
-            std::process::exit(1);
-        }
-    }
-}
-
 fn read_text_file(dir: &Path, name: &str) -> Option<String> {
     let path = dir.join(name);
     let mut f = File::open(&path).ok()?;
@@ -120,7 +140,14 @@ fn read_json_file(dir: &Path, name: &str) -> Option<Value> {
 }
 
 /// Load log text and associated dump data from a file, folder, or MLA archive.
-pub fn load_log_source(path: &str, key: Option<&str>) -> LogSource {
+///
+/// `needs` declares which expensive entries the calling subcommand actually
+/// renders, so the loader can skip the fragmented `oradaz.log` (and, when
+/// unused, `errors.json`) for commands that never touch them. Skipped entries
+/// surface as an empty `log_text` / `dump_errors` — identical to the existing
+/// "entry absent" fallback — so output is unchanged for any subcommand that
+/// does not read them.
+pub fn load_log_source(path: &str, key: Option<&str>, needs: &ArchiveNeeds) -> LogSource {
     let p = Path::new(path);
 
     if p.is_dir() {
@@ -130,23 +157,32 @@ pub fn load_log_source(path: &str, key: Option<&str>) -> LogSource {
             .to_string_lossy()
             .into_owned();
         eprint!("Reading {} ... ", folder_name);
-        let log_text = read_text_file(p, "oradaz.log").unwrap_or_default();
         let metadata = read_json_file(p, "metadata.json");
         let config = read_json_file(p, "config.json");
         let prerequisites = read_json_file(p, "prerequisites.json");
         let stats = read_json_file(p, "stats.json");
+        // A `.broken` marker file signals an interrupted/failed folder-mode
+        // collection (the `.mla` archive uses the `.broken` extension; a folder
+        // has none — see `writer::file::FileWriter::mark_broken`).
+        let is_broken = p.join(".broken").exists();
+        // Honour `needs` even in folder mode (reads are cheap here) so the
+        // `LogSource` carries the same fields populated as archive mode.
+        let log_text = if resolve_log_need(needs.log, is_broken, metadata.as_ref()) {
+            read_text_file(p, "oradaz.log").unwrap_or_default()
+        } else {
+            String::new()
+        };
         // `errors.json` is written to the folder root by `FileWriter::write_file`
         // when `outputFiles=true`; parse it as JSONL (one DumpError per line),
         // tolerating blank lines and malformed entries. Without this, `inspect
         // logs --full --folder` would silently render no response bodies even
         // when the data is on disk.
-        let (dump_errors, dropped_error_lines) =
-            parse_dump_errors_jsonl(&read_text_file(p, "errors.json").unwrap_or_default());
+        let (dump_errors, dropped_error_lines) = if needs.errors {
+            parse_dump_errors_jsonl(&read_text_file(p, "errors.json").unwrap_or_default())
+        } else {
+            (Vec::new(), 0)
+        };
         let size_bytes = Some(dir_size_bytes(p));
-        // A `.broken` marker file signals an interrupted/failed folder-mode
-        // collection (the `.mla` archive uses the `.broken` extension; a folder
-        // has none — see `writer::file::FileWriter::mark_broken`).
-        let is_broken = p.join(".broken").exists();
         eprintln!("done");
         if dropped_error_lines > 0 {
             eprintln!(
@@ -187,7 +223,7 @@ pub fn load_log_source(path: &str, key: Option<&str>) -> LogSource {
             }
         };
         eprintln!("Reading {} ... (decrypting)", filename);
-        match mla_reader::read_archive(path, key_path) {
+        match mla_reader::read_archive(path, key_path, needs, is_broken) {
             Ok(c) => LogSource {
                 log_text: c.log,
                 dump_errors: c.errors,
@@ -221,11 +257,16 @@ pub fn load_log_source(path: &str, key: Option<&str>) -> LogSource {
         eprintln!("done");
         // Try to load errors.json from the same directory as the plain log file
         // so that `inspect logs --full` can display response bodies.
-        let dump_errors = p
+        let (dump_errors, dropped_error_lines) = p
             .parent()
             .and_then(|dir| std::fs::read_to_string(dir.join("errors.json")).ok())
-            .map(|text| parse_dump_errors_jsonl(&text).0)
+            .map(|text| parse_dump_errors_jsonl(&text))
             .unwrap_or_default();
+        if dropped_error_lines > 0 {
+            eprintln!(
+                "  warning: {dropped_error_lines} unparseable line(s) in errors.json were skipped (truncated or interrupted collection?)"
+            );
+        }
         LogSource {
             log_text: text,
             dump_errors,
@@ -242,7 +283,31 @@ pub fn load_log_source(path: &str, key: Option<&str>) -> LogSource {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_dump_errors_jsonl;
+    use super::{LogNeed, parse_dump_errors_jsonl, resolve_log_need};
+
+    use serde_json::json;
+
+    #[test]
+    fn resolve_log_need_truth_table() {
+        let healthy = json!({"auth_errors": 0});
+        let with_auth = json!({"auth_errors": 2});
+
+        // Never / Always ignore the run state entirely.
+        assert!(!resolve_log_need(LogNeed::Never, true, Some(&with_auth)));
+        assert!(resolve_log_need(LogNeed::Always, false, Some(&healthy)));
+
+        // OnFailure: read only when broken or auth_errors > 0.
+        assert!(!resolve_log_need(LogNeed::OnFailure, false, Some(&healthy)));
+        assert!(resolve_log_need(LogNeed::OnFailure, true, Some(&healthy)));
+        assert!(resolve_log_need(
+            LogNeed::OnFailure,
+            false,
+            Some(&with_auth)
+        ));
+        // Missing metadata → treated as zero auth_errors (only `is_broken` counts).
+        assert!(!resolve_log_need(LogNeed::OnFailure, false, None));
+        assert!(resolve_log_need(LogNeed::OnFailure, true, None));
+    }
 
     #[test]
     fn parses_valid_lines_and_counts_unparseable_ones() {

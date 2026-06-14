@@ -6,6 +6,7 @@ use crate::collect::dump::request::{
     BackoffGuard, RETRY_COUNT, RequestExecutionContext, compute_backoff_ms,
 };
 use crate::collect::dump::response::{DumpError, Response, ResponseContent, ResponseMsg};
+use crate::utils::stats::NetworkErrorKind;
 use crate::utils::url::{ApiCall, Url};
 
 use log::{debug, trace, warn};
@@ -73,6 +74,9 @@ impl RequestsThread {
         );
         tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
         RETRY_COUNT.fetch_add(1, Ordering::Relaxed);
+        self.context
+            .stats
+            .record_backoff_wait(&self.api_call.url.service_name, backoff_ms);
         // One HTTP call failed; record it once at the service level for the
         // summary line. The per-API counter below attributes the failure to
         // every sub-URL carried by a failed batch, which is the right
@@ -115,16 +119,47 @@ impl RequestsThread {
                 continue;
             }
             url.network_retry_number += 1;
+            // Network retries are tracked by `record_network_error` alone; they
+            // must not feed `retries_real`, which counts real-error (4xx/5xx)
+            // retries used to distinguish server errors from transport trouble.
             self.context
                 .stats
                 .record_network_error(&url.service_name, &url.api);
-            self.context.stats.record_retry(&url.service_name, &url.api);
             requeue.push(url);
         }
         self.send_to_update(CoordinatorEvent::RequestCompleted {
             service: Arc::from(self.api_call.url.service_name.as_str()),
             id: self.api_call.id,
             new_urls: requeue,
+            count: 1,
+        })
+        .await;
+    }
+
+    /// Re-queue after a *permanent* request-construction failure (a malformed URL
+    /// such as a corrupt `nextLink`, or an exhausted redirect policy). Retrying
+    /// cannot help, so this consumes the real-error `retry_number` budget
+    /// (`urlRetryLimit`) — the URL is abandoned as `UrlRetryLimit` at dispatch
+    /// after a few attempts, rather than retried on the transport path for the
+    /// full liveness ceiling. Backoff grows with `retry_number` to avoid a hot
+    /// loop on the few attempts before exhaustion.
+    async fn finalize_real_error_retry(&self, mut url: Url) {
+        let backoff_ms = compute_backoff_ms(url.retry_number);
+        let _backoff_guard = BackoffGuard::enter(); // dec BACKOFF_ACTIVE on drop
+        tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+        RETRY_COUNT.fetch_add(1, Ordering::Relaxed);
+        self.context
+            .stats
+            .record_backoff_wait(&self.api_call.url.service_name, backoff_ms);
+        self.context
+            .stats
+            .record_http_call_failure(&self.api_call.url.service_name);
+        url.retry_number += 1;
+        self.context.stats.record_retry(&url.service_name, &url.api);
+        self.send_to_update(CoordinatorEvent::RequestCompleted {
+            service: Arc::from(self.api_call.url.service_name.as_str()),
+            id: self.api_call.id,
+            new_urls: vec![url],
             count: 1,
         })
         .await;
@@ -180,10 +215,26 @@ impl RequestsThread {
         };
 
         // Wait out any 429 cooldown while holding the slot (see the method's
-        // doc and the order rationale above).
+        // doc and the order rationale above). The wait also honours the
+        // per-bucket escalated pacing of every API this call is about to hit
+        // (the call's own API for a single, the distinct sub-request APIs for
+        // a batch).
+        let bucket_apis: Vec<&str> = match &self.api_call.batch_data {
+            Some(batch_data) => {
+                let mut apis: Vec<&str> = batch_data
+                    .initial_data
+                    .values()
+                    .map(|a| a.url.api.as_str())
+                    .collect();
+                apis.sort_unstable();
+                apis.dedup();
+                apis
+            }
+            None => vec![self.api_call.url.api.as_str()],
+        };
         self.context
             .ratelimit_manager
-            .wait_if_needed(&self.api_call.url.service_name)
+            .wait_if_needed(&self.api_call.url.service_name, &bucket_apis)
             .await;
         trace!(
             "{:FL$}Rate limit wait finished for request [ID: {}]",
@@ -244,39 +295,79 @@ impl RequestsThread {
                 .await
                 {
                     Err(executor::ExecutorError::Request(err)) => {
-                        if err.is_timeout() {
-                            debug!(
-                                "{:FL$}Timeout for request [ID: {}] to url {:?}, retrying.",
-                                "RequestsThread", self.api_call.id, &self.api_call.url.url
-                            );
-                        } else if err.is_connect() {
-                            debug!(
-                                "{:FL$}Network error for request [ID: {}] to url {:?}, retrying.",
-                                "RequestsThread", self.api_call.id, &self.api_call.url.url
-                            );
-                        } else {
-                            // Reached only when the error is neither a timeout nor a
-                            // connect error (both handled above), so the kind is
-                            // always "Other"; the full error is logged at debug.
+                        if err.is_builder() || err.is_redirect() {
+                            // A malformed request (e.g. a corrupt nextLink URL or an
+                            // invalid header) or an exhausted redirect policy cannot
+                            // succeed on retry — route it through the real-error
+                            // budget so it is abandoned as UrlRetryLimit after a few
+                            // attempts, not retried on the transport path until the
+                            // liveness ceiling.
                             warn!(
-                                "{:FL$}Error performing request [ID: {}] to url {:?}, retrying. kind=Other",
-                                "RequestsThread", self.api_call.id, &self.api_call.url.url
+                                "{:FL$}Permanent request error for [ID: {}] to url {:?} (kind={}), retrying as a real error.",
+                                "RequestsThread",
+                                self.api_call.id,
+                                &self.api_call.url.url,
+                                if err.is_builder() {
+                                    "builder"
+                                } else {
+                                    "redirect"
+                                }
                             );
                             debug!(
                                 "{:FL$}Request error [ID: {}] for url {:?}: {:?}",
                                 "RequestsThread", self.api_call.id, &self.api_call.url.url, err
                             );
+                            self.finalize_real_error_retry(self.api_call.url.clone())
+                                .await;
+                        } else {
+                            if err.is_timeout() {
+                                debug!(
+                                    "{:FL$}Timeout for request [ID: {}] to url {:?}, retrying.",
+                                    "RequestsThread", self.api_call.id, &self.api_call.url.url
+                                );
+                                self.context.stats.record_network_error_kind(
+                                    &self.api_call.url.service_name,
+                                    NetworkErrorKind::Timeout,
+                                );
+                            } else if err.is_connect() {
+                                debug!(
+                                    "{:FL$}Network error for request [ID: {}] to url {:?}, retrying.",
+                                    "RequestsThread", self.api_call.id, &self.api_call.url.url
+                                );
+                                self.context.stats.record_network_error_kind(
+                                    &self.api_call.url.service_name,
+                                    NetworkErrorKind::Connect,
+                                );
+                            } else {
+                                // Reached only when the error is neither a timeout nor a
+                                // connect error (both handled above), so the kind is
+                                // always "Other"; the full error is logged at debug.
+                                warn!(
+                                    "{:FL$}Error performing request [ID: {}] to url {:?}, retrying. kind=Other",
+                                    "RequestsThread", self.api_call.id, &self.api_call.url.url
+                                );
+                                debug!(
+                                    "{:FL$}Request error [ID: {}] for url {:?}: {:?}",
+                                    "RequestsThread", self.api_call.id, &self.api_call.url.url, err
+                                );
+                                self.context.stats.record_network_error_kind(
+                                    &self.api_call.url.service_name,
+                                    NetworkErrorKind::Other,
+                                );
+                            }
+                            self.finalize_retry(vec![self.api_call.url.clone()]).await;
                         }
-                        self.finalize_retry(vec![self.api_call.url.clone()]).await;
                     }
                     Ok(res) => {
                         // Per-API + service HTTP latency (single call: the URL maps
                         // to exactly one API). Recorded for every completed response
-                        // regardless of status — latency is a transport property.
+                        // regardless of status — latency is a transport property;
+                        // the status additionally feeds the success-only trio.
                         self.context.stats.record_http_latency(
                             &self.api_call.url.service_name,
                             Some(&self.api_call.url.api),
                             res.elapsed_ms,
+                            res.status,
                         );
                         // A non-JSON body keeps its HTTP status for routing, but a
                         // *success* status carries no parseable records — retry it
@@ -383,15 +474,32 @@ impl RequestsThread {
                 .await
                 {
                     Err(executor::ExecutorError::Request(err)) => {
+                        // Unlike the single-request path, no `is_builder()` /
+                        // `is_redirect()` routing to the real-error budget here:
+                        // a batch posts to a service-level `$batch` endpoint —
+                        // constant for Graph/ARM, and for Exchange the
+                        // well-formed `…/adminapi/<ver>/<tenant>` prefix of its
+                        // sub-URLs — so a malformed URL or redirect loop cannot
+                        // arise per-request. If that endpoint itself were
+                        // broken, every batch would fail identically and the
+                        // liveness ceiling still bounds the run.
                         if err.is_timeout() {
                             debug!(
                                 "{:FL$}Timeout for request [ID: {}] to url {:?}, retrying.",
                                 "RequestsThread", self.api_call.id, &self.api_call.url.url
                             );
+                            self.context.stats.record_network_error_kind(
+                                &self.api_call.url.service_name,
+                                NetworkErrorKind::Timeout,
+                            );
                         } else if err.is_connect() {
                             debug!(
                                 "{:FL$}Network error for request [ID: {}] to url {:?}, retrying.",
                                 "RequestsThread", self.api_call.id, &self.api_call.url.url
+                            );
+                            self.context.stats.record_network_error_kind(
+                                &self.api_call.url.service_name,
+                                NetworkErrorKind::Connect,
                             );
                         } else {
                             // Reached only when the error is neither a timeout nor a
@@ -405,17 +513,25 @@ impl RequestsThread {
                                 "{:FL$}Batch request error [ID: {}] for url {:?}: {:?}",
                                 "RequestsThread", self.api_call.id, &self.api_call.url.url, err
                             );
+                            self.context.stats.record_network_error_kind(
+                                &self.api_call.url.service_name,
+                                NetworkErrorKind::Other,
+                            );
                         }
                         self.finalize_retry(self.batch_sub_urls()).await;
                     }
                     Ok(res) => {
                         // Service-level HTTP latency only: a batch envelope carries
                         // one round-trip for up to 20 sub-URLs, so the latency cannot
-                        // be attributed to a single API.
+                        // be attributed to a single API. The envelope status feeds
+                        // the success-only trio (a 2xx envelope can still wrap
+                        // throttled sub-responses; sub-statuses are the response
+                        // module's concern).
                         self.context.stats.record_http_latency(
                             &self.api_call.url.service_name,
                             None,
                             res.elapsed_ms,
+                            res.status,
                         );
                         // Non-JSON batch wrapper: a *success* status has no parseable
                         // sub-responses — retry the sub-URLs instead of writing

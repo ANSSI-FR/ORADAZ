@@ -1,6 +1,6 @@
 {
-    "oradaz_version": "3.0.06.09",
-    "schema_version": "3.0.06.09",
+    "oradaz_version": "3.0.06.14",
+    "schema_version": "3.0.06.14",
     "services": [
         {
             "name": "graph",
@@ -40,6 +40,10 @@
                     ]
                 },
                 {
+                    "name": "adminConsentRequestPolicy",
+                    "uri": "policies/adminConsentRequestPolicy"
+                },
+                {
                     "name": "administrativeUnits",
                     "uri": "directory/administrativeUnits",
                     "parameters": [
@@ -49,22 +53,6 @@
                         }
                     ],
                     "relationships": [
-                        {
-                            "name": "members",
-                            "uri": "directory/administrativeUnits/[1]/members",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999&$select=id,displayName"
-                                }
-                            ]
-                        },
                         {
                             "name": "scopedRoleMembers",
                             "uri": "directory/administrativeUnits/[1]/scopedRoleMembers",
@@ -84,8 +72,20 @@
                     ]
                 },
                 {
-                    "name": "adminConsentRequestPolicy",
-                    "uri": "policies/adminConsentRequestPolicy"
+                    "name": "administrativeUnits_members",
+                    "uri": "directory/administrativeUnits",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$select=id&$expand=members"
+                        }
+                    ],
+                    "api_behavior": {
+                        "expand_extract": "members",
+                        "expand_parent_key": "id",
+                        "expand_max": "20",
+                        "expand_project": "id,displayName"
+                    }
                 },
                 {
                     "name": "appConsentRequests",
@@ -98,66 +98,6 @@
                     ]
                 },
                 {
-                    "name": "applications",
-                    "uri": "applications",
-                    "parameters": [
-                        {
-                            "name": "[PARAMS]",
-                            "value": "?$top=999&$count=true"
-                        }
-                    ],
-                    "relationships": [
-                        {
-                            "name": "appManagementPolicies",
-                            "uri": "applications/[1]/appManagementPolicies",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "extensionProperties",
-                            "uri": "applications/[1]/extensionProperties",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "owners",
-                            "uri": "applications/[1]/owners",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999&$select=id,displayName"
-                                }
-                            ]
-                        }
-                    ]
-                },
-                {
                     "name": "appManagementPolicies",
                     "uri": "policies/appManagementPolicies",
                     "parameters": [
@@ -166,6 +106,62 @@
                             "value": "?$top=999&$select=id,displayName"
                         }
                     ]
+                },
+                {
+                    "name": "applications",
+                    "uri": "applications",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$count=true"
+                        }
+                    ]
+                },
+                {
+                    "name": "applications_appManagementPolicies",
+                    "uri": "applications",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$select=id&$expand=appManagementPolicies"
+                        }
+                    ],
+                    "api_behavior": {
+                        "expand_extract": "appManagementPolicies",
+                        "expand_parent_key": "id",
+                        "expand_max": "20"
+                    }
+                },
+                {
+                    "name": "applications_extensionProperties",
+                    "uri": "applications",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$select=id&$expand=extensionProperties"
+                        }
+                    ],
+                    "api_behavior": {
+                        "expand_extract": "extensionProperties",
+                        "expand_parent_key": "id",
+                        "expand_max": "20"
+                    }
+                },
+                {
+                    "name": "applications_owners",
+                    "uri": "applications",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$select=id&$expand=owners"
+                        }
+                    ],
+                    "api_behavior": {
+                        "expand_extract": "owners",
+                        "expand_parent_key": "id",
+                        "expand_max": "20",
+                        "expand_project": "id,displayName"
+                    }
                 },
                 {
                     "name": "authenticationFlowsPolicy",
@@ -249,6 +245,10 @@
                     ]
                 },
                 {
+                    "name": "conditionalAccessAuthenticationContextClassReferences",
+                    "uri": "identity/conditionalAccess/authenticationContextClassReferences"
+                },
+                {
                     "name": "conditionalAccessPolicies",
                     "uri": "identity/conditionalAccess/policies",
                     "parameters": [
@@ -271,10 +271,6 @@
                             "value": "?$top=999&$count=true"
                         }
                     ]
-                },
-                {
-                    "name": "conditionalAccessAuthenticationContextClassReferences",
-                    "uri": "identity/conditionalAccess/authenticationContextClassReferences"
                 },
                 {
                     "name": "contacts",
@@ -346,6 +342,12 @@
                             "name": "[PARAMS]",
                             "value": "?$count=true&$top=999"
                         }
+                    ],
+                    "expected_error_codes": [
+                        {
+                            "status": 404,
+                            "code": "Directory_ObjectNotFound"
+                        }
                     ]
                 },
                 {
@@ -355,6 +357,12 @@
                         {
                             "name": "[PARAMS]",
                             "value": "?$count=true&$top=999"
+                        }
+                    ],
+                    "expected_error_codes": [
+                        {
+                            "status": 404,
+                            "code": "Directory_ObjectNotFound"
                         }
                     ]
                 },
@@ -366,15 +374,11 @@
                             "name": "[PARAMS]",
                             "value": "?$top=999&$count=true&$select=accountEnabled,alternativeNames,alternativeSecurityIds,approximateLastSignInDateTime,complianceExpirationDateTime,createdDateTime,deletedDateTime,deviceCategory,deviceId,deviceMetadata,deviceOwnership,deviceVersion,displayName,domainName,enrollmentProfileName,enrollmentType,extensionAttributes,externalSourceName,hostnames,id,isCompliant,isManaged,isManagementRestricted,isRooted,kind,managementType,manufacturer,mdmAppId,model,name,onPremisesLastSyncDateTime,onPremisesSecurityIdentifier,onPremisesSyncEnabled,operatingSystem,operatingSystemVersion,physicalIds,platform,profileType,registrationDateTime,sourceType,status,systemLabels,trustType"
                         }
-                    ]
-                },
-                {
-                    "name": "deleteditemsDirectoryRoles",
-                    "uri": "directory/deleteditems/microsoft.graph.directoryRole",
-                    "parameters": [
+                    ],
+                    "expected_error_codes": [
                         {
-                            "name": "[PARAMS]",
-                            "value": "?$count=true"
+                            "status": 404,
+                            "code": "Directory_ObjectNotFound"
                         }
                     ]
                 },
@@ -386,6 +390,28 @@
                             "name": "[PARAMS]",
                             "value": "?$count=true"
                         }
+                    ],
+                    "expected_error_codes": [
+                        {
+                            "status": 404,
+                            "code": "Directory_ObjectNotFound"
+                        }
+                    ]
+                },
+                {
+                    "name": "deleteditemsDirectoryRoles",
+                    "uri": "directory/deleteditems/microsoft.graph.directoryRole",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$count=true"
+                        }
+                    ],
+                    "expected_error_codes": [
+                        {
+                            "status": 404,
+                            "code": "Directory_ObjectNotFound"
+                        }
                     ]
                 },
                 {
@@ -396,6 +422,12 @@
                             "name": "[PARAMS]",
                             "value": "?$top=999&$count=true&$select=assignedLabels,assignedLicenses,classification,createdByAppId,createdDateTime,deletedDateTime,description,displayName,expirationDateTime,groupTypes,id,infoCatalogs,isAssignableToRole,licenseProcessingState,mail,mailEnabled,mailNickname,membershipRule,membershipRuleProcessingState,membershipRuleProcessingStatus,onPremisesDomainName,onPremisesLastSyncDateTime,onPremisesNetBiosName,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,preferredDataLocation,preferredLanguage,proxyAddresses,renewedDateTime,resourceBehaviorOptions,resourceProvisioningOptions,securityEnabled,securityIdentifier,theme,uniqueName,unseenConversationsCount,unseenMessagesCount,visibility"
                         }
+                    ],
+                    "expected_error_codes": [
+                        {
+                            "status": 404,
+                            "code": "Directory_ObjectNotFound"
+                        }
                     ]
                 },
                 {
@@ -405,6 +437,12 @@
                         {
                             "name": "[PARAMS]",
                             "value": "?$top=999&$count=true"
+                        }
+                    ],
+                    "expected_error_codes": [
+                        {
+                            "status": 404,
+                            "code": "Directory_ObjectNotFound"
                         }
                     ]
                 },
@@ -426,6 +464,12 @@
                                 "P1"
                             ]
                         }
+                    ],
+                    "expected_error_codes": [
+                        {
+                            "status": 404,
+                            "code": "Directory_ObjectNotFound"
+                        }
                     ]
                 },
                 {
@@ -439,40 +483,6 @@
                         {
                             "name": "[PARAMS]",
                             "value": "?$top=999&$count=true&$select=accountEnabled,alternativeNames,alternativeSecurityIds,approximateLastSignInDateTime,complianceExpirationDateTime,createdDateTime,deletedDateTime,deviceCategory,deviceId,deviceMetadata,deviceOwnership,deviceVersion,displayName,domainName,enrollmentProfileName,enrollmentType,extensionAttributes,externalSourceName,hostnames,id,isCompliant,isManaged,isManagementRestricted,isRooted,kind,managementType,manufacturer,mdmAppId,model,name,onPremisesLastSyncDateTime,onPremisesSecurityIdentifier,onPremisesSyncEnabled,operatingSystem,operatingSystemVersion,physicalIds,platform,profileType,registrationDateTime,sourceType,status,systemLabels,trustType"
-                        }
-                    ],
-                    "relationships": [
-                        {
-                            "name": "registeredOwners",
-                            "uri": "devices/[1]/registeredOwners",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999&$select=id,displayName"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "registeredUsers",
-                            "uri": "devices/[1]/registeredUsers",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999&$select=id,displayName"
-                                }
-                            ]
                         }
                     ]
                 },
@@ -489,6 +499,16 @@
                         {
                             "status": 403,
                             "code": "Authorization_RequestDenied"
+                        }
+                    ]
+                },
+                {
+                    "name": "directoryRoleTemplates",
+                    "uri": "directoryRoleTemplates",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$count=true"
                         }
                     ]
                 },
@@ -527,16 +547,6 @@
                                     "value": "id"
                                 }
                             ]
-                        }
-                    ]
-                },
-                {
-                    "name": "directoryRoleTemplates",
-                    "uri": "directoryRoleTemplates",
-                    "parameters": [
-                        {
-                            "name": "[PARAMS]",
-                            "value": "?$count=true"
                         }
                     ]
                 },
@@ -611,6 +621,10 @@
                     ]
                 },
                 {
+                    "name": "entitlementManagementRoleAssignments",
+                    "uri": "roleManagement/entitlementManagement/roleAssignments"
+                },
+                {
                     "name": "entitlementManagementRoleDefinitions",
                     "uri": "roleManagement/entitlementManagement/roleDefinitions",
                     "parameters": [
@@ -619,10 +633,6 @@
                             "value": "?$top=50"
                         }
                     ]
-                },
-                {
-                    "name": "entitlementManagementRoleAssignments",
-                    "uri": "roleManagement/entitlementManagement/roleAssignments"
                 },
                 {
                     "name": "externalIdentitiesPolicy",
@@ -671,6 +681,14 @@
                     ]
                 },
                 {
+                    "name": "groupSettingTemplates",
+                    "uri": "groupSettingTemplates"
+                },
+                {
+                    "name": "groupSettings",
+                    "uri": "groupSettings"
+                },
+                {
                     "name": "groups",
                     "uri": "groups",
                     "parameters": [
@@ -680,22 +698,6 @@
                         }
                     ],
                     "relationships": [
-                        {
-                            "name": "appRoleAssignments",
-                            "uri": "groups/[1]/appRoleAssignments",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999"
-                                }
-                            ]
-                        },
                         {
                             "name": "assignmentScheduleInstances",
                             "uri": "identityGovernance/privilegedAccess/group/assignmentScheduleInstances?$filter=groupId eq '[1]'",
@@ -777,40 +779,8 @@
                             ]
                         },
                         {
-                            "name": "memberOf",
-                            "uri": "groups/[1]/memberOf",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999&$select=id,displayName"
-                                }
-                            ]
-                        },
-                        {
                             "name": "members",
                             "uri": "groups/[1]/members",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999&$select=id,displayName"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "owners",
-                            "uri": "groups/[1]/owners",
                             "keys": [
                                 {
                                     "name": "[1]",
@@ -835,11 +805,18 @@
                                     "name": "[1]",
                                     "value": "id"
                                 }
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 403,
+                                    "code": "Forbidden",
+                                    "breaker_eligible": true
+                                }
                             ]
                         },
                         {
-                            "name": "roleManagementPolicyAssignments",
-                            "uri": "policies/roleManagementPolicyAssignments?$filter=scopeId eq '[1]' and scopeType eq 'Group'",
+                            "name": "roleManagementPolicies",
+                            "uri": "policies/roleManagementPolicies?$filter=scopeId eq '[1]' and scopeType eq 'Group'&$expand=rules",
                             "keys": [
                                 {
                                     "name": "[1]",
@@ -858,8 +835,8 @@
                             ]
                         },
                         {
-                            "name": "roleManagementPolicies",
-                            "uri": "policies/roleManagementPolicies?$filter=scopeId eq '[1]' and scopeType eq 'Group'&$expand=rules",
+                            "name": "roleManagementPolicyAssignments",
+                            "uri": "policies/roleManagementPolicyAssignments?$filter=scopeId eq '[1]' and scopeType eq 'Group'",
                             "keys": [
                                 {
                                     "name": "[1]",
@@ -906,12 +883,36 @@
                     ]
                 },
                 {
-                    "name": "groupSettings",
-                    "uri": "groupSettings"
+                    "name": "groups_memberOf",
+                    "uri": "groups",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$select=id&$expand=memberOf"
+                        }
+                    ],
+                    "api_behavior": {
+                        "expand_extract": "memberOf",
+                        "expand_parent_key": "id",
+                        "expand_max": "20",
+                        "expand_project": "id,displayName"
+                    }
                 },
                 {
-                    "name": "groupSettingTemplates",
-                    "uri": "groupSettingTemplates"
+                    "name": "groups_owners",
+                    "uri": "groups",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$select=id&$expand=owners"
+                        }
+                    ],
+                    "api_behavior": {
+                        "expand_extract": "owners",
+                        "expand_parent_key": "id",
+                        "expand_max": "20",
+                        "expand_project": "id,displayName"
+                    }
                 },
                 {
                     "name": "homeRealmDiscoveryPolicies",
@@ -1045,27 +1046,27 @@
                             "value": "?$top=999"
                         }
                     ],
-                    "relationships": [
+                    "conditions": [
+                        "Intune"
+                    ]
+                },
+                {
+                    "name": "intuneRoleDefinitions_roleAssignments",
+                    "uri": "deviceManagement/roleDefinitions",
+                    "parameters": [
                         {
-                            "name": "roleAssignments",
-                            "uri": "/deviceManagement/roleDefinitions/[1]/roleAssignments",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999"
-                                }
-                            ]
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$select=id&$expand=roleAssignments"
                         }
                     ],
                     "conditions": [
                         "Intune"
-                    ]
+                    ],
+                    "api_behavior": {
+                        "expand_extract": "roleAssignments",
+                        "expand_parent_key": "id",
+                        "expand_max": "20"
+                    }
                 },
                 {
                     "name": "intuneRoleScopeTags",
@@ -1242,20 +1243,61 @@
                     ]
                 },
                 {
-                    "name": "onPremisesPublishingProfiles_applicationProxy_publishedResources",
-                    "uri": "onPremisesPublishingProfiles/applicationProxy/publishedResources",
+                    "name": "onPremisesPublishingProfiles_applicationProxy_connectorGroups",
+                    "uri": "onPremisesPublishingProfiles/applicationProxy/connectorGroups",
                     "conditions": [
                         "HasApplicationProxy"
-                    ],
-                    "expected_error_codes": [
-                        {
-                            "status": 404
-                        }
                     ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
                             "value": "beta"
+                        }
+                    ],
+                    "relationships": [
+                        {
+                            "name": "applications",
+                            "uri": "onPremisesPublishingProfiles/applicationProxy/connectorGroups/[1]/applications",
+                            "expected_error_codes": [
+                                {
+                                    "status": 404,
+                                    "code": "ApplicationsForGroup_NotFound"
+                                }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "beta"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "members",
+                            "uri": "onPremisesPublishingProfiles/applicationProxy/connectorGroups/[1]/members",
+                            "expected_error_codes": [
+                                {
+                                    "status": 404,
+                                    "code": "ConnectorGroup_NotFound"
+                                }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "beta"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ]
                         }
                     ]
                 },
@@ -1291,61 +1333,20 @@
                     ]
                 },
                 {
-                    "name": "onPremisesPublishingProfiles_applicationProxy_connectorGroups",
-                    "uri": "onPremisesPublishingProfiles/applicationProxy/connectorGroups",
+                    "name": "onPremisesPublishingProfiles_applicationProxy_publishedResources",
+                    "uri": "onPremisesPublishingProfiles/applicationProxy/publishedResources",
                     "conditions": [
                         "HasApplicationProxy"
+                    ],
+                    "expected_error_codes": [
+                        {
+                            "status": 404
+                        }
                     ],
                     "parameters": [
                         {
                             "name": "[API_VERSION]",
                             "value": "beta"
-                        }
-                    ],
-                    "relationships": [
-                        {
-                            "name": "members",
-                            "uri": "onPremisesPublishingProfiles/applicationProxy/connectorGroups/[1]/members",
-                            "expected_error_codes": [
-                                {
-                                    "status": 404,
-                                    "code": "ConnectorGroup_NotFound"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "beta"
-                                }
-                            ],
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "applications",
-                            "uri": "onPremisesPublishingProfiles/applicationProxy/connectorGroups/[1]/applications",
-                            "expected_error_codes": [
-                                {
-                                    "status": 404,
-                                    "code": "ApplicationsForGroup_NotFound"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "beta"
-                                }
-                            ],
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ]
                         }
                     ]
                 },
@@ -1517,13 +1518,9 @@
                     ]
                 },
                 {
-                    "name": "permissionGrantPreApprovalPolicies",
-                    "uri": "policies/permissionGrantPreApprovalPolicies",
+                    "name": "permissionGrantPolicies",
+                    "uri": "policies/permissionGrantPolicies",
                     "parameters": [
-                        {
-                            "name": "[API_VERSION]",
-                            "value": "beta"
-                        },
                         {
                             "name": "[PARAMS]",
                             "value": "?$top=999"
@@ -1531,9 +1528,13 @@
                     ]
                 },
                 {
-                    "name": "permissionGrantPolicies",
-                    "uri": "policies/permissionGrantPolicies",
+                    "name": "permissionGrantPreApprovalPolicies",
+                    "uri": "policies/permissionGrantPreApprovalPolicies",
                     "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        },
                         {
                             "name": "[PARAMS]",
                             "value": "?$top=999"
@@ -1551,19 +1552,29 @@
                     ],
                     "conditions": [
                         "GAOrApp"
-                    ],
-                    "relationships": [
-                        {
-                            "name": "details",
-                            "uri": "directory/publicKeyInfrastructure/certificateBasedAuthConfigurations/[1]/certificateAuthorities",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ]
-                        }
                     ]
+                },
+                {
+                    "name": "publicKeyInfrastructure_details",
+                    "uri": "directory/publicKeyInfrastructure/certificateBasedAuthConfigurations",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        },
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$expand=certificateAuthorities"
+                        }
+                    ],
+                    "conditions": [
+                        "GAOrApp"
+                    ],
+                    "api_behavior": {
+                        "expand_extract": "certificateAuthorities",
+                        "expand_parent_key": "id",
+                        "expand_max": "20"
+                    }
                 },
                 {
                     "name": "riskBasedNotification",
@@ -1644,34 +1655,22 @@
                     ]
                 },
                 {
-                    "name": "roleDefinitions",
-                    "uri": "roleManagement/directory/roleDefinitions",
-                    "parameters": [
-                        {
-                            "name": "[PARAMS]",
-                            "value": "?$count=true"
-                        }
-                    ],
-                    "relationships": [
-                        {
-                            "name": "roleAssignments",
-                            "uri": "roleManagement/directory/roleAssignments?$top=999&$filter=roleDefinitionId eq '[1]'",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ]
-                        }
-                    ]
-                },
-                {
                     "name": "roleAssignments",
                     "uri": "roleManagement/directory/roleAssignments",
                     "parameters": [
                         {
                             "name": "[PARAMS]",
                             "value": "?$top=999"
+                        }
+                    ]
+                },
+                {
+                    "name": "roleDefinitions",
+                    "uri": "roleManagement/directory/roleDefinitions",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$count=true"
                         }
                     ]
                 },
@@ -1777,82 +1776,6 @@
                     ]
                 },
                 {
-                    "name": "servicePrincipals",
-                    "uri": "servicePrincipals",
-                    "parameters": [
-                        {
-                            "name": "[PARAMS]",
-                            "value": "?$top=999&$count=true"
-                        }
-                    ],
-                    "relationships": [
-                        {
-                            "name": "appRoleAssignedTo",
-                            "uri": "servicePrincipals/[1]/appRoleAssignedTo",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "appRoleAssignments",
-                            "uri": "servicePrincipals/[1]/appRoleAssignments",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "oauth2PermissionGrants",
-                            "uri": "servicePrincipals/[1]/oauth2PermissionGrants",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "owners",
-                            "uri": "servicePrincipals/[1]/owners",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999&$select=id,displayName"
-                                }
-                            ]
-                        }
-                    ]
-                },
-                {
                     "name": "servicePrincipalSignInActivities",
                     "uri": "reports/servicePrincipalSignInActivities",
                     "parameters": [
@@ -1865,6 +1788,47 @@
                             "value": "?$top=999"
                         }
                     ]
+                },
+                {
+                    "name": "servicePrincipals",
+                    "uri": "servicePrincipals",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$count=true"
+                        }
+                    ]
+                },
+                {
+                    "name": "servicePrincipals_appRoleAssignedTo",
+                    "uri": "servicePrincipals",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$select=id&$expand=appRoleAssignedTo"
+                        }
+                    ],
+                    "api_behavior": {
+                        "expand_extract": "appRoleAssignedTo",
+                        "expand_parent_key": "id",
+                        "expand_max": "20"
+                    }
+                },
+                {
+                    "name": "servicePrincipals_owners",
+                    "uri": "servicePrincipals",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$select=id&$expand=owners"
+                        }
+                    ],
+                    "api_behavior": {
+                        "expand_extract": "owners",
+                        "expand_parent_key": "id",
+                        "expand_max": "20",
+                        "expand_project": "id,displayName"
+                    }
                 },
                 {
                     "name": "settings",
@@ -1924,22 +1888,6 @@
                         }
                     ],
                     "relationships": [
-                        {
-                            "name": "appRoleAssignments",
-                            "uri": "users/[1]/appRoleAssignments",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999"
-                                }
-                            ]
-                        },
                         {
                             "name": "authenticationMethods",
                             "uri": "users/[1]/authentication/methods",
@@ -2010,22 +1958,6 @@
                             ]
                         },
                         {
-                            "name": "oauth2PermissionGrants",
-                            "uri": "users/[1]/oauth2PermissionGrants",
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ],
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$top=999"
-                                }
-                            ]
-                        },
-                        {
                             "name": "permissionGrants",
                             "uri": "users/[1]/permissionGrants",
                             "conditions": [
@@ -2046,7 +1978,8 @@
                             "expected_error_codes": [
                                 {
                                     "status": 403,
-                                    "code": "Forbidden"
+                                    "code": "Forbidden",
+                                    "breaker_eligible": true
                                 },
                                 {
                                     "status": 404,
@@ -2059,6 +1992,38 @@
                             ]
                         }
                     ]
+                },
+                {
+                    "name": "users_ownedDevices",
+                    "uri": "users",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$select=id&$expand=ownedDevices"
+                        }
+                    ],
+                    "api_behavior": {
+                        "expand_extract": "ownedDevices",
+                        "expand_project": "id,displayName",
+                        "expand_parent_key": "id",
+                        "expand_max": "20"
+                    }
+                },
+                {
+                    "name": "users_registeredDevices",
+                    "uri": "users",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999&$select=id&$expand=registeredDevices"
+                        }
+                    ],
+                    "api_behavior": {
+                        "expand_extract": "registeredDevices",
+                        "expand_project": "id,displayName",
+                        "expand_parent_key": "id",
+                        "expand_max": "100"
+                    }
                 }
             ]
         },
@@ -2190,27 +2155,6 @@
                             ]
                         },
                         {
-                            "name": "roleAssignments",
-                            "uri": "providers/Microsoft.Management/managementGroups/[1]/providers/Microsoft.Authorization/roleAssignments",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2022-04-01"
-                                },
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "&$top=3000"
-                                }
-                            ],
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "name",
-                                    "transform": "UrlEncode"
-                                }
-                            ]
-                        },
-                        {
                             "name": "roleAssignmentScheduleInstances",
                             "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentScheduleInstances",
                             "parameters": [
@@ -2265,6 +2209,27 @@
                                 {
                                     "status": 400,
                                     "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleAssignments",
+                            "uri": "providers/Microsoft.Management/managementGroups/[1]/providers/Microsoft.Authorization/roleAssignments",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2022-04-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "name",
+                                    "transform": "UrlEncode"
                                 }
                             ]
                         },
@@ -2490,26 +2455,6 @@
                     ],
                     "relationships": [
                         {
-                            "name": "roleAssignments",
-                            "uri": "[1]/providers/Microsoft.Authorization/roleAssignments",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2022-04-01"
-                                },
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "&$top=3000"
-                                }
-                            ],
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "id"
-                                }
-                            ]
-                        },
-                        {
                             "name": "roleAssignmentScheduleInstances",
                             "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentScheduleInstances",
                             "parameters": [
@@ -2538,6 +2483,10 @@
                                 {
                                     "status": 400,
                                     "code": "AadPremiumLicenseRequired"
+                                },
+                                {
+                                    "status": 404,
+                                    "code": "ResourceNotFound"
                                 }
                             ]
                         },
@@ -2570,6 +2519,36 @@
                                 {
                                     "status": 400,
                                     "code": "AadPremiumLicenseRequired"
+                                },
+                                {
+                                    "status": 404,
+                                    "code": "ResourceNotFound"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleAssignments",
+                            "uri": "[1]/providers/Microsoft.Authorization/roleAssignments",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2022-04-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 404,
+                                    "code": "ResourceNotFound"
                                 }
                             ]
                         },
@@ -2590,6 +2569,12 @@
                                 {
                                     "name": "[1]",
                                     "value": "id"
+                                }
+                            ],
+                            "expected_error_codes": [
+                                {
+                                    "status": 404,
+                                    "code": "ResourceNotFound"
                                 }
                             ]
                         },
@@ -2690,6 +2675,10 @@
                                 {
                                     "status": 400,
                                     "code": "TenantNotOnboarded"
+                                },
+                                {
+                                    "status": 404,
+                                    "code": "ResourceNotFound"
                                 }
                             ]
                         },
@@ -2726,6 +2715,10 @@
                                 {
                                     "status": 400,
                                     "code": "TenantNotOnboarded"
+                                },
+                                {
+                                    "status": 404,
+                                    "code": "ResourceNotFound"
                                 }
                             ]
                         }
@@ -2742,12 +2735,12 @@
                     ],
                     "relationships": [
                         {
-                            "name": "applications",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Solutions/applications",
+                            "name": "applicationSecurityGroups",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Network/applicationSecurityGroups",
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2021-07-01"
+                                    "value": "2025-09-01"
                                 }
                             ],
                             "keys": [
@@ -2758,12 +2751,12 @@
                             ]
                         },
                         {
-                            "name": "applicationSecurityGroups",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Network/applicationSecurityGroups",
+                            "name": "applications",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Solutions/applications",
                             "parameters": [
                                 {
                                     "name": "[API_VERSION]",
-                                    "value": "2025-09-01"
+                                    "value": "2021-07-01"
                                 }
                             ],
                             "keys": [
@@ -2802,6 +2795,16 @@
                                         {
                                             "name": "[1]",
                                             "value": "id"
+                                        }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 404,
+                                            "code": "InvalidResourceType"
+                                        },
+                                        {
+                                            "status": 404,
+                                            "code": "ParentResourceNotFound"
                                         }
                                     ]
                                 }
@@ -2884,6 +2887,16 @@
                                         {
                                             "name": "[1]",
                                             "value": "id"
+                                        }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 404,
+                                            "code": "InvalidResourceType"
+                                        },
+                                        {
+                                            "status": 404,
+                                            "code": "ParentResourceNotFound"
                                         }
                                     ]
                                 }
@@ -3272,26 +3285,6 @@
                                     ]
                                 },
                                 {
-                                    "name": "roleAssignments",
-                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignments",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2022-04-01"
-                                        },
-                                        {
-                                            "name": "[PARAMS]",
-                                            "value": "&$top=3000"
-                                        }
-                                    ],
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ]
-                                },
-                                {
                                     "name": "roleAssignmentScheduleInstances",
                                     "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentScheduleInstances",
                                     "parameters": [
@@ -3346,6 +3339,26 @@
                                         {
                                             "status": 400,
                                             "code": "AadPremiumLicenseRequired"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleAssignments",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignments",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2022-04-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
                                         }
                                     ]
                                 },
@@ -3479,6 +3492,26 @@
                             ]
                         },
                         {
+                            "name": "resourceLinks",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Resources/links",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2025-04-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=1000"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
                             "name": "resources",
                             "uri": "subscriptions/[1]/resources",
                             "parameters": [
@@ -3498,26 +3531,6 @@
                                 }
                             ],
                             "relationships": [
-                                {
-                                    "name": "roleAssignments",
-                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignments",
-                                    "parameters": [
-                                        {
-                                            "name": "[API_VERSION]",
-                                            "value": "2022-04-01"
-                                        },
-                                        {
-                                            "name": "[PARAMS]",
-                                            "value": "&$top=3000"
-                                        }
-                                    ],
-                                    "keys": [
-                                        {
-                                            "name": "[1]",
-                                            "value": "id"
-                                        }
-                                    ]
-                                },
                                 {
                                     "name": "roleAssignmentScheduleInstances",
                                     "uri": "[1]/providers/Microsoft.Authorization/roleAssignmentScheduleInstances",
@@ -3547,6 +3560,10 @@
                                         {
                                             "status": 400,
                                             "code": "AadPremiumLicenseRequired"
+                                        },
+                                        {
+                                            "status": 404,
+                                            "code": "ResourceNotFound"
                                         }
                                     ]
                                 },
@@ -3579,6 +3596,36 @@
                                         {
                                             "status": 400,
                                             "code": "AadPremiumLicenseRequired"
+                                        },
+                                        {
+                                            "status": 404,
+                                            "code": "ResourceNotFound"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "roleAssignments",
+                                    "uri": "[1]/providers/Microsoft.Authorization/roleAssignments",
+                                    "parameters": [
+                                        {
+                                            "name": "[API_VERSION]",
+                                            "value": "2022-04-01"
+                                        },
+                                        {
+                                            "name": "[PARAMS]",
+                                            "value": "&$top=3000"
+                                        }
+                                    ],
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 404,
+                                            "code": "ResourceNotFound"
                                         }
                                     ]
                                 },
@@ -3599,6 +3646,12 @@
                                         {
                                             "name": "[1]",
                                             "value": "id"
+                                        }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 404,
+                                            "code": "ResourceNotFound"
                                         }
                                     ]
                                 },
@@ -3699,6 +3752,10 @@
                                         {
                                             "status": 400,
                                             "code": "TenantNotOnboarded"
+                                        },
+                                        {
+                                            "status": 404,
+                                            "code": "ResourceNotFound"
                                         }
                                     ]
                                 },
@@ -3735,28 +3792,12 @@
                                         {
                                             "status": 400,
                                             "code": "TenantNotOnboarded"
+                                        },
+                                        {
+                                            "status": 404,
+                                            "code": "ResourceNotFound"
                                         }
                                     ]
-                                }
-                            ]
-                        },
-                        {
-                            "name": "resourceLinks",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Resources/links",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2025-04-01"
-                                },
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "&$top=1000"
-                                }
-                            ],
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
                                 }
                             ]
                         },
@@ -3767,26 +3808,6 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2026-03-01"
-                                }
-                            ],
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "roleAssignments",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/roleAssignments",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2022-04-01"
-                                },
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "&$top=3000"
                                 }
                             ],
                             "keys": [
@@ -3851,6 +3872,26 @@
                                 {
                                     "status": 400,
                                     "code": "AadPremiumLicenseRequired"
+                                }
+                            ]
+                        },
+                        {
+                            "name": "roleAssignments",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Authorization/roleAssignments",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2022-04-01"
+                                },
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "&$top=3000"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
                                 }
                             ]
                         },
@@ -3994,6 +4035,22 @@
                             ]
                         },
                         {
+                            "name": "snapshots",
+                            "uri": "subscriptions/[1]/providers/Microsoft.Compute/snapshots",
+                            "parameters": [
+                                {
+                                    "name": "[API_VERSION]",
+                                    "value": "2025-01-02"
+                                }
+                            ],
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "subscriptionId"
+                                }
+                            ]
+                        },
+                        {
                             "name": "sqlServers",
                             "uri": "subscriptions/[1]/providers/Microsoft.Sql/servers",
                             "parameters": [
@@ -4023,6 +4080,16 @@
                                             "name": "[1]",
                                             "value": "id"
                                         }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 404,
+                                            "code": "InvalidResourceType"
+                                        },
+                                        {
+                                            "status": 404,
+                                            "code": "ParentResourceNotFound"
+                                        }
                                     ]
                                 }
                             ]
@@ -4034,22 +4101,6 @@
                                 {
                                     "name": "[API_VERSION]",
                                     "value": "2023-10-01"
-                                }
-                            ],
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "subscriptionId"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "snapshots",
-                            "uri": "subscriptions/[1]/providers/Microsoft.Compute/snapshots",
-                            "parameters": [
-                                {
-                                    "name": "[API_VERSION]",
-                                    "value": "2025-01-02"
                                 }
                             ],
                             "keys": [
@@ -4089,6 +4140,12 @@
                                             "name": "[1]",
                                             "value": "id"
                                         }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 400,
+                                            "code": "FeatureNotSupportedForAccount"
+                                        }
                                     ]
                                 },
                                 {
@@ -4104,6 +4161,12 @@
                                         {
                                             "name": "[1]",
                                             "value": "id"
+                                        }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 400,
+                                            "code": "FeatureNotSupportedForAccount"
                                         }
                                     ]
                                 }
@@ -4203,6 +4266,16 @@
                                             "name": "[1]",
                                             "value": "id"
                                         }
+                                    ],
+                                    "expected_error_codes": [
+                                        {
+                                            "status": 404,
+                                            "code": "InvalidResourceType"
+                                        },
+                                        {
+                                            "status": 404,
+                                            "code": "ParentResourceNotFound"
+                                        }
                                     ]
                                 },
                                 {
@@ -4280,6 +4353,25 @@
                     ]
                 },
                 {
+                    "name": "sync_ad",
+                    "uri": "providers/Microsoft.ADHybridHealthService/services/GetServices/PremiumCheck",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "2014-01-01"
+                        },
+                        {
+                            "name": "[PARAMS]",
+                            "value": "&serviceType=AadSyncService"
+                        }
+                    ],
+                    "expected_error_codes": [
+                        {
+                            "status": 401
+                        }
+                    ]
+                },
+                {
                     "name": "sync_adds",
                     "uri": "providers/Microsoft.ADHybridHealthService/services/GetServices/PremiumCheck",
                     "parameters": [
@@ -4309,25 +4401,6 @@
                         {
                             "name": "[PARAMS]",
                             "value": "&serviceType=AdFederationService"
-                        }
-                    ],
-                    "expected_error_codes": [
-                        {
-                            "status": 401
-                        }
-                    ]
-                },
-                {
-                    "name": "sync_ad",
-                    "uri": "providers/Microsoft.ADHybridHealthService/services/GetServices/PremiumCheck",
-                    "parameters": [
-                        {
-                            "name": "[API_VERSION]",
-                            "value": "2014-01-01"
-                        },
-                        {
-                            "name": "[PARAMS]",
-                            "value": "&serviceType=AadSyncService"
                         }
                     ],
                     "expected_error_codes": [
@@ -4391,9 +4464,13 @@
                     "parameters": [
                         {
                             "name": "[PARAMS]",
-                            "value": "?PropertySet=All"
+                            "value": "?PropertySet=All&$top=1000"
                         }
                     ],
+                    "api_behavior": {
+                        "partition_field": "RecipientTypeDetails",
+                        "partition_values": "UserMailbox,SharedMailbox,RoomMailbox,EquipmentMailbox,MailUniversalDistributionGroup,MailUniversalSecurityGroup,DynamicDistributionGroup,MailContact,MailUser,PublicFolder,GuestMailUser,GroupMailbox,DiscoveryMailbox"
+                    },
                     "relationships": [
                         {
                             "name": "mailboxPermissions",
@@ -4407,29 +4484,26 @@
                             "keys": [
                                 {
                                     "name": "[1]",
-                                    "value": "UserPrincipalName",
-                                    "transform": "Base64"
-                                }
-                            ]
-                        },
-                        {
-                            "name": "recipients",
-                            "uri": "Recipient('[1]')",
-                            "parameters": [
-                                {
-                                    "name": "[PARAMS]",
-                                    "value": "?$expand=RecipientPermission&isEncoded=true"
-                                }
-                            ],
-                            "keys": [
-                                {
-                                    "name": "[1]",
-                                    "value": "UserPrincipalName",
+                                    "value": "Guid",
                                     "transform": "Base64"
                                 }
                             ]
                         }
                     ]
+                },
+                {
+                    "name": "recipients",
+                    "uri": "Recipient",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?PropertySet=All&$expand=RecipientPermission&$top=1000"
+                        }
+                    ],
+                    "api_behavior": {
+                        "partition_field": "RecipientTypeDetails",
+                        "partition_values": "UserMailbox,SharedMailbox,RoomMailbox,EquipmentMailbox,MailUniversalDistributionGroup,MailUniversalSecurityGroup,DynamicDistributionGroup,MailContact,MailUser,PublicFolder,GuestMailUser,GroupMailbox,DiscoveryMailbox"
+                    }
                 }
             ]
         }

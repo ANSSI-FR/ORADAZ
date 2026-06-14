@@ -16,13 +16,82 @@ use crate::utils::logger::clear_progress_line;
 use crate::utils::logger::config as logger_config;
 use crate::utils::metadata::TableMetadata;
 use crate::utils::mutex::lock_result;
+use crate::utils::writer::actor::WriterHandle;
 
 use dashmap::DashMap;
 use log::{debug, error, info, trace, warn};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::{Sender, channel};
+
+/// Awaits the first shutdown signal: Ctrl+C (all platforms) or SIGTERM (Unix —
+/// `docker stop`, systemd). Returns once either is received.
+async fn wait_for_shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        match signal(SignalKind::terminate()) {
+            Ok(mut sigterm) => {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = sigterm.recv() => {}
+                }
+            }
+            // Cannot register SIGTERM: fall back to Ctrl+C only.
+            Err(_) => {
+                let _ = tokio::signal::ctrl_c().await;
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
+/// Guards the window between archive creation and the start of the dump (schema
+/// download, authentication, prerequisite checks — minutes for interactive
+/// flows). A Ctrl+C or SIGTERM there would otherwise take the default action and
+/// kill the process, stranding the `.mla.tmp` archive. This handler marks the
+/// archive `.broken` and exits cleanly instead. Once the dump starts it sets
+/// `dump_started`, after which this guard goes inert and the dump's own handlers
+/// (interactive menu / SIGTERM → drain) own signal handling.
+pub fn spawn_pre_dump_signal_guard(writer: WriterHandle, dump_started: Arc<AtomicBool>) {
+    tokio::spawn(async move {
+        wait_for_shutdown_signal().await;
+        if dump_started.load(Ordering::Relaxed) {
+            // The dump now owns signal handling; defer to it.
+            return;
+        }
+        warn!(
+            "{:FL$}Interrupted before the collection started — writing a '.broken' archive and exiting",
+            "Dumper"
+        );
+        let _ = writer.set_broken().await;
+        std::process::exit(1);
+    });
+}
+
+/// Abandons an in-progress graceful drain: finalizes the archive as `.broken`
+/// with whatever has been written so far, then exits the process.
+///
+/// Used when the operator repeats a stop signal instead of waiting out the
+/// drain — in-flight requests can legitimately hold a drain for up to a full
+/// rate-limit cooldown, and once the dump owns SIGINT/SIGTERM nothing short of
+/// SIGKILL could otherwise end the run early. The writer actor serialises the
+/// `.broken` rename after any already-queued data writes, so the archive keeps
+/// everything collected up to this point.
+async fn abandon_drain_and_exit(writer: &WriterHandle) {
+    warn!(
+        "{:FL$}Stop signal repeated — abandoning the graceful drain and finalizing the partial '.broken' archive now",
+        "Dumper"
+    );
+    if let Err(err) = writer.set_broken().await {
+        error!("{:FL$}{:?}", "Dumper", err);
+    }
+    std::process::exit(1);
+}
 
 /// Orchestrates the data collection process using an asynchronous producer-consumer pipeline.
 ///
@@ -39,7 +108,7 @@ use tokio::sync::mpsc::{Sender, channel};
 /// **Termination Sequence**:
 /// To ensure all data is processed and written before exiting, the modules are shut down sequentially:
 /// Request Module -> Response Module.
-pub async fn dump(dumper: &mut Dumper) -> Result<(), Error> {
+pub async fn dump(dumper: &mut Dumper, dump_started: Arc<AtomicBool>) -> Result<(), Error> {
     debug!("{:FL$}Starting dump orchestration", "Dumper");
     // Initialise backoff config from user settings (read once, then used as globals).
     BACKOFF_BASE_MS.store(
@@ -66,8 +135,20 @@ pub async fn dump(dumper: &mut Dumper) -> Result<(), Error> {
     // source resuming cannot clear another's still-active pause.
     let sigint_paused = Arc::new(AtomicUsize::new(0));
     let sigint_paused_clone = Arc::clone(&sigint_paused);
+    // Set once a stop is initiated (menu choice or SIGTERM). The graceful drain
+    // that follows can last up to a full rate-limit cooldown, so both signal
+    // tasks keep listening and treat any FURTHER signal as an order to abandon
+    // the drain (immediate `.broken` + exit) rather than re-opening the menu.
+    let stop_initiated = Arc::new(AtomicBool::new(false));
+    let sigint_stop_initiated = Arc::clone(&stop_initiated);
+    let sigint_writer = dumper.writer.clone();
     tokio::spawn(async move {
         while tokio::signal::ctrl_c().await.is_ok() {
+            // A Ctrl+C after a stop was already initiated (by the menu or by
+            // SIGTERM) abandons the drain instead of opening the menu again.
+            if sigint_stop_initiated.load(Ordering::Relaxed) {
+                abandon_drain_and_exit(&sigint_writer).await;
+            }
             info!(
                 "{:FL$}Interruption requested (Ctrl+C) — pausing for confirmation",
                 "Dumper"
@@ -81,8 +162,9 @@ pub async fn dump(dumper: &mut Dumper) -> Result<(), Error> {
             sigint_paused_clone.fetch_sub(1, Ordering::Relaxed);
             logger_config::DUMP_PAUSED.fetch_sub(1, Ordering::Relaxed);
             if stop {
+                sigint_stop_initiated.store(true, Ordering::Relaxed);
                 warn!(
-                    "{:FL$}Collection interrupted by user — draining in-flight requests; a partial '.broken' archive will be written",
+                    "{:FL$}Collection interrupted by user — draining in-flight requests; a partial '.broken' archive will be written (press Ctrl+C again to abandon the drain and finalize it immediately)",
                     "Dumper"
                 );
                 if let Err(err) = sigint_sender.send(CoordinatorEvent::Terminate).await {
@@ -91,7 +173,7 @@ pub async fn dump(dumper: &mut Dumper) -> Result<(), Error> {
                         "Dumper", err
                     );
                 }
-                break;
+                // Keep listening: the next Ctrl+C abandons the drain (above).
             } else {
                 info!(
                     "{:FL$}Resuming collection (interruption cancelled by user)",
@@ -100,6 +182,46 @@ pub async fn dump(dumper: &mut Dumper) -> Result<(), Error> {
             }
         }
     });
+
+    // SIGTERM (Unix): a non-interactive shutdown request (`docker stop`, systemd).
+    // The first one drains gracefully into a `.broken` archive — no confirmation
+    // menu, unlike Ctrl+C — by sending the same Terminate event; a repeated
+    // signal abandons the drain (so a `docker stop` grace period is not consumed
+    // by a worker parked on a rate-limit cooldown).
+    #[cfg(unix)]
+    {
+        let term_sender = coordinator_sender.clone();
+        let term_stop_initiated = Arc::clone(&stop_initiated);
+        let term_writer = dumper.writer.clone();
+        tokio::spawn(async move {
+            use tokio::signal::unix::{SignalKind, signal};
+            let Ok(mut sigterm) = signal(SignalKind::terminate()) else {
+                return;
+            };
+            while sigterm.recv().await.is_some() {
+                // `swap` both records the stop and detects a repeat: a SIGTERM
+                // after a stop was already initiated (menu choice or an earlier
+                // SIGTERM) abandons the drain.
+                if term_stop_initiated.swap(true, Ordering::Relaxed) {
+                    abandon_drain_and_exit(&term_writer).await;
+                }
+                warn!(
+                    "{:FL$}SIGTERM received — draining in-flight requests; a partial '.broken' archive will be written (send SIGTERM or Ctrl+C again to abandon the drain and finalize it immediately)",
+                    "Dumper"
+                );
+                if let Err(err) = term_sender.send(CoordinatorEvent::Terminate).await {
+                    warn!(
+                        "{:FL$}Failed to send Terminate event to coordinator on SIGTERM: {:?}",
+                        "Dumper", err
+                    );
+                }
+            }
+        });
+    }
+
+    // The dump now owns signal handling: the pre-dump guard (collect::collect)
+    // goes inert from here, so a signal is routed to the menu / SIGTERM drain.
+    dump_started.store(true, Ordering::Relaxed);
 
     // Mark the effective dump start so the duration recorded in stats.json
     // excludes auth and prerequisite checks.
@@ -118,6 +240,8 @@ pub async fn dump(dumper: &mut Dumper) -> Result<(), Error> {
         let concurrency_controller = Arc::clone(&dumper.concurrency_controller);
         let stats = Arc::clone(&dumper.stats);
         let logs_date_filter_and = dumper.logs_date_filter_and.clone();
+        let response_workers_max = Config::response_workers_max(&dumper.config);
+        let response_memory_budget = Config::response_memory_budget_bytes(&dumper.config);
         async move {
             let response_module: ResponseModule = ResponseModule::new(
                 response_receiver,
@@ -132,6 +256,8 @@ pub async fn dump(dumper: &mut Dumper) -> Result<(), Error> {
                     stats,
                     logs_date_filter_and,
                 },
+                response_workers_max,
+                response_memory_budget,
             );
             response_module.start().await
         }
@@ -170,10 +296,6 @@ pub async fn dump(dumper: &mut Dumper) -> Result<(), Error> {
         sigint_paused,
     )
     .await?;
-
-    if !completed_normally {
-        dumper.exit_with_error(Error::Cancelled).await;
-    }
 
     debug!("{:FL$}Finishing all threads", "Dumper");
     {
@@ -229,6 +351,15 @@ pub async fn dump(dumper: &mut Dumper) -> Result<(), Error> {
         }
     }
     drop(response_sender);
+
+    // The coordinator stopped abnormally yet both modules shut down cleanly above, so
+    // this was a user-initiated cancellation (SIGINT menu / SIGTERM) — not a module
+    // failure, which would have surfaced its own error from the join handles above and
+    // returned before reaching here. Report it as such; the caller marks the archive
+    // '.broken' and renders the matching fatal block.
+    if !completed_normally {
+        return Err(Error::Cancelled);
+    }
 
     match lock_result(
         &tables,
