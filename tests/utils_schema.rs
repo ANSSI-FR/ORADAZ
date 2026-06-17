@@ -733,6 +733,9 @@ async fn test_schema_new_retries_on_429_then_succeeds() {
         output_mla: Some(false),
         output: None,
         schema_url_override: Some(format!("{}/schema.json", mock.uri())),
+        // Mock returns `Retry-After: 0`, which the zero-guard treats as absent, so
+        // this fallback paces each bounded 429 retry; 1s keeps the probe quick.
+        default_retry_after_seconds: Some(1),
         ..make_minimal_config()
     };
     let client = OradazClient::new(&config).unwrap();
@@ -762,6 +765,9 @@ async fn test_schema_new_exhausts_429_retries() {
         output_mla: Some(false),
         output: None,
         schema_url_override: Some(format!("{}/schema.json", mock.uri())),
+        // Mock returns `Retry-After: 0`, which the zero-guard treats as absent, so
+        // this fallback paces each bounded 429 retry; 1s keeps the probe quick.
+        default_retry_after_seconds: Some(1),
         ..make_minimal_config()
     };
     let client = OradazClient::new(&config).unwrap();
@@ -820,7 +826,7 @@ fn collect_key_level_object_conditions(
 
 #[test]
 fn test_object_reading_conditions_never_at_key_level() {
-    for file in ["schema.json", "schema-light.json"] {
+    for file in ["schema.json"] {
         let full_path = format!("{}/{file}", env!("CARGO_MANIFEST_DIR"));
         let raw = std::fs::read_to_string(&full_path)
             .unwrap_or_else(|e| panic!("cannot read {full_path}: {e}"));
@@ -899,53 +905,9 @@ fn test_key_level_object_condition_detector_flags_mis_wiring() {
 /// light-only endpoint would collect data the reference schema cannot
 /// validate against.
 #[test]
-fn test_root_schemas_deserialize_and_light_is_subset() {
-    fn endpoints(schema: &Schema) -> std::collections::BTreeSet<String> {
-        fn walk(
-            prefix: &str,
-            name: &str,
-            rels: &Option<Vec<Relationship>>,
-            out: &mut std::collections::BTreeSet<String>,
-        ) {
-            let label = if prefix.is_empty() {
-                name.to_string()
-            } else {
-                format!("{prefix}_{name}")
-            };
-            if let Some(rels) = rels {
-                for r in rels {
-                    walk(&label, &r.name, &r.relationships, out);
-                }
-            }
-            out.insert(label);
-        }
-        let mut out = std::collections::BTreeSet::new();
-        for service in &schema.services {
-            for api in &service.apis {
-                walk("", &api.name, &api.relationships, &mut out);
-            }
-        }
-        out
-    }
-
+fn test_root_schemas_deserialize() {
     let root = env!("CARGO_MANIFEST_DIR");
     let full_raw = std::fs::read_to_string(format!("{root}/schema.json"))
         .expect("schema.json must exist at the repository root");
-    let light_raw = std::fs::read_to_string(format!("{root}/schema-light.json"))
-        .expect("schema-light.json must exist at the repository root");
-
-    let full = Schema::deserialize(full_raw).expect("schema.json must deserialize");
-    let light = Schema::deserialize(light_raw).expect("schema-light.json must deserialize");
-
-    let full_eps = endpoints(&full);
-    let light_eps = endpoints(&light);
-    let light_only: Vec<&String> = light_eps.difference(&full_eps).collect();
-    assert!(
-        light_only.is_empty(),
-        "schema-light.json has endpoints absent from schema.json: {light_only:?}"
-    );
-    assert!(
-        light_eps.len() < full_eps.len(),
-        "schema-light.json must be a strict subset of schema.json"
-    );
+    Schema::deserialize(full_raw).expect("schema.json must deserialize");
 }

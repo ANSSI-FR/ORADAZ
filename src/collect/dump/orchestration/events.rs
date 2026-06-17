@@ -9,8 +9,6 @@ use std::sync::Arc;
 pub enum ProcessError {
     /// The authentication token has expired and needs renewal.
     TokenExpirationError,
-    /// A general error occurred during the dump of a specific resource.
-    DumpError(usize),
     /// A prerequisite for the dump is missing (e.g., a specific API endpoint is not available).
     PotentialPrerequisiteError(Box<Url>),
 }

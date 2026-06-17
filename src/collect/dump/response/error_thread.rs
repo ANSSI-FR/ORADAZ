@@ -1,4 +1,4 @@
-use crate::collect::dump::orchestration::events::{CoordinatorEvent, ProcessError};
+use crate::collect::dump::orchestration::events::CoordinatorEvent;
 use crate::collect::dump::response::{DumpError, ResponseContext};
 use crate::utils::errors::{Error, FatalPresentation};
 use crate::{FL, bail_fatal};
@@ -120,14 +120,12 @@ impl ResponseErrorThread {
                 ));
             }
         }
-        self.send_to_update(CoordinatorEvent::NewError(
-            self.dump_error.folder.clone().into(),
-            ProcessError::DumpError(1),
-        ))
-        .await;
-        // Counter-neutral writes (`completion_count == 0`, the `LostData` path)
-        // emit no completion: their dispatched item is accounted for elsewhere,
-        // so a `RequestCompleted` here would under-run `current_counter`.
+        // The error line is counted at the `write_dump_error` chokepoint above,
+        // so no error event is emitted here. Counter-neutral writes
+        // (`completion_count == 0`, the `LostData` path) emit no completion either:
+        // their dispatched item is accounted for elsewhere (e.g. the batch's own
+        // `RequestCompleted`), so a `RequestCompleted` here would under-run
+        // `current_counter`.
         if self.completion_count > 0 {
             self.send_to_update(CoordinatorEvent::RequestCompleted {
                 service: self.dump_error.folder.clone().into(),

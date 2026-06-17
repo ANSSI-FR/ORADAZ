@@ -181,6 +181,12 @@ impl ResponseContext {
                 "Failed to write DumpError to archive".into(),
             ));
         }
+        // Count every entry written here, at the single write chokepoint, so
+        // `metadata.errors` equals the `errors.json` line count by construction —
+        // for every error path and every termination mode. A coordinator-side
+        // event count could miss a `NewError` emitted after the event loop stopped
+        // (e.g. the counter-neutral `LostData`/`NetworkStalled` path).
+        self.stats.record_error_line();
         // Count every non-HTTP (`status == 0`) entry exactly, so the inspect
         // metadata view reports the real figure rather than deriving it from
         // `errors - (expected + unexpected)`, which underflows to 0 when 5xx

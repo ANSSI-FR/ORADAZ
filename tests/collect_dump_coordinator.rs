@@ -4,7 +4,6 @@
 /// an in-memory channel, verifying that the coordinator correctly handles:
 ///   - Termination when all queues are empty and no requests are in flight
 ///   - `RequestCompleted` events causing re-dispatch
-///   - `DumpError` incrementing `errors_number`
 ///   - `TokenExpirationError` not panicking when no refresh token is present
 ///   - Deduplication of `PotentialPrerequisiteError` (only one check spawned)
 ///   - `PrereqResult(Success)` resuming dispatch for a paused service
@@ -124,7 +123,6 @@ async fn make_dumper(temp_dir: &TempDir) -> (Dumper, mpsc::Sender<CoordinatorEve
         current_urls: Arc::new(DashMap::new()),
         tables_metadata: vec![],
         requests_number: 0,
-        errors_number: 0,
         auth_errors_number: 0,
         prerequisites_errors_number: 0,
         missing_token_errors_number: 0,
@@ -259,14 +257,10 @@ async fn coordinator_transient_requeue_then_abandon_terminates() {
             })
             .await;
         // 2) Liveness fires: abandonment is counter-balanced with an EMPTY
-        //    new_urls (URL dropped, not re-queued) + a NewError → drains to 0.
+        //    new_urls (URL dropped, not re-queued) → drains to 0. The lost-data
+        //    line is counted at the write chokepoint (`Stats::error_lines`), not
+        //    via a coordinator event.
         tokio::time::sleep(Duration::from_millis(50)).await;
-        let _ = coord_tx_clone
-            .send(CoordinatorEvent::NewError(
-                Arc::from("graph"),
-                ProcessError::DumpError(1),
-            ))
-            .await;
         let _ = coord_tx_clone
             .send(CoordinatorEvent::RequestCompleted {
                 id: 1,
@@ -294,10 +288,6 @@ async fn coordinator_transient_requeue_then_abandon_terminates() {
         remaining, 0,
         "no URL may be left pending after a transient abandonment"
     );
-    assert_eq!(
-        dumper.errors_number, 1,
-        "the abandoned URL must be surfaced as lost data"
-    );
 
     // Dispatched twice: the initial dispatch + one re-dispatch after the 429 re-queue.
     let mut dispatched = 0;
@@ -310,52 +300,6 @@ async fn coordinator_transient_requeue_then_abandon_terminates() {
         dispatched, 2,
         "URL re-dispatched once after the 429 re-queue, then abandoned"
     );
-}
-
-/// `NewError(DumpError)` increments `errors_number`.
-///
-/// Pre-set `current_counter` to 1 to simulate an in-flight request so the
-/// coordinator waits for events rather than exiting immediately. The spawned
-/// task sends the error then resolves the fake in-flight with `RequestFinished`.
-#[tokio::test]
-async fn coordinator_dump_error_increments_errors_number() {
-    use std::sync::atomic::Ordering;
-
-    let temp_dir = TempDir::new().unwrap();
-    let (mut dumper, _event_tx) = make_dumper(&temp_dir).await;
-
-    // Simulate 1 in-flight request so the coordinator waits for events.
-    dumper.current_counter.store(1, Ordering::Relaxed);
-
-    let (req_tx, _req_rx) = mpsc::channel::<RequestMsg>(8192);
-    let (res_tx, _res_rx) = mpsc::channel::<ResponseMsg>(8192);
-    let (coord_tx, coord_rx) = mpsc::channel::<CoordinatorEvent>(8192);
-
-    let coord_tx_clone = coord_tx.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        let _ = coord_tx_clone
-            .send(CoordinatorEvent::NewError(
-                Arc::from("graph"),
-                ProcessError::DumpError(3),
-            ))
-            .await;
-        // Resolve the fake in-flight so the coordinator can exit.
-        let _ = coord_tx_clone
-            .send(CoordinatorEvent::RequestCompleted {
-                id: 0,
-                service: Arc::from("graph"),
-                new_urls: vec![],
-                count: 1,
-            })
-            .await;
-    });
-
-    let paused = Arc::new(AtomicUsize::new(0));
-    let result = coordinate(&mut dumper, coord_rx, req_tx, res_tx, coord_tx, paused).await;
-
-    assert!(result.is_ok());
-    assert_eq!(dumper.errors_number, 3);
 }
 
 /// `TokenRefreshFailed` with a definitive auth error records it and aborts.
@@ -619,11 +563,12 @@ async fn coordinator_new_urls_event_extends_pool() {
     assert_eq!(dispatched, 2);
 }
 
-/// `PotentialPrerequisiteError` for a service with no token increments errors_number.
+/// `PotentialPrerequisiteError` for a service with no token increments
+/// `missing_token_errors_number`.
 ///
 /// The URL is re-queued in `current_urls` after the error, then the coordinator
 /// dispatches it in the next iteration (counter goes from 0 → 1). Both
-/// the error count and the dispatch are verified.
+/// the missing-token count and the dispatch are verified.
 #[tokio::test]
 async fn coordinator_prereq_error_missing_token_counts_as_error() {
     use std::sync::atomic::Ordering;
@@ -647,7 +592,8 @@ async fn coordinator_prereq_error_missing_token_counts_as_error() {
     let coord_tx_clone = coord_tx.clone();
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        // "exchange" has no token — coordinator re-queues the URL and counts the error.
+        // "exchange" has no token — coordinator re-queues the URL and counts it as
+        // a missing-token error.
         let _ = coord_tx_clone
             .send(CoordinatorEvent::NewError(
                 Arc::from("exchange"),
@@ -672,8 +618,9 @@ async fn coordinator_prereq_error_missing_token_counts_as_error() {
     let paused = Arc::new(AtomicUsize::new(0));
     let result = coordinate(&mut dumper, coord_rx, req_tx, res_tx, coord_tx, paused).await;
     assert!(result.is_ok());
-    // Error was counted for the missing-token case.
-    assert_eq!(dumper.errors_number, 1);
+    // Counted as a missing-token error (no `errors.json` line is written for this
+    // path, so it must not inflate the `errors` total).
+    assert_eq!(dumper.missing_token_errors_number, 1);
     // The re-queued URL was dispatched (not silently dropped).
     assert_eq!(dumper.requests_number, 1);
 }
@@ -705,9 +652,9 @@ async fn coordinator_token_expiration_error_no_panic() {
     let paused = Arc::new(AtomicUsize::new(0));
     let result = coordinate(&mut dumper, coord_rx, req_tx, res_tx, coord_tx, paused).await;
     assert!(result.is_ok());
-    // No errors counted for TokenExpirationError — a background refresh task was
+    // No error line written for TokenExpirationError — a background refresh task was
     // spawned and short-circuited (the token is not actually expired).
-    assert_eq!(dumper.errors_number, 0);
+    assert_eq!(dumper.stats.error_lines(), 0);
 }
 
 /// A token-expiration event must feed the reliability telemetry: one refresh

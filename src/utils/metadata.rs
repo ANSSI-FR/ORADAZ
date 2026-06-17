@@ -59,7 +59,10 @@ pub struct Metadata {
     tables: Vec<TableMetadata>,
     /// Total number of error entries written to `errors.json` during the dump,
     /// across HTTP errors (4xx/5xx, expected or not) and non-HTTP entries
-    /// (nextLink parsing, retry-budget exhaustion, missing-token, …).
+    /// (nextLink parsing, retry-budget exhaustion, missing-token, …). Counted at
+    /// the single `write_dump_error` write chokepoint (`Stats::error_lines`), so
+    /// it equals the `errors.json` line count exactly — for every error path and
+    /// every termination mode.
     /// `expected_errors`/`unexpected_errors` are counted per HTTP *response*, so
     /// 5xx retries (counted on each attempt, written at most once) and
     /// batch-wrapper attribution (one envelope failure attributed to many
@@ -285,7 +288,7 @@ impl Metadata {
         // Sum per-API expected/unexpected error counts from the stats actor.
         // `Stats::record_response` distinguishes them based on the schema's
         // `expected_error_codes`, so this gives a faithful split independent of
-        // the `errors_number` counter (which counts expected and unexpected errors together).
+        // the `errors` total (which counts expected and unexpected errors together).
         let mut expected_errors: usize = 0;
         let mut unexpected_errors: usize = 0;
         for entry in dumper.stats.apis.iter() {
@@ -309,7 +312,7 @@ impl Metadata {
             services,
             tokens: dumper.tokens_metadata.clone(),
             tables: dumper.tables_metadata.clone(),
-            errors: dumper.errors_number,
+            errors: dumper.stats.error_lines(),
             expected_errors,
             unexpected_errors,
             non_http_errors: dumper.stats.non_http_errors(),

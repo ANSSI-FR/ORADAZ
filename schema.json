@@ -1,6 +1,6 @@
 {
-    "oradaz_version": "3.0.06.14",
-    "schema_version": "3.0.06.14",
+    "oradaz_version": "3.0.06.17",
+    "schema_version": "3.0.06.17",
     "services": [
         {
             "name": "graph",
@@ -420,7 +420,7 @@
                     "parameters": [
                         {
                             "name": "[PARAMS]",
-                            "value": "?$top=999&$count=true&$select=assignedLabels,assignedLicenses,classification,createdByAppId,createdDateTime,deletedDateTime,description,displayName,expirationDateTime,groupTypes,id,infoCatalogs,isAssignableToRole,licenseProcessingState,mail,mailEnabled,mailNickname,membershipRule,membershipRuleProcessingState,membershipRuleProcessingStatus,onPremisesDomainName,onPremisesLastSyncDateTime,onPremisesNetBiosName,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,preferredDataLocation,preferredLanguage,proxyAddresses,renewedDateTime,resourceBehaviorOptions,resourceProvisioningOptions,securityEnabled,securityIdentifier,theme,uniqueName,unseenConversationsCount,unseenMessagesCount,visibility"
+                            "value": "?$top=999&$count=true&$select=assignedLabels,assignedLicenses,classification,createdByAppId,createdDateTime,deletedDateTime,description,displayName,expirationDateTime,groupTypes,id,infoCatalogs,isAssignableToRole,licenseProcessingState,mail,mailEnabled,mailNickname,membershipRule,membershipRuleProcessingState,membershipRuleProcessingStatus,onPremisesDomainName,onPremisesLastSyncDateTime,onPremisesNetBiosName,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,preferredDataLocation,preferredLanguage,proxyAddresses,renewedDateTime,resourceBehaviorOptions,resourceProvisioningOptions,securityEnabled,securityIdentifier,theme,uniqueName,visibility"
                         }
                     ],
                     "expected_error_codes": [
@@ -694,7 +694,7 @@
                     "parameters": [
                         {
                             "name": "[PARAMS]",
-                            "value": "?$top=999&$count=true&$select=assignedLabels,assignedLicenses,classification,createdByAppId,createdDateTime,deletedDateTime,description,displayName,expirationDateTime,groupTypes,id,infoCatalogs,isAssignableToRole,licenseProcessingState,mail,mailEnabled,mailNickname,membershipRule,membershipRuleProcessingState,membershipRuleProcessingStatus,onPremisesDomainName,onPremisesLastSyncDateTime,onPremisesNetBiosName,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,preferredDataLocation,preferredLanguage,proxyAddresses,renewedDateTime,resourceBehaviorOptions,resourceProvisioningOptions,securityEnabled,securityIdentifier,theme,uniqueName,unseenConversationsCount,unseenMessagesCount,visibility"
+                            "value": "?$top=999&$count=true&$select=assignedLabels,assignedLicenses,classification,createdByAppId,createdDateTime,deletedDateTime,description,displayName,expirationDateTime,groupTypes,id,infoCatalogs,isAssignableToRole,licenseProcessingState,mail,mailEnabled,mailNickname,membershipRule,membershipRuleProcessingState,membershipRuleProcessingStatus,onPremisesDomainName,onPremisesLastSyncDateTime,onPremisesNetBiosName,onPremisesProvisioningErrors,onPremisesSamAccountName,onPremisesSecurityIdentifier,onPremisesSyncEnabled,preferredDataLocation,preferredLanguage,proxyAddresses,renewedDateTime,resourceBehaviorOptions,resourceProvisioningOptions,securityEnabled,securityIdentifier,theme,uniqueName,visibility"
                         }
                     ],
                     "relationships": [

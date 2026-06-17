@@ -5,7 +5,6 @@ use crate::collect::dump::orchestration::events::{CoordinatorEvent, PrereqOutcom
 use crate::collect::dump::orchestration::prereq_task::{
     prereq_check_task, prompt_and_resume_task, token_refresh_task,
 };
-use crate::collect::dump::orchestration::process_errors::process_errors;
 use crate::collect::dump::request::RequestMsg;
 use crate::collect::dump::response::ResponseMsg;
 use crate::utils::config::Config;
@@ -319,8 +318,8 @@ pub async fn coordinate(
         //
         // `loop_error` is also a termination trigger. The inner event loop can set
         // it and `break` only the *inner* loop (a permanently-failing
-        // application-credential token refresh via `process_errors`, or an
-        // application-credential prerequisite re-check failure), so the outer loop
+        // application-credential token refresh, or an application-credential
+        // prerequisite re-check failure), so the outer loop
         // must honor it here. Otherwise the run would live-lock (the token URL is
         // re-queued without consuming its retry budget and re-dispatched forever)
         // or stall (the failed service stays paused) instead of aborting cleanly
@@ -505,8 +504,7 @@ pub async fn coordinate(
                         Err(_) => break,
                     }
                 }
-                let mut pending_iter = pending.into_iter();
-                while let Some(event) = pending_iter.next() {
+                for event in pending {
                     match event {
                         // Prerequisite failure: re-queue the URL and, if no check is already
                         // running for this service, spawn one.
@@ -589,10 +587,9 @@ pub async fn coordinate(
                                 match dumper.tokens.get(&service) {
                                     None => {
                                         warn!(
-                                            "{:FL$}No token for service {:?} when handling PotentialPrerequisiteError, counting as dump error",
+                                            "{:FL$}No token for service {:?} when handling PotentialPrerequisiteError, counting as missing-token error",
                                             "Dumper", service
                                         );
-                                        dumper.errors_number += 1;
                                         dumper.missing_token_errors_number += 1;
                                     }
                                     Some(_) => {
@@ -669,58 +666,6 @@ pub async fn coordinate(
                                     "{:FL$}Token refresh already in flight for service {:?}, skipping spawn",
                                     "Dumper", service
                                 );
-                            }
-                        }
-
-                        CoordinatorEvent::NewError(service, error) => {
-                            trace!(
-                                "{:FL$}Received NewError for service {:?}, error: {:?}",
-                                "Dumper", service, error
-                            );
-                            match process_errors(dumper, &service, error).await {
-                                Ok(Some(url)) => {
-                                    let kept = drop_tripped_urls(
-                                        dumper,
-                                        &tripped_apis,
-                                        &service,
-                                        vec![url],
-                                    );
-                                    if !kept.is_empty() {
-                                        dumper
-                                            .current_urls
-                                            .entry(service)
-                                            .or_default()
-                                            .extend(kept);
-                                    }
-                                }
-                                Ok(None) => {}
-                                Err(e) => {
-                                    // Drain remaining pending events before propagating: each
-                                    // unprocessed RequestCompleted would leave current_counter
-                                    // inflated, causing an indefinite stall in the coordinator.
-                                    for remaining in pending_iter {
-                                        if let CoordinatorEvent::RequestCompleted {
-                                            service,
-                                            new_urls,
-                                            count,
-                                            id: _,
-                                        } = remaining
-                                        {
-                                            dumper
-                                                .current_counter
-                                                .fetch_sub(count, Ordering::Release);
-                                            if !new_urls.is_empty() {
-                                                dumper
-                                                    .current_urls
-                                                    .entry(service)
-                                                    .or_default()
-                                                    .extend(new_urls);
-                                            }
-                                        }
-                                    }
-                                    loop_error = Some(e);
-                                    break;
-                                }
                             }
                         }
 

@@ -74,6 +74,15 @@ pub struct Stats {
     /// when 5xx retries or batch-wrapper attribution inflate the
     /// response-counted figures). In-memory only (surfaced via `metadata.json`).
     non_http_errors: AtomicUsize,
+    /// Exact total count of entries written to `errors.json` (HTTP and non-HTTP),
+    /// incremented at the single `write_dump_error` write chokepoint. This is the
+    /// source for `metadata.errors`: counting the writes themselves guarantees the
+    /// figure equals the `errors.json` line count for every error path and every
+    /// termination mode, unlike a coordinator-side event count which can miss a
+    /// `NewError` emitted after the event loop has stopped (e.g. the counter-neutral
+    /// `LostData`/`NetworkStalled` path, whose completion is emitted by a different
+    /// sender than its error event). In-memory only (surfaced via `metadata.json`).
+    error_lines: AtomicUsize,
     /// Per-service wall-clock pause accounting: time each service spent with its
     /// dispatch gated by a prerequisite re-check or a token refresh (the
     /// coordinator's paused-service union). Explains a duration gap that shows
@@ -365,6 +374,7 @@ impl Stats {
             liveness_ceiling_secs: AtomicU64::new(0),
             breaker_threshold: AtomicUsize::new(0),
             non_http_errors: AtomicUsize::new(0),
+            error_lines: AtomicUsize::new(0),
             service_pauses: DashMap::new(),
             token_refreshes: DashMap::new(),
             stall_events: AtomicUsize::new(0),
@@ -460,6 +470,16 @@ impl Stats {
     /// Exact count of non-HTTP (`status == 0`) `errors.json` entries.
     pub fn non_http_errors(&self) -> usize {
         self.non_http_errors.load(Ordering::Relaxed)
+    }
+
+    /// Record one entry (HTTP or non-HTTP) written to `errors.json`.
+    pub fn record_error_line(&self) {
+        self.error_lines.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Exact total count of entries written to `errors.json`.
+    pub fn error_lines(&self) -> usize {
+        self.error_lines.load(Ordering::Relaxed)
     }
 
     /// Set the per-bucket no-progress ceiling (seconds) for the liveness check.

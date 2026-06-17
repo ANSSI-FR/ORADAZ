@@ -110,6 +110,19 @@ fn record_non_http_error_counts_exactly() {
 }
 
 #[test]
+fn record_error_line_counts_exactly() {
+    // `error_lines` is the source for `metadata.errors`: it counts every entry
+    // written to `errors.json` at the single write chokepoint, so the figure
+    // equals the line count regardless of the error path.
+    let stats = default_test_stats();
+    assert_eq!(stats.error_lines(), 0);
+    stats.record_error_line();
+    stats.record_error_line();
+    stats.record_error_line();
+    assert_eq!(stats.error_lines(), 3);
+}
+
+#[test]
 fn record_response_distinguishes_expected_and_unexpected() {
     let stats = default_test_stats();
     stats.record_response("graph", "users", 200, false);

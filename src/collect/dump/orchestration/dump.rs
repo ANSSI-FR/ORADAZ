@@ -442,7 +442,7 @@ pub async fn dump(dumper: &mut Dumper, dump_started: Arc<AtomicBool>) -> Result<
         "{:FL$}Collection summary: requests={}, errors={}, auth_errors={}, prereq_errors={}, missing_token_errors={}\n",
         "Dumper",
         dumper.requests_number,
-        dumper.errors_number,
+        dumper.stats.error_lines(),
         dumper.auth_errors_number,
         dumper.prerequisites_errors_number,
         dumper.missing_token_errors_number

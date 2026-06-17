@@ -160,8 +160,9 @@ async fn process_single_too_many_requests_requeues_url() {
 /// A 429 does not abandon a URL on a fixed budget. While its
 /// bucket keeps making progress (or has only just been seen) it is re-queued;
 /// once the bucket has written no data for the liveness ceiling it is abandoned
-/// as lost data (`ThrottleStalled`) so the run can terminate — surfaced as a
-/// single `NewError`, with NO `RequestCompleted` (the abandonment is
+/// as lost data (`ThrottleStalled`) so the run can terminate — counted at the
+/// `errors.json` write chokepoint (`Stats::error_lines` / `non_http_errors`),
+/// with NO `NewError` and NO `RequestCompleted` (the abandonment is
 /// counter-neutral; the outer `process()` owns the one completion).
 #[tokio::test(start_paused = true)]
 async fn throttle_abandoned_when_bucket_stalls_past_liveness_ceiling() {
@@ -199,8 +200,9 @@ async fn throttle_abandoned_when_bucket_stalls_past_liveness_ceiling() {
         "a bucket stalled past the liveness ceiling must be abandoned, not re-queued"
     );
 
-    // Abandonment surfaced as exactly one NewError, and no RequestCompleted
-    // (counter-neutral: write_dump_error emits NewError only).
+    // Abandonment emits no coordinator event: the error line is counted at the
+    // errors.json write chokepoint, and the abandonment is counter-neutral (the
+    // outer `process()` owns the single RequestCompleted, not exercised here).
     let messages: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
     let errors = messages
         .iter()
@@ -210,13 +212,21 @@ async fn throttle_abandoned_when_bucket_stalls_past_liveness_ceiling() {
         .iter()
         .filter(|m| matches!(m, CoordinatorEvent::RequestCompleted { .. }))
         .count();
-    assert_eq!(errors, 1, "abandonment must emit exactly one NewError");
+    assert_eq!(
+        errors, 0,
+        "abandonment emits no NewError (the error line is counted at the write chokepoint)"
+    );
     assert_eq!(
         completions, 0,
         "abandonment must be counter-neutral (no RequestCompleted)"
     );
-    // The status-0 abandonment entry is counted exactly once as a non-HTTP error
-    // at the errors.json write chokepoint.
+    // The status-0 abandonment entry is counted exactly once at the errors.json
+    // write chokepoint — both as a total error line and as a non-HTTP error.
+    assert_eq!(
+        thread.context.stats.error_lines(),
+        1,
+        "a status-0 errors.json entry must be counted as one error line"
+    );
     assert_eq!(
         thread.context.stats.non_http_errors(),
         1,
@@ -311,11 +321,12 @@ async fn successful_2xx_resets_liveness_timer() {
 }
 
 /// The counter accounting that makes network abandonment safe: a `LostData`
-/// write (`completion_count = 0`) records the error but emits NO
-/// `RequestCompleted`, while a dispatch `DumpError` (`completion_count = 1`)
-/// emits exactly one `RequestCompleted{count:1}`. The former is what keeps a
-/// network sub-URL abandonment in `finalize_retry` from double-decrementing
-/// `current_counter` (the batch's own completion already covers it).
+/// write (`completion_count = 0`) records the error line (counted at the
+/// errors.json write chokepoint) but emits NO `RequestCompleted`, while a
+/// dispatch `DumpError` (`completion_count = 1`) emits exactly one
+/// `RequestCompleted{count:1}`. The former is what keeps a network sub-URL
+/// abandonment in `finalize_retry` from double-decrementing `current_counter`
+/// (the batch's own completion already covers it).
 #[tokio::test]
 async fn lost_data_write_is_counter_neutral_vs_dump_error() {
     // Reuse the response harness to obtain a fully-wired ResponseContext + writer.
@@ -340,7 +351,8 @@ async fn lost_data_write_is_counter_neutral_vs_dump_error() {
         post_data: None,
     };
 
-    // completion_count = 0 (LostData): writes + NewError, but NO RequestCompleted.
+    // completion_count = 0 (LostData): writes the error line (counted at the
+    // errors.json write chokepoint), but emits NO NewError and NO RequestCompleted.
     let (tx0, mut rx0) = mpsc::channel::<CoordinatorEvent>(16);
     ResponseErrorThread::new(tx0, context.clone(), mk_err(), 7, 0)
         .process()
@@ -351,8 +363,8 @@ async fn lost_data_write_is_counter_neutral_vs_dump_error() {
             .iter()
             .filter(|m| matches!(m, CoordinatorEvent::NewError(..)))
             .count(),
-        1,
-        "LostData must still record the error (one NewError)"
+        0,
+        "LostData emits no NewError (the error line is counted at the write chokepoint)"
     );
     assert_eq!(
         msgs0
@@ -361,6 +373,20 @@ async fn lost_data_write_is_counter_neutral_vs_dump_error() {
             .count(),
         0,
         "LostData (completion_count=0) must NOT emit RequestCompleted"
+    );
+    // Regression guard: a NetworkStalled/LostData write must still be counted in
+    // `error_lines` (the `metadata.errors` source) so `errors` stays consistent
+    // with the errors.json line count even though the abandonment emits no
+    // coordinator event (the bug this fix addresses).
+    assert_eq!(
+        context.stats.error_lines(),
+        1,
+        "LostData write must increment error_lines (the metadata.errors source)"
+    );
+    assert_eq!(
+        context.stats.non_http_errors(),
+        1,
+        "a status-0 LostData entry must be counted as one non-HTTP error"
     );
 
     // completion_count = 1 (dispatch DumpError): one RequestCompleted{count:1}.

@@ -1,4 +1,4 @@
-use crate::collect::dump::orchestration::events::{CoordinatorEvent, ProcessError};
+use crate::collect::dump::orchestration::events::CoordinatorEvent;
 use crate::collect::dump::request::RETRY_COUNT;
 use crate::collect::dump::response::{
     DumpError, Response, ResponseContent, ResponseContext, batch, single,
@@ -64,8 +64,9 @@ impl ResponseThread {
     /// `ThrottleStalled`) only when its `(service, api)` bucket has written no
     /// data within the ceiling despite retries; otherwise it is re-queued.
     ///
-    /// Counter note: abandonment uses `write_dump_error`, which emits a `NewError`
-    /// but NOT a `RequestCompleted`, so it is counter-neutral — the single
+    /// Counter note: abandonment uses `write_dump_error`, which counts the error
+    /// line at the write chokepoint (`Stats::error_lines`) and emits no
+    /// `RequestCompleted`, so it is counter-neutral — the single
     /// `RequestCompleted` from `process()` already accounts for this response's
     /// dispatched item. Returns only the URLs to re-queue.
     pub async fn prepare_rate_limit_retries(
@@ -140,11 +141,6 @@ impl ResponseThread {
             let _ = self.context.writer.set_broken().await;
             bail_fatal!(err);
         }
-        self.send_to_update(CoordinatorEvent::NewError(
-            self.response_data.api_call.url.service_name.clone().into(),
-            ProcessError::DumpError(1),
-        ))
-        .await;
     }
 
     pub async fn process(self) {
