@@ -1,0 +1,10 @@
+# Test code may use unwrap()/expect()/panic!() freely; the no-panic gate denied in
+# src/lib.rs and src/main.rs targets production code only.
+#
+# NOTE: future-proofing, not load-bearing today. The CI runs `cargo clippy -- -D
+# warnings` *without* `--all-targets`, so `#[cfg(test)]` modules and the `tests/`
+# integration crates are not compiled under clippy and these lints never fire on them.
+# These keys only take effect if CI later adds `--all-targets`.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

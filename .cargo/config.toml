@@ -3,3 +3,8 @@ rustflags = ["-C", "target-feature=+crt-static"]
 
 [target.'cfg(target_family = "linux")']
 rustflags = ["-C", "target-feature=+crt-static"]
+
+[env]
+# MLA v2 uses large post-quantum key types (ML-DSA-87 VerifyingKey ~73KB) that exceed
+# the 2MB default Rust test thread stack. 8MB ensures all tests run without overflow.
+RUST_MIN_STACK = "8388608"

@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.06.17-beta] - 2026-06-17
+
+### Fixed
+
+- Bugfix invalid number of errors in metadata
+
+## [3.0.06.14-beta] - 2026-06-14
+
+### Added/Changed/Fixed
+
+- Improved token renewal handling during collection 
+- Exchange Online API batching 
+- API breaker for users permissionGrants API
+- New telemetry metrics for debugging purpose 
+- Add configurable limits for response workers to limit memory usage on initial peak 
+- Work on the schema to reduce collect duration
+- Bugfix invalid condition in groups relationships
+- Add previously unciommited tests
+
+## [3.0.06.09-beta] - 2026-06-09
+
+### Added/Changed/Fixed
+
+- Limit userAuthenticationMethods API calls when unecessary
+- Fix cooldown/slot order bug
+- Remove UrlRetryLimit cap for network throttling (HTTP 429) and use liveness ceilling instead 
+- Add telemetry for easier debugging
+
+## [3.0.06.07-beta] - 2026-06-07
+
+### Added/Changed
+
+- Complete rework with multiple improvements including:
+    - Authentication ease and support for new modes
+    - Complete UI rework for better readibility
+    - Performance optimizations
+    - Support for custom security attribute to identify emergency accounts
+
 ## [2.1.06.01] - 2026-06-01
 
 ### Fixed

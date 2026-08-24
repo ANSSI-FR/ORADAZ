@@ -1,0 +1,53 @@
+{
+  "oradaz_version": "{{ORADAZ_VERSION}}",
+  "schema_version": "1.0.0",
+  "services": [
+    {
+      "name": "graph_mock",
+      "scopes": [
+        "https://graph.microsoft.com/.default"
+      ],
+      "mandatory_auth": true,
+      "url_scheme": "{{SERVER_URL}}[URI]",
+      "default_api_behavior": {},
+      "apis": [
+        {
+          "name": "users",
+          "uri": "/v1.0/users",
+          "relationships": [
+            {
+              "name": "manager",
+              "uri": "/v1.0/managers/{managerId}",
+              "keys": [
+                {
+                  "name": "{managerId}",
+                  "value": "managerId"
+                }
+              ],
+              "relationships": [
+                {
+                  "name": "details",
+                  "uri": "/v1.0/managers/{managerId}/details",
+                  "keys": [
+                    {
+                      "name": "{managerId}",
+                      "value": "id"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "managers",
+          "uri": "/v1.0/managers/{id}"
+        },
+        {
+          "name": "manager_details",
+          "uri": "/v1.0/managers/{id}/details"
+        }
+      ]
+    }
+  ]
+}
