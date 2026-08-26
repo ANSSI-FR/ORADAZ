@@ -144,7 +144,7 @@ fn top_failing_statuses(api: &Value, limit: usize) -> Option<String> {
     if entries.is_empty() {
         return None;
     }
-    entries.sort_by(|a, b| b.1.cmp(&a.1));
+    entries.sort_by_key(|b| std::cmp::Reverse(b.1));
     let formatted: Vec<String> = entries
         .into_iter()
         .take(limit)
@@ -165,7 +165,7 @@ fn top_upstream_codes(api: &Value, limit: usize) -> Option<String> {
     if entries.is_empty() {
         return None;
     }
-    entries.sort_by(|a, b| b.1.cmp(&a.1));
+    entries.sort_by_key(|b| std::cmp::Reverse(b.1));
     let formatted: Vec<String> = entries
         .into_iter()
         .take(limit)
@@ -430,7 +430,7 @@ pub fn print_stats_section(
                 .map(|(msg, critical)| (severity_score(a), api_label(a), msg, critical))
         })
         .collect();
-    problematic.sort_by(|a, b| b.0.cmp(&a.0));
+    problematic.sort_by_key(|b| std::cmp::Reverse(b.0));
 
     // Re-resolve apis-by-label so each problematic entry can render the extra
     // detail lines (status code breakdown, upstream codes, retry pressure).
@@ -552,7 +552,7 @@ pub fn print_stats_section(
         .iter()
         .filter_map(|a| api_activity_seconds(a).map(|d| (d, a)))
         .collect();
-    by_duration.sort_by(|a, b| b.0.cmp(&a.0));
+    by_duration.sort_by_key(|b| std::cmp::Reverse(b.0));
 
     if by_duration.is_empty() {
         out.push(format!(
@@ -610,7 +610,7 @@ pub fn print_stats_section(
             Some((u64_field(a, "http_latency_sum_ms") / count, a))
         })
         .collect();
-    by_latency.sort_by(|a, b| b.0.cmp(&a.0));
+    by_latency.sort_by_key(|b| std::cmp::Reverse(b.0));
 
     if by_latency.is_empty() {
         out.push(format!(
@@ -629,11 +629,10 @@ pub fn print_stats_section(
             // fast 429/error turnarounds, so a throttled endpoint reads faster
             // than it serves. "—" on archives predating the ok-split counters.
             let ok_count = u64_field(api, "http_latency_ok_count");
-            let ok_mean = if ok_count > 0 {
-                format!("{} ms", u64_field(api, "http_latency_ok_sum_ms") / ok_count)
-            } else {
-                "—".to_string()
-            };
+            let ok_mean = u64_field(api, "http_latency_ok_sum_ms")
+                .checked_div(ok_count)
+                .map(|m| format!("{} ms", m))
+                .unwrap_or_else(|| "—".to_string());
             rows.push(Row::Cells(vec![
                 api_label(api),
                 format!("{mean} ms"),
@@ -690,21 +689,21 @@ pub fn print_stats_section(
             let mut rows: Vec<Row> = Vec::new();
             for (svc, v) in entries {
                 let count = u64_field(v, "http_latency_count");
-                let (mean, max) = if count > 0 {
-                    (
-                        format!("{} ms", u64_field(v, "http_latency_sum_ms") / count),
-                        format!("{} ms", u64_field(v, "http_latency_max_ms")),
-                    )
-                } else {
-                    ("—".to_string(), "—".to_string())
-                };
+                let (mean, max) = u64_field(v, "http_latency_sum_ms")
+                    .checked_div(count)
+                    .map(|m| {
+                        (
+                            format!("{} ms", m),
+                            format!("{} ms", u64_field(v, "http_latency_max_ms")),
+                        )
+                    })
+                    .unwrap_or_else(|| ("—".to_string(), "—".to_string()));
                 // Success-only mean — see the per-API table for why the split matters.
                 let ok_count = u64_field(v, "http_latency_ok_count");
-                let ok_mean = if ok_count > 0 {
-                    format!("{} ms", u64_field(v, "http_latency_ok_sum_ms") / ok_count)
-                } else {
-                    "—".to_string()
-                };
+                let ok_mean = u64_field(v, "http_latency_ok_sum_ms")
+                    .checked_div(ok_count)
+                    .map(|m| format!("{} ms", m))
+                    .unwrap_or_else(|| "—".to_string());
                 let server = u64_field(v, "retry_after_server_count");
                 let default = u64_field(v, "retry_after_default_count");
                 let ra = if server + default > 0 {
@@ -804,7 +803,7 @@ pub fn print_stats_section(
             Some((pages, children, a))
         })
         .collect();
-    by_shape.sort_by(|a, b| (b.0 + b.1).cmp(&(a.0 + a.1)));
+    by_shape.sort_by_key(|b| std::cmp::Reverse(b.0 + b.1));
 
     if by_shape.is_empty() {
         out.push(format!(

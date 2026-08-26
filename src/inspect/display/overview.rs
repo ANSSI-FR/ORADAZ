@@ -448,7 +448,7 @@ fn heavy_throttle_apis(stats: Option<&Value>, limit: usize) -> Vec<(String, Stri
             Some((wait, format!("{svc}/{name}"), retries))
         })
         .collect();
-    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    rows.sort_by_key(|b| std::cmp::Reverse(b.0));
     for (wait, label, retries) in rows.into_iter().take(limit) {
         // Show the cumulative Retry-After, not a "% of wall time": the wait is
         // summed across concurrent requests and routinely exceeds wall-clock.

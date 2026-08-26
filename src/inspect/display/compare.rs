@@ -297,7 +297,7 @@ fn print_table_movers(a: &LogSource, b: &LogSource, out: &mut Vec<String>) {
         out.push(format!("{}(no table changed between A and B)", INDENT));
         return;
     }
-    deltas.sort_by(|a, b| b.1.abs().cmp(&a.1.abs()));
+    deltas.sort_by_key(|b| std::cmp::Reverse(b.1.abs()));
     let limit = deltas.len().min(10);
     let mut rows: Vec<Row> = Vec::new();
     for ((folder, file), delta, av, bv) in deltas.iter().take(limit) {

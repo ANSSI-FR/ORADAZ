@@ -6,16 +6,16 @@ rust-version = "1.88"
 
 [dependencies]
 anstyle = "1.0.14"
-base64 = "0.22.1"
+base64 = "0.23.1"
 chrono = "0.4.45"
 clap = {version = "4.6.1", features = ["derive"]}
 crossterm = "0.29.0"
 dashmap = "6.2.1"
-jsonwebtoken = {version = "10.4.0", default-features = false, features = ["use_pem", "rust_crypto"]}
+jsonwebtoken = {version = "11.0.0", default-features = false, features = ["use_pem", "rust_crypto"]}
 log = {version = "0.4.32", features = ["max_level_trace", "release_max_level_trace"]}
 mimalloc = {version = "0.1", default-features = false}
 mla = {version = "2.0.0", default-features = false, features = ["send"]}
-rand = "0.10.1"
+rand = "0.10.2"
 regex = "1.12.4"
 reqwest = {version = "0.13.4", features = ["json", "form", "http2"]}
 serde = {version = "1.0.228", features = ["derive", "rc"]}

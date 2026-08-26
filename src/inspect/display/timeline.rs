@@ -120,7 +120,7 @@ fn print_activity_windows(
             Some((secs, label, requests))
         })
         .collect();
-    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    rows.sort_by_key(|b| std::cmp::Reverse(b.0));
     if rows.is_empty() {
         out.push(format!(
             "{}(no API spanned more than a second of activity)",
