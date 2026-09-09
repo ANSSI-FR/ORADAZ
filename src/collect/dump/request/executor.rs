@@ -60,7 +60,8 @@ fn with_timeout(b: RequestBuilder, timeout_secs: Option<u64>) -> RequestBuilder 
 /// override.
 ///
 /// When `api_call.url.post_body` is `Some`, sends a POST with that JSON body
-/// (used by Azure Resource Graph). Otherwise sends a GET.
+/// (Azure Resource Graph, or a schema-declared cmdlet proxy such as the
+/// Exchange `InvokeCommand` endpoint). Otherwise sends a GET.
 pub async fn execute_single(
     client: &OradazClient,
     api_call: &ApiCall,
@@ -69,10 +70,10 @@ pub async fn execute_single(
 ) -> Result<ExecutionResult, ExecutorError> {
     if let Some(body) = &api_call.url.post_body {
         trace!(
-            "{:FL$}POST {} (ARG) [ID: {}]",
+            "{:FL$}POST {} [ID: {}]",
             "Executor", &api_call.url.url, api_call.id
         );
-        let builder = client
+        let mut builder = client
             .client
             .post(&api_call.url.url)
             .header(
@@ -80,6 +81,16 @@ pub async fn execute_single(
                 &format!("{} {}", token.token_type, token.access_token),
             )
             .json(body);
+        // The Exchange admin-API cmdlet proxy (`…/InvokeCommand`) requires a
+        // backend routing hint and refuses to answer anything but JSON without
+        // an explicit format. The system arbitration mailbox is the documented
+        // app-only anchor (no user mailbox UPN is known at collection time).
+        if api_call.url.service_name == "exchange" {
+            builder = builder.header("X-ResponseFormat", "json").header(
+                "X-AnchorMailbox",
+                exchange_anchor_mailbox(&api_call.url.url),
+            );
+        }
         let started = Instant::now();
         let res = with_timeout(builder, timeout_secs)
             .send()
@@ -107,6 +118,28 @@ pub async fn execute_single(
         .map_err(ExecutorError::Request)?;
 
     handle_response(res, started).await
+}
+
+/// Builds the `X-AnchorMailbox` routing hint for an Exchange admin-API cmdlet
+/// POST. The tenant identifier is the path segment right after the
+/// `/adminapi/<version>/` prefix; when the URL does not follow that layout the
+/// raw tenant segment is unavailable and an empty string is returned (the
+/// request will then fail server-side and be recorded as a dump error, exactly
+/// like any other malformed endpoint).
+fn exchange_anchor_mailbox(url: &str) -> String {
+    const ANCHOR_LOCAL_PART: &str = "SystemMailbox{bb558c35-97f1-4cb9-8ff7-d53741dc928c}";
+    let rest = match url.split_once("/adminapi/") {
+        Some((_, rest)) => rest,
+        None => return String::new(),
+    };
+    let mut segments = rest.split('/');
+    // Skip the version segment, then take the tenant one.
+    match (segments.next(), segments.next()) {
+        (Some(_), Some(tenant)) if !tenant.is_empty() => {
+            format!("UPN:{ANCHOR_LOCAL_PART}@{tenant}")
+        }
+        _ => String::new(),
+    }
 }
 
 /// Executes a batch HTTP POST request, optionally with a per-service timeout
@@ -282,6 +315,39 @@ fn bounded_excerpt(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, RETRY_AFTER};
+
+    #[test]
+    fn anchor_mailbox_uses_tenant_segment() {
+        assert_eq!(
+            exchange_anchor_mailbox(
+                "https://outlook.office365.com/adminapi/beta/abc-123/InvokeCommand"
+            ),
+            "UPN:SystemMailbox{bb558c35-97f1-4cb9-8ff7-d53741dc928c}@abc-123"
+        );
+        // Tenant may be a domain name as well as a GUID.
+        assert_eq!(
+            exchange_anchor_mailbox(
+                "https://outlook.office365.com/adminapi/v2.0/tenant.onmicrosoft.com/InvokeCommand"
+            ),
+            "UPN:SystemMailbox{bb558c35-97f1-4cb9-8ff7-d53741dc928c}@tenant.onmicrosoft.com"
+        );
+    }
+
+    #[test]
+    fn anchor_mailbox_rejects_malformed_urls() {
+        assert_eq!(
+            exchange_anchor_mailbox("https://graph.microsoft.com/v1.0/users"),
+            ""
+        );
+        assert_eq!(
+            exchange_anchor_mailbox("https://outlook.office365.com/adminapi/beta"),
+            ""
+        );
+        assert_eq!(
+            exchange_anchor_mailbox("https://outlook.office365.com/adminapi/beta//InvokeCommand"),
+            ""
+        );
+    }
 
     #[test]
     fn retry_after_absent_is_none() {

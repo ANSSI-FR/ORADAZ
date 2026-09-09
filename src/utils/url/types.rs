@@ -130,6 +130,14 @@ pub struct Api {
     pub parameters: Option<Vec<Parameter>>,
     pub relationships: Option<Vec<Relationship>>,
     pub expected_error_codes: Option<Vec<ExpectedErrorCode>>,
+    /// HTTP verb for this endpoint; defaults to GET. The only current use is
+    /// the Exchange `InvokeCommand` cmdlet proxy (an undocumented POST surface).
+    #[serde(default)]
+    pub http_method: Option<String>,
+    /// JSON body that turns the request into a POST carrying it (same mechanism
+    /// as Azure Resource Graph's `post_body`). Absent ⇒ GET as before.
+    #[serde(default)]
+    pub post_body: Option<serde_json::Value>,
 }
 
 /// Data structure for a Microsoft Graph batch request item.

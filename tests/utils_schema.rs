@@ -7,7 +7,7 @@ use oradaz::utils::errors::Error;
 use oradaz::utils::schema::{
     Schema, SchemaModel, SchemaVersion, Service, validate_success_http_codes,
 };
-use oradaz::utils::url::{Api, Relationship};
+use oradaz::utils::url::{Api, Parameter, Relationship};
 use oradaz::utils::writer::actor::spawn_writer_task;
 
 use dashmap::DashMap;
@@ -286,6 +286,8 @@ fn test_validate_success_http_codes_flags_all_levels() {
             parameters: None,
             relationships: Some(vec![rel]),
             expected_error_codes: None,
+            http_method: None,
+            post_body: None,
         }],
     };
 
@@ -311,6 +313,8 @@ fn test_validate_success_http_codes_accepts_valid_and_absent() {
         parameters: None,
         relationships: None,
         expected_error_codes: None,
+        http_method: None,
+        post_body: None,
     };
     let without = Api {
         name: "no_code".to_string(),
@@ -320,6 +324,8 @@ fn test_validate_success_http_codes_accepts_valid_and_absent() {
         parameters: None,
         relationships: None,
         expected_error_codes: None,
+        http_method: None,
+        post_body: None,
     };
     let service = Service {
         name: "graph".to_string(),
@@ -353,6 +359,8 @@ async fn test_schema_get_urls_with_service_filtering() {
                 parameters: None,
                 relationships: None,
                 expected_error_codes: None,
+                http_method: None,
+                post_body: None,
             }],
         },
         Service {
@@ -371,6 +379,8 @@ async fn test_schema_get_urls_with_service_filtering() {
                 parameters: None,
                 relationships: None,
                 expected_error_codes: None,
+                http_method: None,
+                post_body: None,
             }],
         },
     ];
@@ -487,6 +497,8 @@ async fn test_schema_get_urls_empty_when_no_tokens() {
             parameters: None,
             relationships: None,
             expected_error_codes: None,
+            http_method: None,
+            post_body: None,
         }],
     }];
 
@@ -910,4 +922,170 @@ fn test_root_schemas_deserialize() {
     let full_raw = std::fs::read_to_string(format!("{root}/schema.json"))
         .expect("schema.json must exist at the repository root");
     Schema::deserialize(full_raw).expect("schema.json must deserialize");
+}
+
+/// A schema-declared `post_body` must flow into the produced `Url` so the
+/// request path sends a POST (Exchange `InvokeCommand` cmdlet proxy). An API
+/// without `post_body` keeps the GET path (`post_body: None`).
+#[tokio::test]
+async fn test_api_post_body_propagates_to_url() {
+    let body = serde_json::json!({"CmdletInput": {"CmdletName": "Get-ApplicationAccessPolicy", "Parameters": {}}});
+    let services = vec![Service {
+        name: "exchange".to_string(),
+        client_id: None,
+        scopes: vec!["https://outlook.office365.com/.default".to_string()],
+        mandatory_auth: false,
+        url_scheme: "https://outlook.office365.com/[API_VERSION]/[TENANT]/[URI][PARAMS]"
+            .to_string(),
+        default_api_behavior: HashMap::new(),
+        default_parameters: Some(vec![
+            Parameter {
+                name: "[API_VERSION]".to_string(),
+                value: "adminapi/beta".to_string(),
+                transform: None,
+                conditions: None,
+            },
+            Parameter {
+                name: "[PARAMS]".to_string(),
+                value: String::new(),
+                transform: None,
+                conditions: None,
+            },
+        ]),
+        apis: vec![
+            Api {
+                name: "applicationAccessPolicies".to_string(),
+                uri: "InvokeCommand".to_string(),
+                conditions: None,
+                api_behavior: None,
+                parameters: None,
+                relationships: None,
+                expected_error_codes: None,
+                http_method: Some("POST".to_string()),
+                post_body: Some(body.clone()),
+            },
+            Api {
+                name: "mailboxes".to_string(),
+                uri: "Mailbox".to_string(),
+                conditions: None,
+                api_behavior: None,
+                parameters: None,
+                relationships: None,
+                expected_error_codes: None,
+                http_method: None,
+                post_body: None,
+            },
+        ],
+    }];
+    let schema = Schema {
+        oradaz_version: VERSION.to_string(),
+        schema_hash: "test".to_string(),
+        schema_version: "1.0.0".to_string(),
+        services,
+    };
+
+    let mut tokens = HashMap::new();
+    tokens.insert(
+        Arc::from("exchange"),
+        Token {
+            tenant_id: "test-tenant".to_string(),
+            client_id: "test-client".to_string(),
+            service: "exchange".to_string(),
+            expires_on: 1234567890,
+            access_token: "test_token".to_string(),
+            refresh_token: None,
+            token_type: "Bearer".to_string(),
+            user_id: String::new(),
+            user_principal_name: String::new(),
+            scopes: vec!["https://outlook.office365.com/.default".to_string()],
+        },
+    );
+    let config = minimal_test_config();
+    let condition_checker = ConditionChecker {
+        client: OradazClient::new(&config).unwrap(),
+        tenant_conditions: HashMap::new(),
+        user_conditions: DashMap::new(),
+        emergency_accounts_custom_attributes: String::from("Emergency.isEmergency"),
+        org_url: "https://graph.microsoft.com/v1.0/organization".to_string(),
+        stats: std::sync::Arc::new(oradaz::utils::stats::Stats::new()),
+        is_application_auth: true,
+    };
+
+    let urls = schema
+        .get_urls(
+            "abc-123".to_string(),
+            &tokens,
+            &condition_checker,
+            None,
+            false,
+        )
+        .await;
+    let exchange_urls = urls.get("exchange").expect("exchange bucket must exist");
+    assert_eq!(exchange_urls.len(), 2);
+
+    let post = exchange_urls
+        .iter()
+        .find(|u| u.api == "applicationAccessPolicies")
+        .expect("POST api must produce a URL");
+    assert_eq!(
+        post.url,
+        "https://outlook.office365.com/adminapi/beta/abc-123/InvokeCommand"
+    );
+    assert_eq!(
+        post.post_body.as_ref(),
+        Some(&body),
+        "post_body must flow from schema to Url"
+    );
+
+    let get = exchange_urls
+        .iter()
+        .find(|u| u.api == "mailboxes")
+        .expect("GET api must produce a URL");
+    assert!(get.post_body.is_none(), "GET api must keep post_body None");
+}
+
+/// Minimal `Config` for tests that only need a client for the condition checker.
+fn minimal_test_config() -> Config {
+    Config {
+        tenant: "test-tenant".to_string(),
+        app_id: "test-app".to_string(),
+        services: None,
+        proxy: None,
+        output_files: Some(false),
+        output_mla: Some(false),
+        output: None,
+        no_check: None,
+        use_device_code: None,
+        listener_address: None,
+        listener_port: None,
+        schema_file: None,
+        schema_url_override: None,
+        user_agent: None,
+        trace_logs: None,
+        use_application_credentials: None,
+        application_credentials: None,
+        concurrency_min_window: None,
+        concurrency_max_window: None,
+        dispatch_burst_cap: None,
+        http_timeout_seconds: None,
+        url_retry_limit: None,
+        rate_limit_retry_limit: None,
+        rate_limit_max_wait_secs: None,
+        stall_detection_timeout: None,
+        http_connect_timeout_seconds: None,
+        retry_backoff_base_ms: None,
+        retry_backoff_cap_ms: None,
+        prereq_recheck_cache_secs: None,
+        liveness_ceiling_secs: None,
+        service_overrides: None,
+        default_retry_after_seconds: Some(30),
+        emergency_accounts_custom_attributes: None,
+        additional_mla_keys: None,
+        logs_days_filter: None,
+        shuffle_urls: None,
+        concurrency_slow_start: None,
+        response_workers_max: None,
+        response_memory_budget_bytes: None,
+        expected_error_breaker_threshold: None,
+    }
 }

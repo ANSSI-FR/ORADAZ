@@ -229,6 +229,8 @@ fn test_api_structure_creation() {
         parameters: None,
         relationships: None,
         expected_error_codes: None,
+        http_method: None,
+        post_body: None,
     };
 
     assert_eq!(api.name, "applications");
@@ -248,6 +250,8 @@ fn test_api_with_behavior() {
         parameters: None,
         relationships: None,
         expected_error_codes: None,
+        http_method: None,
+        post_body: None,
     };
 
     assert_eq!(api.api_behavior, Some(behavior));
@@ -2231,6 +2235,8 @@ async fn test_api_get_url_date_filter_applied() {
         }]),
         relationships: None,
         expected_error_codes: None,
+        http_method: None,
+        post_body: None,
     };
     let service = make_graph_service();
     let token = make_token_with_tenant("test-tenant");
@@ -2273,6 +2279,8 @@ async fn test_api_get_url_date_filter_none_produces_clean_url() {
         }]),
         relationships: None,
         expected_error_codes: None,
+        http_method: None,
+        post_body: None,
     };
     let service = make_graph_service();
     let token = make_token_with_tenant("test-tenant");
@@ -2306,6 +2314,8 @@ async fn test_api_get_url_directory_audits_top_and_date_filter_combined() {
         }]),
         relationships: None,
         expected_error_codes: None,
+        http_method: None,
+        post_body: None,
     };
     let service = make_graph_service();
     let token = make_token_with_tenant("test-tenant");
@@ -2347,6 +2357,8 @@ async fn test_api_get_url_directory_audits_top_only_when_filter_disabled() {
         }]),
         relationships: None,
         expected_error_codes: None,
+        http_method: None,
+        post_body: None,
     };
     let service = make_graph_service();
     let token = make_token_with_tenant("test-tenant");

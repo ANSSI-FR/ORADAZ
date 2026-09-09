@@ -1,6 +1,6 @@
 {
-    "oradaz_version": "3.0.08.26",
-    "schema_version": "3.0.08.26",
+    "oradaz_version": "3.0.09.09",
+    "schema_version": "3.0.09.09",
     "services": [
         {
             "name": "graph",
@@ -631,6 +631,48 @@
                         {
                             "name": "[PARAMS]",
                             "value": "?$top=50"
+                        }
+                    ]
+                },
+                {
+                    "name": "exchangeRoleAssignments",
+                    "uri": "roleManagement/exchange/roleAssignments",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        },
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "exchangeRoleDefinitions",
+                    "uri": "roleManagement/exchange/roleDefinitions",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        },
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ]
+                },
+                {
+                    "name": "exchangeCustomAppScopes",
+                    "uri": "roleManagement/exchange/customAppScopes",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": "?$top=999"
+                        },
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
                         }
                     ]
                 },
@@ -4504,6 +4546,30 @@
                         "partition_field": "RecipientTypeDetails",
                         "partition_values": "UserMailbox,SharedMailbox,RoomMailbox,EquipmentMailbox,MailUniversalDistributionGroup,MailUniversalSecurityGroup,DynamicDistributionGroup,MailContact,MailUser,PublicFolder,GuestMailUser,GroupMailbox,DiscoveryMailbox"
                     }
+                },
+                {
+                    "name": "applicationAccessPolicies",
+                    "uri": "InvokeCommand",
+                    "parameters": [
+                        {
+                            "name": "[PARAMS]",
+                            "value": ""
+                        }
+                    ],
+                    "http_method": "POST",
+                    "post_body": {
+                        "CmdletInput": {
+                            "CmdletName": "Get-ApplicationAccessPolicy",
+                            "Parameters": {}
+                        }
+                    },
+                    "expected_error_codes": [
+                        {
+                            "status": 404,
+                            "code": "NotFound",
+                            "breaker_eligible": true
+                        }
+                    ]
                 }
             ]
         }

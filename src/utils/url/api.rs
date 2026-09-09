@@ -77,7 +77,9 @@ impl Api {
             }
         }
 
-        // Construct the final URL string
+        // Construct the final URL string. `construct_url` consumes `self`, so
+        // take the POST body out first.
+        let post_body = self.post_body.clone();
         let service_name = service.name.clone();
         let url: String = self
             .construct_url(
@@ -105,7 +107,9 @@ impl Api {
             rate_limit_retry_number: 0,
             rate_limit_total_wait_secs: 0,
             network_retry_number: 0,
-            post_body: None,
+            // A schema-declared `post_body` turns the URL into a POST (e.g.
+            // Exchange `InvokeCommand`); absent means the plain GET path.
+            post_body,
         })
     }
 
