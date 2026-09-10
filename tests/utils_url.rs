@@ -1083,6 +1083,36 @@ async fn test_relationship_url_get_url_keep_url_strips_query() {
 }
 
 #[tokio::test]
+async fn test_relationship_url_get_url_keep_url_token_in_uri_real_form() {
+    // Real pipeline form: `url_scheme` is copied verbatim from the service and
+    // never carries [KEEP_URL]; the token only appears in the relationship
+    // `uri`, which then acts as a full absolute template. [KEEP_URL] must be
+    // replaced by the parent's dispatched URL with its query stripped.
+    let mut rel = make_rel_url(
+        "https://graph.microsoft.com/v1.0/[URI]", // service scheme, no token
+        "[KEEP_URL]/[1]",
+    );
+    rel.keys = Some(vec![Parameter {
+        name: "[1]".to_string(),
+        value: "id".to_string(),
+        transform: None,
+        conditions: None,
+    }]);
+    let token = make_token_with_tenant("test-tenant");
+    let previous_url =
+        "https://graph.microsoft.com/v1.0/servicePrincipals/sp-1/synchronization/jobs?$top=5"
+            .to_string();
+    let data = serde_json::json!({ "id": "job-42" });
+    let checker = make_checker_no_http();
+
+    let result = rel.get_url(&token, &data, previous_url, &checker, 0).await;
+    assert_eq!(
+        result,
+        "https://graph.microsoft.com/v1.0/servicePrincipals/sp-1/synchronization/jobs/job-42"
+    );
+}
+
+#[tokio::test]
 async fn test_relationship_url_get_url_uri_substitution() {
     let mut rel = make_rel_url(
         "https://graph.microsoft.com[URI]",

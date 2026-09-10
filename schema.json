@@ -1,6 +1,6 @@
 {
-    "oradaz_version": "3.0.09.09",
-    "schema_version": "3.0.09.09",
+    "oradaz_version": "3.0.09.10",
+    "schema_version": "3.0.09.10",
     "services": [
         {
             "name": "graph",
@@ -1533,6 +1533,12 @@
                 {
                     "name": "onPremisesSynchronization",
                     "uri": "directory/onPremisesSynchronization",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ],
                     "conditions": [
                         "GAOrApp"
                     ],
@@ -1546,6 +1552,12 @@
                 {
                     "name": "organization",
                     "uri": "organization",
+                    "parameters": [
+                        {
+                            "name": "[API_VERSION]",
+                            "value": "beta"
+                        }
+                    ],
                     "relationships": [
                         {
                             "name": "certificateBasedAuthConfiguration",
@@ -1838,6 +1850,36 @@
                         {
                             "name": "[PARAMS]",
                             "value": "?$top=999&$count=true"
+                        }
+                    ],
+                    "relationships": [
+                        {
+                            "name": "cloudSyncJobs",
+                            "uri": "servicePrincipals/[1]/synchronization/jobs",
+                            "keys": [
+                                {
+                                    "name": "[1]",
+                                    "value": "id"
+                                }
+                            ],
+                            "parameters": [
+                                {
+                                    "name": "[PARAMS]",
+                                    "value": "?$filter=startswith(templateId,'AD2AAD') or startswith(templateId,'AAD2AD')"
+                                }
+                            ],
+                            "relationships": [
+                                {
+                                    "name": "schema",
+                                    "uri": "[KEEP_URL]/[1]/schema",
+                                    "keys": [
+                                        {
+                                            "name": "[1]",
+                                            "value": "id"
+                                        }
+                                    ]
+                                }
+                            ]
                         }
                     ]
                 },

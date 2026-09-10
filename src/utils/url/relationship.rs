@@ -169,14 +169,20 @@ impl RelationshipUrl {
             return String::new();
         }
 
-        let mut url: String = self.url_scheme.clone();
-
-        if url.contains("[KEEP_URL]") {
-            url = self.uri.replace(
+        // `[KEEP_URL]` in a relationship `uri` short-circuits the service
+        // `url_scheme` entirely: the uri becomes a full absolute template where
+        // `[KEEP_URL]` stands for the parent's dispatched URL with its query
+        // string stripped. The service `url_scheme` never carries the token
+        // (it is copied verbatim in `url::api` and `value_handlers`), so the
+        // guard must test `self.uri`, not `url_scheme`.
+        let mut url: String = if self.uri.contains("[KEEP_URL]") {
+            self.uri.replace(
                 "[KEEP_URL]",
                 previous_url.split('?').next().unwrap_or(&previous_url),
-            );
-        }
+            )
+        } else {
+            self.url_scheme.clone()
+        };
 
         url = url.replace("[URI]", &self.uri);
 
