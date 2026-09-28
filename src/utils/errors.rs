@@ -28,7 +28,7 @@ impl FatalPresentation for Error {
             Error::InvalidConfigXMLStructure(_) => "Invalid config XML structure",
             Error::FolderCreation => "Output folder is not usable",
             Error::SchemaFileNotFound => "Schema file not found",
-            Error::TokenAcquisitionError => "Authentication token acquisition failed",
+            Error::TokenAcquisitionError(_) => "Authentication token acquisition failed",
             Error::ClientCredentialsFlowCreation(_)
             | Error::ClientCredentialsFlowAuthentication(_) => {
                 "Client credentials authentication failed"
@@ -62,7 +62,11 @@ impl FatalPresentation for Error {
     fn context(&self) -> Option<String> {
         match self {
             Error::StringError(msg) => Some(msg.clone()),
-            Error::ClientCredentialsFlowCreation(msg)
+            Error::TokenAcquisitionError(msg)
+            | Error::DeviceCodeFlowCreation(msg)
+            | Error::DeviceCodeFlowAuthentication(msg)
+            | Error::RefreshTokenNewScope(msg)
+            | Error::ClientCredentialsFlowCreation(msg)
             | Error::ClientCredentialsFlowAuthentication(msg) => Some(msg.clone()),
             Error::InvalidConfigXMLStructure(detail) => detail.clone(),
             Error::InvalidConfigValue(detail) => Some(detail.clone()),
@@ -95,7 +99,11 @@ impl FatalPresentation for Error {
             Error::SchemaFileNotFound => {
                 &["Provide a valid schema file or ensure network access to download it."]
             }
-            Error::TokenAcquisitionError => &["Check network connectivity and client credentials."],
+            Error::TokenAcquisitionError(_) => &[
+                "Use the OAuth error shown above to check the tenant, application and permissions.",
+                "For device code authentication, verify that Allow public client flows is enabled.",
+                "For browser authentication, verify the registered redirect URI. Check connectivity and proxy settings for transport errors.",
+            ],
             Error::RefreshToken => &["Verify the refresh token is valid or re-authenticate."],
             Error::MissingExchangeManageAsApp => &[
                 "Grant the Exchange.ManageAsApp application permission on the Office 365 Exchange Online API.",
@@ -148,16 +156,16 @@ pub enum Error {
     RegexError,
 
     /// --- Auth errors ---
-    /// Failed to acquire a new authentication token.
-    TokenAcquisitionError,
+    /// Failed to acquire a new authentication token, with a safe diagnostic.
+    TokenAcquisitionError(String),
     /// Error during the creation phase of the authorization code flow.
     AuthorizationCodeFlowCreation,
     /// Error during the authentication phase of the authorization code flow.
     AuthorizationCodeFlowAuthentication,
-    /// Error during the creation phase of the device code flow.
-    DeviceCodeFlowCreation,
-    /// Error during the authentication phase of the device code flow.
-    DeviceCodeFlowAuthentication,
+    /// Error during the creation phase of the device code flow, with a safe diagnostic.
+    DeviceCodeFlowCreation(String),
+    /// Error during the authentication phase of the device code flow, with a safe diagnostic.
+    DeviceCodeFlowAuthentication(String),
     /// The device flow stream ended unexpectedly.
     DeviceCodeFlowUnexpectedEnd,
     /// Error during the creation phase of the client credentials flow.
@@ -172,8 +180,8 @@ pub enum Error {
     AuthErrorsToJSON,
     /// General token refresh failure.
     RefreshToken,
-    /// Error while refreshing a token to obtain a new scope.
-    RefreshTokenNewScope,
+    /// Error while refreshing a token to obtain a new scope, with a safe diagnostic.
+    RefreshTokenNewScope(String),
     /// Signal to reprocess a token update, optionally including the cause.
     Reprocess(Option<AuthError>),
 
@@ -347,7 +355,11 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Error::ClientCredentialsFlowCreation(msg)
+            Error::TokenAcquisitionError(msg)
+            | Error::DeviceCodeFlowCreation(msg)
+            | Error::DeviceCodeFlowAuthentication(msg)
+            | Error::RefreshTokenNewScope(msg)
+            | Error::ClientCredentialsFlowCreation(msg)
             | Error::ClientCredentialsFlowAuthentication(msg) => write!(f, "{msg}"),
             _ => write!(f, "{self:?}"),
         }
@@ -453,9 +465,27 @@ mod tests {
 
     #[test]
     fn test_error_token_acquisition_error() {
-        let err = Error::TokenAcquisitionError;
+        let err = Error::TokenAcquisitionError("synthetic cause".to_string());
         let display = format!("{}", err);
-        assert!(display.contains("TokenAcquisitionError"));
+        assert_eq!(display, "synthetic cause");
+    }
+
+    #[test]
+    fn fatal_token_acquisition_preserves_oauth_context() {
+        let detail = "Token refresh for service graph: HTTP 400 Bad Request: invalid_grant: synthetic refusal";
+        let error = Error::TokenAcquisitionError(detail.to_string());
+
+        assert_eq!(error.to_string(), detail);
+        assert_eq!(error.context().as_deref(), Some(detail));
+        assert_eq!(error.title(), "Authentication token acquisition failed");
+        assert_eq!(
+            error.remediation_steps(),
+            &[
+                "Use the OAuth error shown above to check the tenant, application and permissions.",
+                "For device code authentication, verify that Allow public client flows is enabled.",
+                "For browser authentication, verify the registered redirect URI. Check connectivity and proxy settings for transport errors.",
+            ]
+        );
     }
 
     #[test]

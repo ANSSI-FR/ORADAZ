@@ -1,7 +1,9 @@
 /// Module to manage Device Code Flow authentication features.
 use crate::FL;
 use crate::collect::auth::tokens::Token;
-use crate::collect::auth::tokens::response::{InitialTokenResponse, TokenEndpointResponse};
+use crate::collect::auth::tokens::response::{
+    InitialTokenResponse, TokenEndpointResponse, oauth_error_summary, transport_error_summary,
+};
 use crate::utils::client::OradazClient;
 use crate::utils::errors::Error;
 use crate::utils::ui::auth_banner::AuthBanner;
@@ -80,48 +82,21 @@ impl DeviceCodeAuth {
         let token_response: InitialTokenResponse = loop {
             // Request a device code.
             debug!("{:FL$}Getting code for device code flow", "DeviceCodeAuth");
-            let dc_resp: DeviceCodeResponse = match oradaz_client
-                .client
-                .post(&devicecode_endpoint)
-                .form(&[("client_id", client_id.as_str()), ("scope", &scope_str)])
-                .send()
-                .await
+            let dc_resp = match Self::request_device_code(
+                &oradaz_client.client,
+                &devicecode_endpoint,
+                &client_id,
+                &scope_str,
+                &service,
+            )
+            .await
             {
-                Ok(resp) => match resp.json::<DeviceCodeResponse>().await {
-                    Ok(d) => d,
-                    Err(err) => {
-                        error!(
-                            "{:FL$}Error requesting device code for scopes '{}' for service {:?}",
-                            "DeviceCodeAuth",
-                            scopes.join(" "),
-                            &service
-                        );
-                        debug!(
-                            "{:FL$}Device authorization response parse error for service {:?}: {:?}",
-                            "DeviceCodeAuth", service, err
-                        );
-                        if banner_started {
-                            banner.failure("Device code flow authentication failed");
-                        }
-                        return Err(Error::DeviceCodeFlowAuthentication);
-                    }
-                },
+                Ok(response) => response,
                 Err(err) => {
-                    error!(
-                        "{:FL$}Error requesting device code for scopes '{}' for service {:?}",
-                        "DeviceCodeAuth",
-                        scopes.join(" "),
-                        &service
-                    );
-                    debug!(
-                        "{:FL$}Device authorization request error for service {:?}: {:?}",
-                        "DeviceCodeAuth", service, err
-                    );
-
                     if banner_started {
                         banner.failure("Device code flow authentication failed");
                     }
-                    return Err(Error::DeviceCodeFlowAuthentication);
+                    return Err(err);
                 }
             };
 
@@ -161,24 +136,10 @@ impl DeviceCodeAuth {
                     continue;
                 }
                 Err(err) => {
-                    error!(
-                        "{:FL$}Error while refreshing token for scopes '{}' for service {:?}",
-                        "DeviceCodeAuth",
-                        scopes.join(" "),
-                        &service
-                    );
-                    match &err {
-                        DeviceCodePollError::Terminal(msg) => {
-                            debug!(
-                                "{:FL$}Device token exchange error for service {:?}: {:?}",
-                                "DeviceCodeAuth", service, msg
-                            );
-                        }
-                        DeviceCodePollError::Transport(e) => {
-                            debug!(
-                                "{:FL$}Device token exchange error for service {:?}: {:?}",
-                                "DeviceCodeAuth", service, e
-                            );
+                    let detail = match err {
+                        DeviceCodePollError::Terminal(message) => message,
+                        DeviceCodePollError::Transport(_) => {
+                            "device code polling transport error".to_string()
                         }
                         DeviceCodePollError::ExpiredToken => {
                             // Should never be reached: the outer arm
@@ -187,13 +148,17 @@ impl DeviceCodeAuth {
                             // Returning an auth error (rather than panicking) ensures
                             // the archive is properly renamed .broken if this
                             // invariant is ever violated.
-                            return Err(Error::DeviceCodeFlowAuthentication);
+                            "device code authentication failed".to_string()
                         }
-                    }
+                    };
+                    error!(
+                        "{:FL$}Device code authentication failed for service {:?}: {}",
+                        "DeviceCodeAuth", service, detail
+                    );
 
                     // Clear the live banner with a failure message
                     banner.failure("Device code flow authentication failed");
-                    return Err(Error::DeviceCodeFlowAuthentication);
+                    return Err(Error::DeviceCodeFlowAuthentication(detail));
                 }
             };
         };
@@ -204,6 +169,71 @@ impl DeviceCodeAuth {
         banner.add_completed(&service);
         banner.success();
         Ok(token)
+    }
+
+    async fn request_device_code(
+        client: &reqwest::Client,
+        devicecode_endpoint: &str,
+        client_id: &str,
+        scope_str: &str,
+        service: &str,
+    ) -> Result<DeviceCodeResponse, Error> {
+        let response = match client
+            .post(devicecode_endpoint)
+            .form(&[("client_id", client_id), ("scope", scope_str)])
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(err) => {
+                let detail = format!(
+                    "device code creation transport error: {}",
+                    transport_error_summary(&err)
+                );
+                error!(
+                    "{:FL$}Device code creation failed for service {:?}: {}",
+                    "DeviceCodeAuth", service, detail
+                );
+                return Err(Error::DeviceCodeFlowCreation(detail));
+            }
+        };
+
+        let status = response.status();
+        let bytes = match response.bytes().await {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                let detail = format!(
+                    "HTTP {status}: device code creation response unreadable: {}",
+                    transport_error_summary(&err)
+                );
+                error!(
+                    "{:FL$}Device code creation failed for service {:?}: {}",
+                    "DeviceCodeAuth", service, detail
+                );
+                return Err(Error::DeviceCodeFlowCreation(detail));
+            }
+        };
+
+        if !status.is_success() {
+            let summary = oauth_error_summary(status, &bytes, &[]);
+            error!(
+                "{:FL$}Device code creation rejected for service {:?}: {}",
+                "DeviceCodeAuth", service, summary
+            );
+            return Err(Error::DeviceCodeFlowCreation(summary));
+        }
+
+        match serde_json::from_slice::<DeviceCodeResponse>(&bytes) {
+            Ok(device_code) => Ok(device_code),
+            Err(_) => {
+                let detail = format!("HTTP {status}: invalid device code creation response");
+                error!(
+                    "{:FL$}Device code creation failed for service {:?}: {}",
+                    "DeviceCodeAuth", service, detail
+                );
+                Err(Error::DeviceCodeFlowCreation(detail))
+            }
+        }
     }
 
     /// RFC 8628 §3.5 polling loop. Polls `token_endpoint` with `device_code` until
@@ -268,8 +298,12 @@ impl DeviceCodeAuth {
             };
 
             if status.is_success() {
-                let body = serde_json::from_slice::<TokenEndpointResponse>(&bytes)
-                    .map_err(|e| DeviceCodePollError::Terminal(e.to_string()))?;
+                let body =
+                    serde_json::from_slice::<TokenEndpointResponse>(&bytes).map_err(|_| {
+                        DeviceCodePollError::Terminal(format!(
+                            "HTTP {status}: invalid device code token response"
+                        ))
+                    })?;
                 return Ok(InitialTokenResponse { token: body });
             }
 
@@ -327,8 +361,12 @@ impl DeviceCodeAuth {
                         continue;
                     }
                     "expired_token" => return Err(DeviceCodePollError::ExpiredToken),
-                    other => {
-                        return Err(DeviceCodePollError::Terminal(other.to_string()));
+                    _ => {
+                        return Err(DeviceCodePollError::Terminal(oauth_error_summary(
+                            status,
+                            &bytes,
+                            &[device_code],
+                        )));
                     }
                 },
                 Err(_) => {
@@ -351,13 +389,11 @@ impl DeviceCodeAuth {
                         );
                         continue;
                     }
-                    debug!(
-                        "{:FL$}Device code poll: unparseable error body (HTTP {}): {:?}",
-                        "DeviceCodeAuth",
+                    return Err(DeviceCodePollError::Terminal(oauth_error_summary(
                         status,
-                        String::from_utf8_lossy(&bytes)
-                    );
-                    return Err(DeviceCodePollError::Terminal(format!("HTTP {status}")));
+                        &bytes,
+                        &[device_code],
+                    )));
                 }
             }
         }
@@ -377,8 +413,309 @@ impl DeviceCodeAuth {
 mod tests {
     use super::*;
 
+    use std::collections::BTreeMap;
     use wiremock::matchers::method;
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn request_device_code_with_response(
+        response: ResponseTemplate,
+    ) -> Result<DeviceCodeResponse, Error> {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(response)
+            .mount(&server)
+            .await;
+
+        DeviceCodeAuth::request_device_code(
+            &reqwest::Client::new(),
+            &format!("{}/devicecode", server.uri()),
+            "client-id",
+            "offline_access https://graph.microsoft.com/.default",
+            "graph",
+        )
+        .await
+    }
+
+    fn creation_error(result: Result<DeviceCodeResponse, Error>) -> String {
+        match result {
+            Err(Error::DeviceCodeFlowCreation(message)) => message,
+            Err(error) => panic!("unexpected device code creation error: {error:?}"),
+            Ok(_) => panic!("expected device code creation failure"),
+        }
+    }
+
+    #[tokio::test]
+    async fn device_code_creation_preserves_oauth_description() {
+        let message = creation_error(
+            request_device_code_with_response(ResponseTemplate::new(400).set_body_json(
+                serde_json::json!({
+                    "error": "unauthorized_client",
+                    "error_description": "synthetic refusal"
+                }),
+            ))
+            .await,
+        );
+
+        assert_eq!(
+            message,
+            "HTTP 400 Bad Request: unauthorized_client: synthetic refusal"
+        );
+    }
+
+    #[tokio::test]
+    async fn device_code_creation_non_success_is_not_accepted_as_success() {
+        let message = creation_error(
+            request_device_code_with_response(ResponseTemplate::new(500).set_body_json(
+                serde_json::json!({
+                    "device_code": "DEVICE_SENTINEL",
+                    "user_code": "USER_SENTINEL",
+                    "verification_uri": "https://example.test"
+                }),
+            ))
+            .await,
+        );
+
+        assert_eq!(
+            message,
+            "HTTP 500 Internal Server Error: invalid OAuth error response"
+        );
+        assert!(!message.contains("DEVICE_SENTINEL"));
+        assert!(!message.contains("USER_SENTINEL"));
+    }
+
+    #[tokio::test]
+    async fn device_code_creation_non_json_rejection_does_not_copy_body() {
+        let message = creation_error(
+            request_device_code_with_response(
+                ResponseTemplate::new(502).set_body_string("<html>HTML_SENTINEL</html>"),
+            )
+            .await,
+        );
+
+        assert_eq!(
+            message,
+            "HTTP 502 Bad Gateway: invalid OAuth error response"
+        );
+        assert!(!message.contains("HTML_SENTINEL"));
+    }
+
+    #[tokio::test]
+    async fn device_code_creation_malformed_success_response_is_safe() {
+        for body in [
+            serde_json::json!({
+                "user_code": "ABCD-EFGH",
+                "verification_uri": "https://microsoft.com/devicelogin"
+            }),
+            serde_json::json!({
+                "device_code": "device-code",
+                "user_code": "ABCD-EFGH",
+                "verification_uri": "https://microsoft.com/devicelogin",
+                "interval": "SECRET_SENTINEL"
+            }),
+        ] {
+            let message = creation_error(
+                request_device_code_with_response(ResponseTemplate::new(200).set_body_json(body))
+                    .await,
+            );
+
+            assert_eq!(
+                message,
+                "HTTP 200 OK: invalid device code creation response"
+            );
+            assert!(!message.contains("SECRET_SENTINEL"));
+        }
+    }
+
+    #[tokio::test]
+    async fn device_code_creation_success_defaults_absent_interval() {
+        let result = request_device_code_with_response(ResponseTemplate::new(200).set_body_json(
+            serde_json::json!({
+                "device_code": "device-code",
+                "user_code": "ABCD-EFGH",
+                "verification_uri": "https://microsoft.com/devicelogin"
+            }),
+        ))
+        .await;
+
+        let response = match result {
+            Ok(response) => response,
+            Err(error) => panic!("device code request must succeed: {error:?}"),
+        };
+        assert_eq!(response.interval, None);
+    }
+
+    #[tokio::test]
+    async fn device_code_poll_terminal_preserves_description() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "error": "access_denied",
+                "error_description": "synthetic refusal"
+            })))
+            .mount(&server)
+            .await;
+
+        let result = DeviceCodeAuth::poll_for_token(
+            &reqwest::Client::new(),
+            &server.uri(),
+            "client-id",
+            "device-code-secret",
+            0,
+        )
+        .await;
+
+        match result {
+            Err(DeviceCodePollError::Terminal(message)) => assert_eq!(
+                message,
+                "HTTP 400 Bad Request: access_denied: synthetic refusal"
+            ),
+            Err(_) => panic!("unexpected polling error category"),
+            Ok(_) => panic!("expected terminal polling rejection"),
+        }
+    }
+
+    #[tokio::test]
+    async fn device_code_poll_malformed_success_is_safe() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": {"secret": "SECRET_SENTINEL"}
+            })))
+            .mount(&server)
+            .await;
+
+        let result = DeviceCodeAuth::poll_for_token(
+            &reqwest::Client::new(),
+            &server.uri(),
+            "client-id",
+            "device-code-secret",
+            0,
+        )
+        .await;
+
+        match result {
+            Err(DeviceCodePollError::Terminal(message)) => {
+                assert_eq!(message, "HTTP 200 OK: invalid device code token response");
+                assert!(!message.contains("SECRET_SENTINEL"));
+            }
+            Err(_) => panic!("unexpected polling error category"),
+            Ok(_) => panic!("expected malformed token response failure"),
+        }
+    }
+
+    #[tokio::test]
+    async fn device_code_poll_expired_token_keeps_recoverable_category() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(400)
+                    .set_body_json(serde_json::json!({"error": "expired_token"})),
+            )
+            .mount(&server)
+            .await;
+
+        let result = DeviceCodeAuth::poll_for_token(
+            &reqwest::Client::new(),
+            &server.uri(),
+            "client-id",
+            "device-code-secret",
+            0,
+        )
+        .await;
+
+        assert!(matches!(result, Err(DeviceCodePollError::ExpiredToken)));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn device_code_poll_slow_down_then_success_stays_recoverable() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(400).set_body_json(serde_json::json!({"error": "slow_down"})),
+            )
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"access_token": "the-token"})),
+            )
+            .with_priority(2)
+            .mount(&server)
+            .await;
+
+        let result = DeviceCodeAuth::poll_for_token(
+            &reqwest::Client::new(),
+            &server.uri(),
+            "client-id",
+            "device-code-secret",
+            0,
+        )
+        .await;
+
+        let response = match result {
+            Ok(response) => response,
+            Err(_) => panic!("poll must succeed after slow_down"),
+        };
+        assert_eq!(response.token.access_token, "the-token");
+    }
+
+    #[tokio::test]
+    async fn request_device_code_sends_current_two_field_form() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "device_code": "device-code",
+                "user_code": "ABCD-EFGH",
+                "verification_uri": "https://microsoft.com/devicelogin",
+                "interval": 7
+            })))
+            .mount(&server)
+            .await;
+
+        let response = DeviceCodeAuth::request_device_code(
+            &reqwest::Client::new(),
+            &format!("{}/devicecode", server.uri()),
+            "client+id&with=reserved%characters",
+            "offline_access https://graph.microsoft.com/.default",
+            "graph",
+        )
+        .await;
+
+        let response = match response {
+            Ok(response) => response,
+            Err(err) => panic!("device code request must succeed: {err:?}"),
+        };
+        assert_eq!(response.device_code, "device-code");
+        assert_eq!(response.user_code, "ABCD-EFGH");
+        assert_eq!(
+            response.verification_uri,
+            "https://microsoft.com/devicelogin"
+        );
+        assert_eq!(response.interval, Some(7));
+
+        let requests = server.received_requests().await.expect("recorded requests");
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].method.as_str(), "POST");
+        let pairs: Vec<(String, String)> = url::form_urlencoded::parse(&requests[0].body)
+            .into_owned()
+            .collect();
+        assert_eq!(pairs.len(), 2, "no additional or duplicate form field");
+        let form: BTreeMap<String, String> = pairs.into_iter().collect();
+        let expected = BTreeMap::from([
+            (
+                "client_id".to_string(),
+                "client+id&with=reserved%characters".to_string(),
+            ),
+            (
+                "scope".to_string(),
+                "offline_access https://graph.microsoft.com/.default".to_string(),
+            ),
+        ]);
+        assert_eq!(form, expected);
+    }
 
     /// A transient 5xx, then `authorization_pending`, then success: the poll loop
     /// must ride through the transient failure instead of aborting on it.

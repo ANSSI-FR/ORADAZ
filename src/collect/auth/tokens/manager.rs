@@ -145,7 +145,9 @@ impl Tokens {
                     error: err.to_string(),
                 });
                 Self::persist_auth_errors_best_effort(writer, &auth_errors).await;
-                return Err(Error::TokenAcquisitionError);
+                return Err(Error::TokenAcquisitionError(format!(
+                    "Initial authentication for service graph: {err}"
+                )));
             }
             Ok(token) => token,
         };
@@ -178,7 +180,10 @@ impl Tokens {
                         });
                         if service.mandatory_auth {
                             Self::persist_auth_errors_best_effort(writer, &auth_errors).await;
-                            return Err(Error::TokenAcquisitionError);
+                            return Err(Error::TokenAcquisitionError(format!(
+                                "Token refresh for service {}: {err}",
+                                service.name
+                            )));
                         }
                     }
                     Ok(token) => {

@@ -1,6 +1,8 @@
 /// Module containing the Token entity and its logic.
 use crate::FL;
-use crate::collect::auth::tokens::response::{InitialTokenResponse, TokenEndpointResponse};
+use crate::collect::auth::tokens::response::{
+    InitialTokenResponse, TokenEndpointResponse, oauth_error_summary, transport_error_summary,
+};
 use crate::collect::auth::{Auth, AuthError};
 use crate::collect::prerequisites::Prerequisites;
 use crate::utils::client::OradazClient;
@@ -337,7 +339,7 @@ impl Token {
     /// Uses the current refresh token to acquire a new token for the specified scopes.
     pub async fn refresh_for_scope(
         &self,
-        config: &Config,
+        _config: &Config,
         oradaz_client: &OradazClient,
         tenant: String,
         service: String,
@@ -356,67 +358,28 @@ impl Token {
                     "{:FL$}Missing refresh token for service {:?}, performing new authentication",
                     "Token", &service
                 );
-                return Err(Error::RefreshTokenNewScope);
+                return Err(Error::RefreshTokenNewScope(
+                    "no refresh token available for this token".to_string(),
+                ));
             }
         };
 
         let token_url = format!("https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token");
-        let listener_address: String = config
-            .listener_address
-            .clone()
-            .unwrap_or(String::from("localhost"));
-        let listener_port: String = config.listener_port.clone().unwrap_or(String::from("3003"));
-        let redirect_uri = format!("http://{listener_address}:{listener_port}/redirect");
         let scope_str = scopes.join(" ");
 
         trace!(
             "{:FL$}Exchanging token for service {} using refresh token ",
             "Token", &service
         );
-        let token_response: InitialTokenResponse = match oradaz_client
-            .client
-            .post(&token_url)
-            .form(&[
-                ("grant_type", "refresh_token"),
-                ("refresh_token", refresh_token.as_str()),
-                ("client_id", client_id.as_str()),
-                ("scope", scope_str.as_str()),
-                ("redirect_uri", redirect_uri.as_str()),
-            ])
-            .send()
-            .await
-        {
-            Ok(resp) => {
-                let status = resp.status();
-                match resp.json::<TokenEndpointResponse>().await {
-                    Ok(body) => InitialTokenResponse { token: body },
-                    Err(err) => {
-                        error!(
-                            "{:FL$}Error while refreshing token for scopes '{}' for service {:?}",
-                            "Token",
-                            scopes.join(" "),
-                            &service
-                        );
-                        debug!(
-                            "{:FL$}Token response parse error (HTTP {status}) for service {:?}: {:?}",
-                            "Token", &service, err
-                        );
-                        return Err(Error::RefreshTokenNewScope);
-                    }
-                }
-            }
-            Err(err) => {
-                error!(
-                    "{:FL$}Error while refreshing token for scopes '{}' for service {:?}",
-                    "Token",
-                    scopes.join(" "),
-                    &service
-                );
-                debug!("{:FL$}Token exchange error: {:?}", "Token", err);
-
-                return Err(Error::RefreshTokenNewScope);
-            }
-        };
+        let token_response = exchange_refresh_token(
+            &oradaz_client.client,
+            &token_url,
+            &refresh_token,
+            &client_id,
+            &scope_str,
+            &service,
+        )
+        .await?;
         token_response.parse(tenant, service, client_id, scopes)
     }
 
@@ -461,8 +424,8 @@ impl Token {
         {
             Err(Error::AuthorizationCodeFlowCreation)
             | Err(Error::AuthorizationCodeFlowAuthentication)
-            | Err(Error::DeviceCodeFlowCreation)
-            | Err(Error::DeviceCodeFlowAuthentication)
+            | Err(Error::DeviceCodeFlowCreation(_))
+            | Err(Error::DeviceCodeFlowAuthentication(_))
             | Err(Error::DeviceCodeFlowUnexpectedEnd)
             | Err(Error::ClientCredentialsFlowCreation(_))
             | Err(Error::ClientCredentialsFlowAuthentication(_)) => {
@@ -526,9 +489,318 @@ impl Token {
     }
 }
 
+async fn exchange_refresh_token(
+    client: &reqwest::Client,
+    token_url: &str,
+    refresh_token: &str,
+    client_id: &str,
+    scope_str: &str,
+    service: &str,
+) -> Result<InitialTokenResponse, Error> {
+    let response = match client
+        .post(token_url)
+        .form(&[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+            ("client_id", client_id),
+            ("scope", scope_str),
+        ])
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(err) => {
+            let detail = format!(
+                "token refresh transport error: {}",
+                transport_error_summary(&err)
+            );
+            error!(
+                "{:FL$}Token refresh failed for service {:?}: {}",
+                "Token", service, detail
+            );
+            return Err(Error::RefreshTokenNewScope(detail));
+        }
+    };
+
+    let status = response.status();
+    let bytes = match response.bytes().await {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            let detail = format!(
+                "HTTP {status}: token refresh response unreadable: {}",
+                transport_error_summary(&err)
+            );
+            error!(
+                "{:FL$}Token refresh failed for service {:?}: {}",
+                "Token", service, detail
+            );
+            return Err(Error::RefreshTokenNewScope(detail));
+        }
+    };
+
+    if !status.is_success() {
+        let summary = oauth_error_summary(status, &bytes, &[refresh_token]);
+        error!(
+            "{:FL$}Token refresh rejected for service {:?}: {}",
+            "Token", service, summary
+        );
+        return Err(Error::RefreshTokenNewScope(summary));
+    }
+
+    match serde_json::from_slice::<TokenEndpointResponse>(&bytes) {
+        Ok(body) => Ok(InitialTokenResponse { token: body }),
+        Err(_) => {
+            let detail = format!("HTTP {status}: invalid token refresh response");
+            error!(
+                "{:FL$}Token refresh failed for service {:?}: {}",
+                "Token", service, detail
+            );
+            Err(Error::RefreshTokenNewScope(detail))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::collections::BTreeMap;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn exchange_with_response(
+        response: ResponseTemplate,
+        refresh_token: &str,
+    ) -> Result<InitialTokenResponse, Error> {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(response)
+            .mount(&server)
+            .await;
+
+        exchange_refresh_token(
+            &reqwest::Client::new(),
+            &format!("{}/token", server.uri()),
+            refresh_token,
+            "client-id",
+            "offline_access https://graph.microsoft.com/.default",
+            "graph",
+        )
+        .await
+    }
+
+    fn refresh_error(result: Result<InitialTokenResponse, Error>) -> String {
+        match result {
+            Err(Error::RefreshTokenNewScope(message)) => message,
+            Err(error) => panic!("unexpected refresh error: {error:?}"),
+            Ok(_) => panic!("expected refresh exchange failure"),
+        }
+    }
+
+    #[tokio::test]
+    async fn refresh_body_transfer_error_keeps_status_without_exposing_contents() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            loop {
+                let count = stream.read(&mut buffer).await.unwrap();
+                assert!(count > 0);
+                request.extend_from_slice(&buffer[..count]);
+                if let Some(end) = request.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&request[..end]);
+                    let length: usize = headers
+                        .lines()
+                        .find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse().unwrap())
+                        })
+                        .unwrap();
+                    if request.len() >= end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            stream.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Length: 256\r\nConnection: close\r\n\r\nBODY_SECRET_SENTINEL",
+            ).await.unwrap();
+            stream.shutdown().await.unwrap();
+        });
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(3))
+            .build()
+            .unwrap();
+        let message = refresh_error(
+            exchange_refresh_token(
+                &client,
+                &format!("http://{address}/token?secret=URL_SECRET_SENTINEL"),
+                "REFRESH_SECRET_SENTINEL",
+                "client-id",
+                "offline_access",
+                "graph",
+            )
+            .await,
+        );
+        tokio::time::timeout(Duration::from_secs(3), server)
+            .await
+            .expect("local response server timed out")
+            .expect("local response server panicked");
+
+        assert!(message.contains("HTTP 200 OK"));
+        assert!(message.contains("body transfer failed"), "{message}");
+        assert!(!message.contains("SECRET_SENTINEL"));
+    }
+
+    #[tokio::test]
+    async fn refresh_rejection_preserves_oauth_description() {
+        let message = refresh_error(
+            exchange_with_response(
+                ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                    "error": "invalid_grant",
+                    "error_description": "synthetic refusal"
+                })),
+                "refresh-secret",
+            )
+            .await,
+        );
+
+        assert_eq!(
+            message,
+            "HTTP 400 Bad Request: invalid_grant: synthetic refusal"
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_non_success_status_is_not_accepted_as_success() {
+        let message = refresh_error(
+            exchange_with_response(
+                ResponseTemplate::new(500).set_body_json(serde_json::json!({
+                    "access_token": "ACCESS_SENTINEL",
+                    "refresh_token": "REFRESH_SENTINEL"
+                })),
+                "refresh-secret",
+            )
+            .await,
+        );
+
+        assert_eq!(
+            message,
+            "HTTP 500 Internal Server Error: invalid OAuth error response"
+        );
+        assert!(!message.contains("ACCESS_SENTINEL"));
+        assert!(!message.contains("REFRESH_SENTINEL"));
+    }
+
+    #[tokio::test]
+    async fn refresh_non_json_rejection_does_not_copy_body() {
+        let message = refresh_error(
+            exchange_with_response(
+                ResponseTemplate::new(502).set_body_string("<html>HTML_SENTINEL</html>"),
+                "refresh-secret",
+            )
+            .await,
+        );
+
+        assert_eq!(
+            message,
+            "HTTP 502 Bad Gateway: invalid OAuth error response"
+        );
+        assert!(!message.contains("HTML_SENTINEL"));
+    }
+
+    #[tokio::test]
+    async fn refresh_malformed_success_response_is_safe() {
+        for body in [
+            serde_json::json!({"refresh_token": "rotated-token"}),
+            serde_json::json!({
+                "access_token": "access-token",
+                "expires_in": "SECRET_SENTINEL"
+            }),
+        ] {
+            let message = refresh_error(
+                exchange_with_response(
+                    ResponseTemplate::new(200).set_body_json(body),
+                    "refresh-secret",
+                )
+                .await,
+            );
+
+            assert_eq!(message, "HTTP 200 OK: invalid token refresh response");
+            assert!(!message.contains("SECRET_SENTINEL"));
+        }
+    }
+
+    #[tokio::test]
+    async fn refresh_request_has_exact_form_and_parses_token() {
+        use base64::Engine;
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
+        let payload = URL_SAFE_NO_PAD.encode(br#"{"oid":"user-1","upn":"alice@example.test"}"#);
+        let jwt = format!("e30.{payload}.signature");
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": jwt,
+                "refresh_token": "rotated-token",
+                "expires_in": 3600,
+                "token_type": "Bearer"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let scopes = vec![
+            "offline_access".to_string(),
+            "https://graph.microsoft.com/.default".to_string(),
+        ];
+        let response = exchange_refresh_token(
+            &reqwest::Client::new(),
+            &format!("{}/token", server.uri()),
+            "refresh+token&with=reserved%characters",
+            "client-id",
+            &scopes.join(" "),
+            "graph",
+        )
+        .await
+        .expect("refresh exchange must succeed");
+        let token = response
+            .parse(
+                "tenant-id".to_string(),
+                "graph".to_string(),
+                "client-id".to_string(),
+                scopes.clone(),
+            )
+            .expect("the returned token must parse");
+        assert_eq!(token.refresh_token.as_deref(), Some("rotated-token"));
+        assert_eq!(token.user_id, "user-1");
+        assert_eq!(token.scopes, scopes);
+
+        let requests = server.received_requests().await.expect("recorded requests");
+        assert_eq!(requests.len(), 1);
+        let pairs: Vec<(String, String)> = url::form_urlencoded::parse(&requests[0].body)
+            .into_owned()
+            .collect();
+        assert_eq!(pairs.len(), 4, "no additional or duplicate form field");
+        let form: BTreeMap<String, String> = pairs.into_iter().collect();
+        let expected = BTreeMap::from([
+            ("grant_type".to_string(), "refresh_token".to_string()),
+            (
+                "refresh_token".to_string(),
+                "refresh+token&with=reserved%characters".to_string(),
+            ),
+            ("client_id".to_string(), "client-id".to_string()),
+            ("scope".to_string(), scopes.join(" ")),
+        ]);
+        assert_eq!(form, expected);
+        assert!(!form.contains_key("redirect_uri"));
+    }
 
     /// The post-refresh prerequisite re-check is non-fatal on transient
     /// failures — only a definitive `MissingAppPermission` surfaces (→ abort under
