@@ -117,11 +117,259 @@ async fn setup_response_thread(
             ),
             stats,
             logs_date_filter_and: None,
+            tenant_domains: Arc::new(dashmap::DashSet::new()),
         },
         Box::new(ResponseContent { api_call, response }),
     );
 
     (update_rx, thread, temp_dir)
+}
+
+fn tenant_resolution_call() -> ApiCall {
+    let mut url = create_test_url();
+    url.url = "https://graph.microsoft.com/beta/users?$select=id,identities".to_string();
+    Arc::make_mut(&mut url.api_behavior)
+        .insert("resolve_tenant_domains".to_string(), "true".to_string());
+    create_test_api_call(url)
+}
+
+#[tokio::test]
+async fn tenant_resolution_deduplicates_pages_and_preserves_requested_domain() {
+    let call = tenant_resolution_call();
+    let first_page = Response {
+        status: 200,
+        retry_after: None,
+        content: json!({"value": [
+            {"id": "guest", "userType": "Guest", "identities": [
+                {"signInType": "emailAddress", "issuer": "Partner.Example.", "issuerAssignedId": "guest@partner.example"}
+            ]},
+            {"id": "external-member", "userType": "Member", "identities": [
+                {"signInType": "emailAddress", "issuer": "partner.example", "issuerAssignedId": "member@partner.example"}
+            ]}
+        ]}),
+    };
+    let (_rx, thread, dir) = setup_response_thread(call.clone(), first_page.clone()).await;
+    let first = thread.process_single(&first_page, &call).await;
+    assert_eq!(
+        first.len(),
+        1,
+        "one lookup per issuer domain, including external members"
+    );
+    assert_eq!(first[0].api, "tenantInformationByDomainName");
+    assert_eq!(
+        first[0].url,
+        "https://graph.microsoft.com/v1.0/tenantRelationships/findTenantInformationByDomainName(domainName='partner.example')"
+    );
+    assert_eq!(
+        first[0].parent.as_ref().unwrap()["domainName"],
+        "partner.example"
+    );
+
+    let second_page = Response {
+        status: 200,
+        retry_after: None,
+        content: json!({"value": [{"id": "another-user", "userType": "Member", "identities": [
+            {"issuer": "partner.example"}, {"issuer": "second.example"}
+        ]}]}),
+    };
+    let (tx, _rx) = mpsc::channel(16);
+    let sibling = ResponseThread::new(
+        tx,
+        thread.context.clone(),
+        Box::new(ResponseContent {
+            api_call: call.clone(),
+            response: second_page.clone(),
+        }),
+    );
+    let second = sibling.process_single(&second_page, &call).await;
+    assert_eq!(
+        second.len(),
+        1,
+        "deduplication must survive response-worker changes"
+    );
+    assert_eq!(
+        second[0].parent.as_ref().unwrap()["domainName"],
+        "second.example"
+    );
+
+    let lookup = create_test_api_call(first[0].clone());
+    let result = Response {
+        status: 200,
+        retry_after: None,
+        content: json!({
+            "tenantId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "defaultDomainName": "partner.onmicrosoft.com",
+            "displayName": "Partner", "federationBrandName": null
+        }),
+    };
+    assert!(thread.process_single(&result, &lookup).await.is_empty());
+    thread.context.writer.finalize().await.unwrap();
+    let output = std::fs::read_to_string(
+        dir.path()
+            .join("test-run/graph/tenantInformationByDomainName.json"),
+    )
+    .unwrap();
+    let row: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
+    assert_eq!(row["tenantId"], "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    assert_eq!(row["defaultDomainName"], "partner.onmicrosoft.com");
+    assert_eq!(row["_ORADAZ_PARENT_"]["domainName"], "partner.example");
+}
+
+#[tokio::test]
+async fn tenant_resolution_ignores_non_domain_issuers_and_never_infers_from_email() {
+    let call = tenant_resolution_call();
+    let response = Response {
+        status: 200,
+        retry_after: None,
+        content: json!({"value": [
+            {"id": "social", "mail": "user@must-not-query.example", "identities": [
+                {"issuer": "mail"}, {"issuer": "Microsoft account"},
+                {"issuer": "ExternalAzureAD"}, {"issuer": "GOOGLE.COM"}, {"issuer": "facebook.com"},
+                {"issuer": "https://federation.example/saml"}, {"issuer": "127.0.0.1"},
+                {"issuer": "2001:db8::1"}, {"issuer": "bad.example')/users?x='"},
+                {"issuer": "bad..example"}, {"issuer": "-bad.example"},
+                {"issuer": "bad-.example"}, {"issuer": "bad_domain.example"},
+                {"issuer": ""}, {"issuer": null}, {"issuer": 123},
+                {"issuer": "partner.onmicrosoft.com"}
+            ]},
+            {"id": "no-identities", "userPrincipalName": "user@must-not-query.example"},
+            {"id": "null-identities", "identities": null},
+            {"id": "wrong-shape", "identities": {"issuer": "must-not-query.example"}}
+        ]}),
+    };
+    let (_rx, thread, _dir) = setup_response_thread(call.clone(), response.clone()).await;
+    let urls = thread.process_single(&response, &call).await;
+    assert_eq!(urls.len(), 1);
+    assert_eq!(
+        urls[0].parent.as_ref().unwrap()["domainName"],
+        "partner.onmicrosoft.com"
+    );
+}
+
+#[tokio::test]
+async fn tenant_resolution_is_opt_in_and_does_not_poison_later_enabled_collection() {
+    let disabled = create_test_api_call(create_test_url());
+    let response = Response {
+        status: 200,
+        retry_after: None,
+        content: json!({"value": [{"id": "user", "identities": [{"issuer": "partner.example"}]}]}),
+    };
+    let (_rx, thread, _dir) = setup_response_thread(disabled.clone(), response.clone()).await;
+    assert!(thread.process_single(&response, &disabled).await.is_empty());
+    let urls = thread
+        .process_single(&response, &tenant_resolution_call())
+        .await;
+    assert_eq!(
+        urls.len(),
+        1,
+        "disabled collection must not reserve the domain"
+    );
+}
+
+#[tokio::test]
+async fn tenant_resolution_records_unresolved_domain_without_fabricating_a_mapping() {
+    let call = tenant_resolution_call();
+    let response = Response {
+        status: 200,
+        retry_after: None,
+        content: json!({"value": [{"id": "user", "identities": [{"issuer": "missing.example"}]}]}),
+    };
+    let (_rx, thread, dir) = setup_response_thread(call.clone(), response.clone()).await;
+    let urls = thread.process_single(&response, &call).await;
+    assert_eq!(urls.len(), 1);
+    let lookup = create_test_api_call(urls[0].clone());
+    let not_found = Response {
+        status: 404,
+        retry_after: None,
+        content: json!({"error": {"code": "Request_ResourceNotFound", "message": "Tenant not found"}}),
+    };
+    assert!(thread.process_single(&not_found, &lookup).await.is_empty());
+    thread.context.writer.finalize().await.unwrap();
+    let errors = std::fs::read_to_string(dir.path().join("test-run/errors.json")).unwrap();
+    let error: serde_json::Value = serde_json::from_str(errors.trim()).unwrap();
+    assert_eq!(error["status"], 404);
+    assert_eq!(error["file"], "tenantInformationByDomainName");
+    assert!(
+        error["url"]
+            .as_str()
+            .unwrap()
+            .contains("domainName='missing.example'")
+    );
+    assert!(
+        !dir.path()
+            .join("test-run/graph/tenantInformationByDomainName.json")
+            .exists()
+    );
+}
+
+#[tokio::test]
+async fn tenant_resolution_retries_preserve_the_domain_without_recollecting_users() {
+    let call = tenant_resolution_call();
+    let response = Response {
+        status: 200,
+        retry_after: None,
+        content: json!({"value": [{"id": "user", "identities": [{"issuer": "partner.example"}]}]}),
+    };
+    let (_rx, thread, _dir) = setup_response_thread(call.clone(), response.clone()).await;
+    let urls = thread.process_single(&response, &call).await;
+    assert_eq!(urls.len(), 1);
+    let lookup = create_test_api_call(urls[0].clone());
+    let throttled = Response {
+        status: 429,
+        retry_after: Some(1),
+        content: json!({}),
+    };
+    let retries = thread.process_single(&throttled, &lookup).await;
+    assert_eq!(retries.len(), 1);
+    assert_eq!(retries[0].url, lookup.url.url);
+    assert_eq!(
+        retries[0].parent.as_ref().unwrap()["domainName"],
+        "partner.example"
+    );
+    assert_eq!(retries[0].rate_limit_retry_number, 1);
+    assert!(thread.process_single(&response, &call).await.is_empty());
+}
+
+#[tokio::test]
+async fn tenant_resolution_is_enabled_by_both_shipped_schemas() {
+    for path in ["schema.json", "schema-light.json"] {
+        let model =
+            oradaz::utils::schema::Schema::deserialize(std::fs::read_to_string(path).unwrap())
+                .unwrap();
+        let service = model.services.iter().find(|s| s.name == "graph").unwrap();
+        let users = service.apis.iter().find(|a| a.name == "users").unwrap();
+        let mut url = create_test_url();
+        url.api_behavior = Arc::new(users.api_behavior.clone().unwrap_or_default());
+        let call = create_test_api_call(url);
+        let response = Response {
+            status: 200,
+            retry_after: None,
+            content: json!({"value": [{"id": "user", "identities": [{"issuer": "partner.example"}]}]}),
+        };
+        let (_rx, thread, _dir) = setup_response_thread(call.clone(), response.clone()).await;
+        let urls = thread.process_single(&response, &call).await;
+        assert_eq!(
+            urls.len(),
+            1,
+            "{path} must enable the lookup for collected users"
+        );
+    }
+}
+
+#[tokio::test]
+async fn tenant_resolution_concurrent_pages_schedule_only_one_lookup() {
+    let call = tenant_resolution_call();
+    let response = Response {
+        status: 200,
+        retry_after: None,
+        content: json!({"value": [{"id": "user", "identities": [{"issuer": "partner.example"}]}]}),
+    };
+    let (_rx, thread, _dir) = setup_response_thread(call.clone(), response.clone()).await;
+    let (first, second) = tokio::join!(
+        thread.process_single(&response, &call),
+        thread.process_single(&response, &call),
+    );
+    assert_eq!(first.len() + second.len(), 1);
 }
 
 #[tokio::test]
@@ -1657,6 +1905,7 @@ async fn setup_thread_with_controller(
             concurrency_controller: controller,
             stats,
             logs_date_filter_and: None,
+            tenant_domains: Arc::new(dashmap::DashSet::new()),
         },
         Box::new(ResponseContent { api_call, response }),
     );

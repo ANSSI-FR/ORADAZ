@@ -109,6 +109,7 @@ async fn setup_response_thread(
             ),
             stats,
             logs_date_filter_and: None,
+            tenant_domains: Arc::new(dashmap::DashSet::new()),
         },
         Box::new(ResponseContent { api_call, response }),
     );

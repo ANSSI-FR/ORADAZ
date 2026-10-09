@@ -1,6 +1,6 @@
 {
-    "oradaz_version": "3.0.09.28",
-    "schema_version": "3.0.09.28",
+    "oradaz_version": "3.0.10.09",
+    "schema_version": "3.0.10.09",
     "services": [
         {
             "name": "graph",
@@ -1955,6 +1955,9 @@
                 {
                     "name": "users",
                     "uri": "users",
+                    "api_behavior": {
+                        "resolve_tenant_domains": "true"
+                    },
                     "parameters": [
                         {
                             "name": "[PARAMS]",

@@ -85,6 +85,10 @@ pub static GRAPH_API_APP_ONLY_PERMISSIONS: LazyLock<HashMap<&'static str, &'stat
                 "CustomSecAttributeDefinition.Read.All",
             ),
             (
+                "cac88765-0581-4025-9725-5ebc13f729ee",
+                "CrossTenantInformation.ReadBasic.All",
+            ),
+            (
                 "f6e9e124-4586-492f-adc0-c6f96e4823fd",
                 "DelegatedAdminRelationship.Read.All",
             ),
@@ -230,6 +234,10 @@ pub static GRAPH_API_PERMISSIONS: LazyLock<HashMap<&'static str, &'static str>> 
             (
                 "ce026878-a0ff-4745-a728-d4fedd086c07",
                 "CustomSecAttributeDefinition.Read.All",
+            ),
+            (
+                "81594d25-e88e-49cf-ac8c-fecbff49f994",
+                "CrossTenantInformation.ReadBasic.All",
             ),
             (
                 "0c0064ea-477b-4130-82a5-4c2cc4ff68aa",

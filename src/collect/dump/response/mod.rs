@@ -7,6 +7,7 @@ pub mod batch;
 pub mod error_thread;
 pub mod single;
 pub mod status_handlers;
+mod tenant_resolution;
 pub mod thread;
 
 pub use error_thread::ResponseErrorThread;
@@ -146,6 +147,9 @@ pub struct ResponseContext {
     /// carries it, bounding sign-ins to the configured `logsDaysFilter`. `None`
     /// when date bounding is disabled.
     pub logs_date_filter_and: Option<Arc<str>>,
+    /// Domains already scheduled for lookup, shared by response workers and
+    /// scoped to this collection. Failed lookups remain visible in errors.json.
+    pub tenant_domains: Arc<dashmap::DashSet<String>>,
 }
 
 impl ResponseContext {

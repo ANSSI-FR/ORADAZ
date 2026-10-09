@@ -133,6 +133,11 @@ pub async fn handle_success(
             this.context
                 .ratelimit_manager
                 .note_bucket_progress(&api_call.url.service_name, &api_call.url.api);
+            new_urls.extend(super::tenant_resolution::lookup_urls(
+                &api_call.url,
+                &value_field,
+                &this.context.tenant_domains,
+            ));
             let relationship_urls =
                 value_handlers::handle_relationships(this, api_call, value_field).await;
             new_urls.extend(relationship_urls);

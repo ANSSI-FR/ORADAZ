@@ -255,6 +255,7 @@ pub async fn dump(dumper: &mut Dumper, dump_started: Arc<AtomicBool>) -> Result<
                     concurrency_controller,
                     stats,
                     logs_date_filter_and,
+                    tenant_domains: Arc::new(dashmap::DashSet::new()),
                 },
                 response_workers_max,
                 response_memory_budget,

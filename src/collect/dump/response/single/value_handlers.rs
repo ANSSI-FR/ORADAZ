@@ -286,10 +286,10 @@ pub async fn handle_values(
     // `Memory sample:` line (trajectory companion to the per-table totals).
     crate::utils::sysmem::record_written(records.len() as u64, written_bytes as u64);
 
-    // Relationship expansion consumes an owned record list; a leaf endpoint (no
-    // relationships) never needs one, so it returns empty and skips cloning the
-    // borrowed page out of the response.
-    if api_call.url.relationships.is_empty() {
+    // Only endpoints that discover children need an owned record list.
+    if api_call.url.relationships.is_empty()
+        && !super::super::tenant_resolution::enabled(&api_call.url)
+    {
         Ok(Vec::new())
     } else {
         Ok(records.into_owned())

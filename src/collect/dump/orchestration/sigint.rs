@@ -131,16 +131,8 @@ pub fn handle_sigint_menu() -> bool {
             }
 
             match key.code {
-                KeyCode::Up => {
-                    if selected != 0 {
-                        selected = 0;
-                    }
-                }
-                KeyCode::Down => {
-                    if selected != 1 {
-                        selected = 1;
-                    }
-                }
+                KeyCode::Up => selected = 0,
+                KeyCode::Down => selected = 1,
                 KeyCode::Enter => break selected == 0,
                 KeyCode::Esc => break false,
                 _ => {}
