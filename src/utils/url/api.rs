@@ -36,7 +36,7 @@ impl Api {
                 {
                     debug!(
                         "{:FL$}API {:?} of service {:?} does not meet condition {:?}, skipping it",
-                        "Api", &self.name, token.service, condition
+                        "Api", self.name, token.service, condition
                     );
                     return None;
                 }
@@ -107,9 +107,12 @@ impl Api {
             rate_limit_retry_number: 0,
             rate_limit_total_wait_secs: 0,
             network_retry_number: 0,
+            force_single: false,
+            forced_single_tracker: None,
             // A schema-declared `post_body` turns the URL into a POST (e.g.
             // Exchange `InvokeCommand`); absent means the plain GET path.
             post_body,
+            timeout_strikes: 0,
         })
     }
 
@@ -149,7 +152,7 @@ impl Api {
                             {
                                 debug!(
                                     "{:FL$}Parameter {:?} for API {:?} of service {:?} does not meet condition {:?}, skipping it",
-                                    "Api", &parameter.name, &self.name, token.service, condition
+                                    "Api", parameter.name, self.name, token.service, condition
                                 );
                                 meet_conditions = false;
                                 break;
@@ -166,8 +169,8 @@ impl Api {
                                 "{:FL$}Invalid transform {:?} in schema file for parameter {:?} for API {:?} of service {:?}. Skipping transformation.",
                                 "Api",
                                 parameter.transform,
-                                &parameter.name,
-                                &self.name,
+                                parameter.name,
+                                self.name,
                                 token.service
                             );
                             url = url.replace(&parameter.name, &parameter.value);
@@ -177,7 +180,7 @@ impl Api {
                 } else if !done.contains(&parameter.name) {
                     debug!(
                         "{:FL$}Trying to replace invalid api parameter {:?} for API {:?} of service {:?}",
-                        "Api", &parameter.name, &self.name, token.service
+                        "Api", parameter.name, self.name, token.service
                     );
                 }
             }
@@ -200,7 +203,7 @@ impl Api {
                             {
                                 debug!(
                                     "{:FL$}Parameter {:?} for API {:?} of service {:?} does not meet condition {:?}, skipping it",
-                                    "Api", &parameter.name, &self.name, token.service, condition
+                                    "Api", parameter.name, self.name, token.service, condition
                                 );
                                 meet_conditions = false;
                                 break;
@@ -217,8 +220,8 @@ impl Api {
                                 "{:FL$}Invalid transform {:?} in schema file for default parameter {:?} for API {:?} of service {:?}. Skipping transformation.",
                                 "Api",
                                 parameter.transform,
-                                &parameter.name,
-                                &self.name,
+                                parameter.name,
+                                self.name,
                                 token.service
                             );
                             url = url.replace(&parameter.name, &parameter.value);
@@ -227,7 +230,7 @@ impl Api {
                 } else if !done.contains(&parameter.name) {
                     debug!(
                         "{:FL$}Trying to replace invalid default parameter {:?} for API {:?} of service {:?}",
-                        "Api", &parameter.name, &self.name, token.service
+                        "Api", parameter.name, self.name, token.service
                     );
                 }
             }

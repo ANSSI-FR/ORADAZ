@@ -491,6 +491,7 @@ mod tests {
             code: code.to_string(),
             message: String::new(),
             expected,
+            forced_single_tracker: None,
             full_response: None,
             post_data: None,
         };

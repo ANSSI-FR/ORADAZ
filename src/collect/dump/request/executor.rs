@@ -3,7 +3,7 @@ use crate::collect::auth::tokens::Token;
 use crate::utils::client::OradazClient;
 use crate::utils::url::ApiCall;
 
-use log::trace;
+use log::{debug, trace};
 
 use chrono::Utc;
 use reqwest::RequestBuilder;
@@ -45,6 +45,22 @@ pub struct ExecutionResult {
     pub elapsed_ms: u64,
 }
 
+/// Services whose negotiated HTTP version has already been logged.
+static HTTP_VERSION_LOGGED: std::sync::LazyLock<dashmap::DashSet<String>> =
+    std::sync::LazyLock::new(dashmap::DashSet::new);
+
+/// Logs, once per service, the HTTP version of its first response. Behind a
+/// TLS-terminating proxy the version can differ from a direct connection,
+/// which changes how a stalled or dropped connection surfaces in the log.
+fn log_http_version_once(service: &str, version: reqwest::Version) {
+    if !HTTP_VERSION_LOGGED.contains(service) && HTTP_VERSION_LOGGED.insert(service.to_string()) {
+        debug!(
+            "{:FL$}First response for service {:?} used {:?}",
+            "Executor", service, version
+        );
+    }
+}
+
 /// Apply a per-request timeout override if one was supplied. Without an
 /// override, the client's default timeout (built at startup) applies.
 /// `reqwest::RequestBuilder::timeout` replaces the client default, so we only
@@ -71,7 +87,7 @@ pub async fn execute_single(
     if let Some(body) = &api_call.url.post_body {
         trace!(
             "{:FL$}POST {} [ID: {}]",
-            "Executor", &api_call.url.url, api_call.id
+            "Executor", api_call.url.url, api_call.id
         );
         let mut builder = client
             .client
@@ -96,12 +112,13 @@ pub async fn execute_single(
             .send()
             .await
             .map_err(ExecutorError::Request)?;
+        log_http_version_once(&api_call.url.service_name, res.version());
         return handle_response(res, started).await;
     }
 
     trace!(
         "{:FL$}GET {} [ID: {}]",
-        "Executor", &api_call.url.url, api_call.id
+        "Executor", api_call.url.url, api_call.id
     );
     let mut builder = client.client.get(&api_call.url.url).header(
         reqwest::header::AUTHORIZATION,
@@ -116,6 +133,7 @@ pub async fn execute_single(
         .send()
         .await
         .map_err(ExecutorError::Request)?;
+    log_http_version_once(&api_call.url.service_name, res.version());
 
     handle_response(res, started).await
 }
@@ -153,7 +171,7 @@ pub async fn execute_batch(
 ) -> Result<ExecutionResult, ExecutorError> {
     trace!(
         "{:FL$}POST (batch) {} [ID: {}]",
-        "Executor", &api_call.url.url, api_call.id
+        "Executor", api_call.url.url, api_call.id
     );
     let mut builder = client
         .client
@@ -176,6 +194,7 @@ pub async fn execute_batch(
         .send()
         .await
         .map_err(ExecutorError::Request)?;
+    log_http_version_once(&api_call.url.service_name, res.version());
 
     handle_response(res, started).await
 }

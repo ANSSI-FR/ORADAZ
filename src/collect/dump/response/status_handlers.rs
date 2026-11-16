@@ -3,9 +3,9 @@ use crate::collect::dump::orchestration::events::{CoordinatorEvent, ProcessError
 use crate::collect::dump::request::{BackoffGuard, RETRY_COUNT, compute_backoff_ms};
 use crate::collect::dump::response::single::value_handlers;
 use crate::collect::dump::response::thread::ResponseThread;
-use crate::collect::dump::response::{ApiCall, Response};
+use crate::collect::dump::response::{ApiCall, Response, finish_forced_single};
 use crate::utils::ui::dump_event;
-use crate::utils::url::Url;
+use crate::utils::url::{ForcedSingleOutcome, Url};
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -112,7 +112,19 @@ pub async fn handle_success(
     // the API cap; it owns its liveness/progress accounting internally.
     if api_call.url.api_behavior.contains_key("expand_extract") {
         match value_handlers::handle_expand_extract(this, response, api_call).await {
-            Ok(fallbacks) => new_urls.extend(fallbacks),
+            Ok(fallbacks) => {
+                // Success chokepoint (expand path): the parent page, if any, was
+                // handled inside handle_expand_extract, so a forced-single URL
+                // closes its transition here.
+                finish_forced_single(
+                    &this.context.stats,
+                    &api_call.url.service_name,
+                    &api_call.url.api,
+                    api_call.url.forced_single_tracker.as_ref(),
+                    ForcedSingleOutcome::Success,
+                );
+                new_urls.extend(fallbacks)
+            }
             Err(_) => new_urls.extend(this.prepare_retries(vec![api_call.url.clone()])),
         }
         return new_urls;
@@ -128,6 +140,16 @@ pub async fn handle_success(
             this.context
                 .stats
                 .note_progress(&api_call.url.service_name, &api_call.url.api);
+            // Success chokepoint for forced-single transitions: the first 2xx
+            // WRITTEN from this URL (not merely received — the Err arm below
+            // re-queues without closing) latches the tracker as a success.
+            finish_forced_single(
+                &this.context.stats,
+                &api_call.url.service_name,
+                &api_call.url.api,
+                api_call.url.forced_single_tracker.as_ref(),
+                ForcedSingleOutcome::Success,
+            );
             // Same trigger for the 429-escalation streak: a written page proves
             // the bucket drains, so its escalated pacing is lifted.
             this.context
@@ -186,6 +208,7 @@ pub async fn handle_unexpected_status(
         // Tentatively unexpected; overridden below once `expected` is computed
         // from the schema's `expected_error_codes`.
         expected: false,
+        forced_single_tracker: None,
         full_response: Some(response.content.clone()),
         post_data: None,
     };

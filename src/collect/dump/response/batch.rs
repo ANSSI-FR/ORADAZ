@@ -5,12 +5,47 @@ use crate::collect::dump::request::{BackoffGuard, compute_backoff_ms};
 use crate::collect::dump::response::thread::ResponseThread;
 use crate::collect::dump::response::{DumpError, Response, status_handlers};
 use crate::utils::ui::dump_event;
-use crate::utils::url::{ApiCall, BatchData, Url};
+use crate::utils::url::{ApiCall, BatchData, ForcedSingleTracker, Url};
 
 use log::{debug, trace, warn};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Duration;
+
+/// `Url::retry_number` (counted after the current failure) at which a sub-URL
+/// of a batch envelope rejected with a 5xx is switched to single dispatch.
+/// `retry_number` accumulates every retry caused by a real error (e.g.
+/// envelope 401, sub-response 4xx/5xx, missing or malformed sub-response,
+/// write failure), so a sub-URL can switch on its first 5xx envelope if it was
+/// already retried for another reason. Repeated
+/// failures point at a sub-request the server cannot serve within its own
+/// deadline, which would otherwise take its siblings down with it until
+/// `urlRetryLimit`.
+const BATCH_SINGLE_FALLBACK_AFTER_ENVELOPE_5XX: usize = 2;
+
+/// DEBUG line naming one sub-request of a batch envelope rejected with a
+/// non-2xx status (`index` is 1-based).
+fn envelope_sub_request_line(
+    batch_id: u32,
+    status: u16,
+    index: usize,
+    total: usize,
+    url: &Url,
+) -> String {
+    format!(
+        "Batch [ID: {batch_id}] envelope HTTP {status} — sub-request {index}/{total}: {}/{} url {:?}",
+        url.service_name, url.api, url.url
+    )
+}
+
+/// WARN line emitted when a sub-URL is switched to single dispatch after
+/// repeated 5xx envelopes.
+fn envelope_degrade_line(url: &Url, status: u16, batch_id: u32) -> String {
+    format!(
+        "Batch envelope kept failing with HTTP {status}; degrading {:?}/{:?} to single dispatch ({} retries) — url {:?} [ID: {batch_id}]",
+        url.service_name, url.api, url.retry_number, url.url
+    )
+}
 
 async fn handle_missing_batch_data(this: &ResponseThread) {
     dump_event::emit(dump_event::DumpEvent {
@@ -38,6 +73,7 @@ async fn handle_missing_batch_data(this: &ResponseThread) {
                 this.response_data.api_call.url.service_name.clone()
             ),
             expected: false,
+            forced_single_tracker: None,
             full_response: None,
             post_data: Some(post_data),
         })
@@ -49,7 +85,7 @@ pub async fn process_batch(this: &ResponseThread) -> Vec<Url> {
         "{:FL$}Processing batch response [ID: {}] for service {} status: {}",
         "ResponseThread",
         this.response_data.api_call.id,
-        &this.response_data.api_call.url.service_name,
+        this.response_data.api_call.url.service_name,
         this.response_data.response.status
     );
     let mut new_urls: Vec<Url> = Vec::new();
@@ -405,15 +441,40 @@ pub async fn process_batch(this: &ResponseThread) -> Vec<Url> {
                             is_expected,
                         );
                     }
-                    new_urls.extend(
-                        this.prepare_retries(
-                            batch_data
-                                .initial_data
-                                .values()
-                                .map(|d: &ApiCall| d.url.clone())
-                                .collect(),
-                        ),
+                    let mut subs = this.prepare_retries(
+                        batch_data
+                            .initial_data
+                            .values()
+                            .map(|d: &ApiCall| d.url.clone())
+                            .collect(),
                     );
+                    let batch_id = this.response_data.api_call.id;
+                    let total = subs.len();
+                    for (i, sub) in subs.iter_mut().enumerate() {
+                        // Name every sub-request: the envelope URL alone does not
+                        // say which endpoint the server could not serve.
+                        debug!(
+                            "{:FL$}{}",
+                            "ResponseThread",
+                            envelope_sub_request_line(batch_id, x, i + 1, total, sub)
+                        );
+                        if x >= 500
+                            && !sub.force_single
+                            && sub.retry_number >= BATCH_SINGLE_FALLBACK_AFTER_ENVELOPE_5XX
+                        {
+                            sub.force_single = true;
+                            sub.forced_single_tracker = Some(Arc::new(ForcedSingleTracker::new()));
+                            this.context
+                                .stats
+                                .record_batch_single_fallback(&sub.service_name, &sub.api);
+                            warn!(
+                                "{:FL$}{}",
+                                "ResponseThread",
+                                envelope_degrade_line(sub, x, batch_id)
+                            );
+                        }
+                    }
+                    new_urls.extend(subs);
                 }
             }
         }
@@ -427,4 +488,55 @@ pub async fn process_batch(this: &ResponseThread) -> Vec<Url> {
         this.response_data.api_call.url.service_name
     );
     new_urls
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn url() -> Url {
+        let mut u: Url = serde_json::from_value(serde_json::json!({
+            "service_name": "graph",
+            "service_scopes": [],
+            "service_mandatory_auth": false,
+            "api": "signIns",
+            "url": "https://graph.microsoft.com/v1.0/auditLogs/signIns?$filter=userId eq 'u1'",
+            "conditions": null,
+            "relationships": [],
+            "api_behavior": {},
+            "expected_error_codes": null,
+            "parent": null,
+            "retry_number": 0
+        }))
+        .unwrap();
+        u.retry_number = 2;
+        u
+    }
+
+    #[test]
+    fn envelope_sub_request_line_names_api_and_url() {
+        let l = envelope_sub_request_line(9777, 503, 2, 10, &url());
+        assert!(
+            l.contains("Batch [ID: 9777] envelope HTTP 503 — sub-request 2/10: graph/signIns"),
+            "{l}"
+        );
+        assert!(
+            l.contains("auditLogs/signIns?$filter=userId eq 'u1'"),
+            "{l}"
+        );
+    }
+
+    #[test]
+    fn envelope_degrade_line_carries_url_and_retries() {
+        let l = envelope_degrade_line(&url(), 503, 9777);
+        assert!(
+            l.contains("degrading \"graph\"/\"signIns\" to single dispatch (2 retries)"),
+            "{l}"
+        );
+        assert!(
+            l.contains("auditLogs/signIns?$filter=userId eq 'u1'"),
+            "{l}"
+        );
+        assert!(l.contains("[ID: 9777]"), "{l}");
+    }
 }

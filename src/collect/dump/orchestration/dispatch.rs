@@ -178,6 +178,15 @@ pub async fn dispatch_requests(
                                                 &api_call.url.service_name,
                                                 &api_call.url.api,
                                             );
+                                            // Cost attribution for the batch→single
+                                            // fallback: every dispatch of a forced
+                                            // URL counts (retries included).
+                                            if api_call.url.force_single {
+                                                dumper.stats.record_forced_single_dispatch(
+                                                    &api_call.url.service_name,
+                                                    &api_call.url.api,
+                                                );
+                                            }
                                         }
                                         // is_batch == true but no batch_data: the
                                         // request thread will surface a DumpError
@@ -187,7 +196,7 @@ pub async fn dispatch_requests(
                                     }
                                     trace!(
                                         "{:FL$}Dispatched api_call [ID: {}] for service {:?}",
-                                        "Dumper", id, &api_call.url.service_name
+                                        "Dumper", id, api_call.url.service_name
                                     );
                                     p.send(RequestMsg::ApiCall(api_call));
                                 }
@@ -241,6 +250,9 @@ pub async fn dispatch_requests(
                                             code: String::from("UrlRetryLimit"),
                                             message,
                                             expected: false,
+                                            forced_single_tracker: url
+                                                .forced_single_tracker
+                                                .clone(),
                                             full_response: None,
                                             post_data: None,
                                         }),
@@ -264,6 +276,7 @@ pub async fn dispatch_requests(
                                             err, service
                                         ),
                                         expected: false,
+                                        forced_single_tracker: None,
                                         full_response: None,
                                         post_data: None,
                                     }), id));

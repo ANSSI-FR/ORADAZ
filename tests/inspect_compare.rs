@@ -425,3 +425,35 @@ fn compare_breaker_skipped_delta_renders() {
         "delta must sum the per-API map (0 -> 120): {line:?}"
     );
 }
+
+/// The batch→single fallback metrics surface as QUALITY DELTAS, preferring the
+/// metadata run totals and falling back to a `stats.apis[]` sum when the
+/// metadata fields are absent (older archives read as zero).
+#[test]
+fn compare_quality_deltas_render_batch_single_fallbacks() {
+    let a = make_source(
+        json!({"auth_errors": 0, "unexpected_errors": 0, "prerequisites_errors": 0}),
+        None,
+        None,
+    );
+    // B carries the counters only per-API in stats.json → the fallback sum.
+    let b = make_source(
+        json!({"auth_errors": 0, "unexpected_errors": 0, "prerequisites_errors": 0}),
+        Some(json!({"apis": [
+            {"service": "graph", "api": "devices",
+             "batch_single_fallbacks": 2, "forced_single_dispatches": 3,
+             "batch_single_fallback_successes": 1, "batch_single_fallback_lost": 1}
+        ]})),
+        None,
+    );
+    let text = rendered(&a, &b);
+    assert!(text.contains("Batch-single fallbacks"), "{text}");
+    assert!(text.contains("Forced single dispatches"), "{text}");
+    assert!(text.contains("Fallbacks recovered"), "{text}");
+    assert!(text.contains("Fallbacks lost"), "{text}");
+    assert!(text.contains(" +3"), "expected +3 dispatch delta:\n{text}");
+    assert!(
+        text.contains(" +2"),
+        "expected +2 transition delta:\n{text}"
+    );
+}

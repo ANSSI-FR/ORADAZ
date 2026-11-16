@@ -451,6 +451,7 @@ async fn test_schema_get_urls_with_service_filtering() {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     };
     let condition_checker = ConditionChecker {
         client: OradazClient::new(&config).unwrap(),
@@ -552,6 +553,7 @@ async fn test_schema_get_urls_empty_when_no_tokens() {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     };
     let condition_checker = ConditionChecker {
         client: OradazClient::new(&config).unwrap(),
@@ -634,6 +636,7 @@ fn make_minimal_config() -> Config {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     }
 }
 
@@ -1087,5 +1090,44 @@ fn minimal_test_config() -> Config {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
+    }
+}
+
+/// Both per-user sign-in relationships of the bundled schemas declare the
+/// raised per-API timeout: the endpoint has a fixed server-side cost that
+/// exceeds the default Graph timeout on large tenants.
+#[test]
+fn bundled_schemas_raise_per_user_sign_in_timeout() {
+    fn walk(v: &serde_json::Value, hits: &mut Vec<serde_json::Value>) {
+        match v {
+            serde_json::Value::Object(m) => {
+                if m.get("uri").and_then(|u| u.as_str())
+                    == Some("auditLogs/signIns?$filter=userId eq '[1]'")
+                {
+                    hits.push(v.clone());
+                }
+                m.values().for_each(|x| walk(x, hits));
+            }
+            serde_json::Value::Array(a) => a.iter().for_each(|x| walk(x, hits)),
+            _ => {}
+        }
+    }
+    for file in ["schema.json", "schema-light.json"] {
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
+        let mut hits = Vec::new();
+        walk(&v, &mut hits);
+        assert_eq!(
+            hits.len(),
+            2,
+            "{file}: expected 2 per-user signIns relationships"
+        );
+        for h in hits {
+            assert_eq!(
+                h["api_behavior"]["http_timeout_seconds"], "120",
+                "{file}: {h}"
+            );
+        }
     }
 }

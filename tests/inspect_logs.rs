@@ -574,6 +574,7 @@ fn logs_full_renders_response_body_when_dump_error_present() {
         code: "Forbidden".to_string(),
         message: "Access denied".to_string(),
         expected: false,
+        forced_single_tracker: None,
         full_response: Some(serde_json::json!({
             "error": {"code": "Forbidden", "message": "Access denied — missing scope."}
         })),

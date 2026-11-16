@@ -86,7 +86,10 @@ fn test_url_structure_creation() {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     };
 
     assert_eq!(url.service_name, "graph");
@@ -151,7 +154,10 @@ fn url_arc_fields_serialize_without_wrapper() {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     };
     let v: serde_json::Value = serde_json::to_value(&url).expect("serialize");
     // Arc-wrapped fields serialize as the bare value.
@@ -188,7 +194,10 @@ fn test_url_with_conditions() {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     };
 
     assert_eq!(url.conditions, Some(conditions));
@@ -211,7 +220,10 @@ fn test_url_retry_increment() {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     };
 
     assert_eq!(url.retry_number, 0);
@@ -439,7 +451,10 @@ fn test_url_pagination_nextlink_extraction() {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     };
 
     let next_link = "https://graph.microsoft.com/v1.0/users?$skiptoken=abc123";
@@ -458,7 +473,10 @@ fn test_url_pagination_nextlink_extraction() {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     };
 
     // Verify the URL contains the pagination token
@@ -536,7 +554,10 @@ fn test_batch_data_creation() {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     };
 
     batch_data.initial_data.insert(
@@ -572,7 +593,10 @@ fn test_api_call_creation() {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     };
 
     let api_call = ApiCall {
@@ -607,7 +631,10 @@ fn test_api_call_with_batch_data() {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     };
 
     let batch_data = BatchData {
@@ -681,6 +708,7 @@ fn make_minimal_config() -> Config {
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
         concurrency_slow_start: None,
+        http_timeout_max_seconds: None,
     }
 }
 
@@ -1431,7 +1459,10 @@ fn make_graph_url(version: &str, api_name: &str, path: &str) -> Url {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     }
 }
 
@@ -1451,7 +1482,10 @@ fn make_resource_url(api_name: &str, path: &str) -> Url {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     }
 }
 
@@ -1474,7 +1508,10 @@ fn make_exchange_url(api_name: &str, path: &str) -> Url {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     }
 }
 
@@ -2403,5 +2440,81 @@ async fn test_api_get_url_directory_audits_top_only_when_filter_disabled() {
     assert_eq!(
         url,
         "https://graph.microsoft.com/v1.0/auditLogs/directoryAudits?$top=999"
+    );
+}
+
+/// Serde compatibility for the forced-single fields and `timeout_strikes`: an old serialized `Url`
+/// (predating them) deserializes with the defaults, a false flag is omitted
+/// from the wire form (unchanged shape), a true flag round-trips, and the
+/// tracker never enters the serialized form.
+#[test]
+fn url_force_single_serde_compat() {
+    use oradaz::utils::url::ForcedSingleTracker;
+    use std::collections::HashMap as StdHashMap;
+
+    let old_json = r#"{
+        "service_name": "graph",
+        "service_scopes": [],
+        "service_mandatory_auth": true,
+        "api": "users",
+        "url": "https://graph.microsoft.com/v1.0/users",
+        "conditions": null,
+        "relationships": [],
+        "api_behavior": {},
+        "expected_error_codes": null,
+        "parent": null,
+        "retry_number": 0
+    }"#;
+    let parsed: Url = serde_json::from_str(old_json).expect("old Url JSON must deserialize");
+    assert!(!parsed.force_single, "absent field defaults to false");
+    assert!(
+        parsed.forced_single_tracker.is_none(),
+        "absent tracker defaults to None"
+    );
+    assert_eq!(parsed.timeout_strikes, 0, "absent strikes default to 0");
+
+    let mut url = Url {
+        service_name: "graph".to_string(),
+        service_scopes: Arc::new(vec![]),
+        service_mandatory_auth: true,
+        api: "users".to_string(),
+        url: "https://graph.microsoft.com/v1.0/users".to_string(),
+        conditions: None,
+        relationships: Arc::new(vec![]),
+        api_behavior: Arc::new(StdHashMap::new()),
+        expected_error_codes: None,
+        parent: None,
+        retry_number: 0,
+        rate_limit_retry_number: 0,
+        rate_limit_total_wait_secs: 0,
+        network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
+        post_body: None,
+        timeout_strikes: 0,
+    };
+    let json = serde_json::to_string(&url).unwrap();
+    assert!(
+        !json.contains("force_single"),
+        "a false flag is omitted so the wire shape is unchanged: {json}"
+    );
+    assert!(
+        !json.contains("timeout_strikes"),
+        "a zero strike count is omitted: {json}"
+    );
+
+    url.force_single = true;
+    url.forced_single_tracker = Some(Arc::new(ForcedSingleTracker::new()));
+    let json = serde_json::to_string(&url).unwrap();
+    assert!(json.contains("\"force_single\":true"), "{json}");
+    assert!(
+        !json.contains("forced_single_tracker"),
+        "the tracker never enters the serialized form: {json}"
+    );
+    let back: Url = serde_json::from_str(&json).unwrap();
+    assert!(back.force_single, "a true flag round-trips");
+    assert!(
+        back.forced_single_tracker.is_none(),
+        "the tracker is not reconstructed from the wire"
     );
 }

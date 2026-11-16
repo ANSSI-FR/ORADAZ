@@ -383,6 +383,19 @@ pub async fn collect(
         "{:FL$}Writer initialized for ORADAZ version {}",
         "collect", VERSION
     );
+    debug!(
+        "{:FL$}HTTP client proxy: {}",
+        "collect",
+        if config
+            .proxy
+            .as_ref()
+            .is_some_and(|p| !p.url.trim().is_empty())
+        {
+            "configured"
+        } else {
+            "none"
+        }
+    );
 
     if let Err(err) = config.write(&writer).await {
         let _ = writer.set_broken().await;

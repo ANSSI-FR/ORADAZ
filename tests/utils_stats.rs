@@ -675,3 +675,48 @@ fn breaker_skipped_accounting() {
     assert_eq!(map.len(), 1, "zero-count buckets must stay absent");
     assert_eq!(stats.breaker_tripped_count(), 1);
 }
+
+/// The four batch→single fallback counters are part of every serialized API
+/// entry, at zero when nothing was recorded — so A/B consumers can require
+/// them on both sides instead of converting an absent field into a silent zero.
+#[test]
+fn batch_single_fallback_counters_serialized_at_zero() {
+    let stats = default_test_stats();
+    stats.record_single_dispatch("graph", "users");
+
+    let json: Value = serde_json::to_value(&*stats).unwrap();
+    let api = &json["apis"].as_array().unwrap()[0];
+    assert_eq!(api["batch_single_fallbacks"], 0);
+    assert_eq!(api["forced_single_dispatches"], 0);
+    assert_eq!(api["batch_single_fallback_successes"], 0);
+    assert_eq!(api["batch_single_fallback_lost"], 0);
+}
+
+/// Each record method feeds exactly its own per-API counter, and the run-level
+/// totals sum across APIs.
+#[test]
+fn batch_single_fallback_counters_record_and_total() {
+    let stats = default_test_stats();
+    stats.record_batch_single_fallback("graph", "devices");
+    stats.record_batch_single_fallback("graph", "users");
+    stats.record_forced_single_dispatch("graph", "devices");
+    stats.record_forced_single_dispatch("graph", "devices");
+    stats.record_batch_single_fallback_success("graph", "devices");
+    stats.record_batch_single_fallback_lost("graph", "users");
+
+    let json: Value = serde_json::to_value(&*stats).unwrap();
+    let apis = json["apis"].as_array().unwrap();
+    let devices = apis.iter().find(|a| a["api"] == "devices").unwrap();
+    let users = apis.iter().find(|a| a["api"] == "users").unwrap();
+    assert_eq!(devices["batch_single_fallbacks"], 1);
+    assert_eq!(devices["forced_single_dispatches"], 2);
+    assert_eq!(devices["batch_single_fallback_successes"], 1);
+    assert_eq!(devices["batch_single_fallback_lost"], 0);
+    assert_eq!(users["batch_single_fallbacks"], 1);
+    assert_eq!(users["batch_single_fallback_lost"], 1);
+
+    assert_eq!(stats.total_batch_single_fallbacks(), 2);
+    assert_eq!(stats.total_forced_single_dispatches(), 2);
+    assert_eq!(stats.total_batch_single_fallback_successes(), 1);
+    assert_eq!(stats.total_batch_single_fallback_lost(), 1);
+}

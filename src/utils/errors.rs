@@ -537,7 +537,10 @@ mod tests {
             rate_limit_retry_number: 0,
             rate_limit_total_wait_secs: 0,
             network_retry_number: 0,
+            force_single: false,
+            forced_single_tracker: None,
             post_body: None,
+            timeout_strikes: 0,
         };
         let err = Error::UrlRetryLimit(Box::new(url));
         let display = format!("{}", err);
@@ -560,7 +563,10 @@ mod tests {
             rate_limit_retry_number: rl_retry,
             rate_limit_total_wait_secs: rl_wait,
             network_retry_number: 0,
+            force_single: false,
+            forced_single_tracker: None,
             post_body: None,
+            timeout_strikes: 0,
         }
     }
 

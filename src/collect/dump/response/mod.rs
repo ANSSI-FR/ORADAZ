@@ -22,7 +22,7 @@ use crate::collect::dump::ratelimit::RateLimitManager;
 use crate::utils::errors::Error;
 use crate::utils::metadata::TableMetadata;
 use crate::utils::stats::Stats;
-use crate::utils::url::ApiCall;
+use crate::utils::url::{ApiCall, ForcedSingleOutcome, ForcedSingleTracker};
 use crate::utils::writer::actor::WriterHandle;
 
 use dashmap::DashMap;
@@ -59,12 +59,48 @@ pub struct DumpError {
     /// archive written before this field existed.
     #[serde(default)]
     pub expected: bool,
+    /// Forced-single outcome tracker carried over from the `Url` this terminal
+    /// error was built from, so the loss chokepoint (`write_dump_error`) can
+    /// close the batch→single transition at most once. `None` for errors not
+    /// tied to a forced-single URL. Never serialized — no tracking state
+    /// enters the archive.
+    #[serde(skip, default)]
+    pub forced_single_tracker: Option<Arc<ForcedSingleTracker>>,
     /// Optional full response body for debugging.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub full_response: Option<serde_json::Value>,
     /// Optional POST data sent with the request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub post_data: Option<serde_json::Value>,
+}
+
+/// Closes a batch→single fallback transition with its terminal `outcome`,
+/// feeding the matching per-API counter at most once. The tracker's
+/// compare-and-swap guarantees at most one terminal outcome per transition
+/// (never both success and loss); an absent tracker or an already-terminal one
+/// is a no-op. The two chokepoints — the first written 2xx (success) and the
+/// written lost-data line in `ResponseContext::write_dump_error` — are the only
+/// callers; handlers never touch the counters directly. A transition whose URL
+/// reaches neither chokepoint records no outcome: an expected or unexpected
+/// HTTP status (not lost data, see `DumpError::is_lost_data`), a URL skipped by
+/// the expected-errors breaker, or a collection stopped before the URL ends.
+pub(crate) fn finish_forced_single(
+    stats: &Stats,
+    service: &str,
+    api: &str,
+    tracker: Option<&Arc<ForcedSingleTracker>>,
+    outcome: ForcedSingleOutcome,
+) {
+    let Some(tracker) = tracker else {
+        return;
+    };
+    if !tracker.try_finish(outcome) {
+        return;
+    }
+    match outcome {
+        ForcedSingleOutcome::Success => stats.record_batch_single_fallback_success(service, api),
+        ForcedSingleOutcome::Lost => stats.record_batch_single_fallback_lost(service, api),
+    }
 }
 
 impl DumpError {
@@ -206,6 +242,20 @@ impl ResponseContext {
         if dump_error.is_lost_data() {
             self.stats
                 .record_lost_data(&dump_error.folder, &dump_error.file, &dump_error.code);
+            // Loss chokepoint for forced-single transitions: every terminal
+            // lost-data write flows through here (UrlRetryLimit, NetworkStalled,
+            // ThrottleStalled, …), so closing the tracker at this single point
+            // covers them all without a per-code list. Closed only once the error
+            // line is written, next to `record_lost_data`, so
+            // `batch_single_fallback_lost ≤ lost_data` holds by construction; the
+            // CAS inside keeps a retried write idempotent.
+            finish_forced_single(
+                &self.stats,
+                &dump_error.folder,
+                &dump_error.file,
+                dump_error.forced_single_tracker.as_ref(),
+                ForcedSingleOutcome::Lost,
+            );
         }
         Ok(())
     }

@@ -61,6 +61,7 @@ async fn logs_preserved_during_pause() {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     };
 
     // Create Oradaz client (required for writer initialization).

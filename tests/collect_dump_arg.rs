@@ -61,7 +61,10 @@ fn create_arg_url(base: &str) -> OradazUrl {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: Some(json!({"query": "Resources", "subscriptions": ["sub-1"]})),
+        timeout_strikes: 0,
     }
 }
 
@@ -321,7 +324,10 @@ fn partition_url() -> OradazUrl {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     }
 }
 

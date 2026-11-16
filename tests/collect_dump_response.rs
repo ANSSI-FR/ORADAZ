@@ -57,7 +57,10 @@ fn create_test_url() -> OradazUrl {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     }
 }
 
@@ -595,6 +598,7 @@ async fn lost_data_write_is_counter_neutral_vs_dump_error() {
         code: "NetworkStalled".to_string(),
         message: String::new(),
         expected: false,
+        forced_single_tracker: None,
         full_response: None,
         post_data: None,
     };
@@ -665,6 +669,7 @@ fn dump_error_serializes_correctly() {
         code: "Forbidden".to_string(),
         message: "Insufficient privileges".to_string(),
         expected: false,
+        forced_single_tracker: None,
         full_response: None,
         post_data: None,
     };
@@ -692,6 +697,7 @@ fn is_lost_data_classifies_terminal_failures() {
         code: code.to_string(),
         message: String::new(),
         expected: false,
+        forced_single_tracker: None,
         full_response: None,
         post_data: None,
     };
@@ -727,6 +733,7 @@ fn dump_error_with_full_response_serializes_it() {
         code: "InternalServerError".to_string(),
         message: "Server error".to_string(),
         expected: false,
+        forced_single_tracker: None,
         full_response: Some(json!({"detail": "stack trace"})),
         post_data: Some(json!({"detail": "sent data in post request"})),
     };
@@ -1058,6 +1065,7 @@ async fn write_dump_error_persists_to_file() {
         code: "Forbidden".to_string(),
         message: "Insufficient privileges".to_string(),
         expected: false,
+        forced_single_tracker: None,
         full_response: None,
         post_data: None,
     };
@@ -1982,6 +1990,89 @@ async fn batch_2xx_with_multiple_sub_429_halves_window_once() {
     );
 }
 
+/// Batch envelope wrapping two sub-URLs whose `retry_number` is `prior`,
+/// answered by `status` with no per-sub-request detail.
+fn envelope_case(prior: usize, status: u16) -> (ApiCall, Response) {
+    let mut url1 = create_test_url();
+    url1.retry_number = prior;
+    let mut url2 = create_test_url();
+    url2.api = "other".to_string();
+    url2.retry_number = prior;
+    let mut initial_data = HashMap::new();
+    initial_data.insert("1".to_string(), create_test_api_call(url1.clone()));
+    initial_data.insert("2".to_string(), create_test_api_call(url2));
+    let batch_data = oradaz::utils::url::BatchData {
+        post_data: HashMap::new(),
+        id_field: "id".to_string(),
+        status_field: "status".to_string(),
+        retry_after_field: "retryAfter".to_string(),
+        body_field: "body".to_string(),
+        initial_data,
+    };
+    let mut batch_api_call = create_test_api_call(url1);
+    batch_api_call.is_batch = true;
+    batch_api_call.batch_data = Some(batch_data);
+    let response = Response {
+        status,
+        retry_after: None,
+        content: json!({}),
+    };
+    (batch_api_call, response)
+}
+
+#[tokio::test]
+async fn batch_envelope_first_5xx_requeues_without_degrading() {
+    let (call, response) = envelope_case(0, 503);
+    let (_rx, thread, _dir) = setup_response_thread(call, response).await;
+    let urls = thread.process_batch().await;
+    assert_eq!(urls.len(), 2);
+    assert!(
+        urls.iter()
+            .all(|u| u.retry_number == 1 && !u.force_single && u.forced_single_tracker.is_none())
+    );
+    assert_eq!(thread.context.stats.total_batch_single_fallbacks(), 0);
+}
+
+#[tokio::test]
+async fn batch_envelope_second_5xx_degrades_sub_urls_to_single() {
+    let (call, response) = envelope_case(1, 503);
+    let (_rx, thread, _dir) = setup_response_thread(call, response).await;
+    let urls = thread.process_batch().await;
+    assert_eq!(urls.len(), 2);
+    assert!(
+        urls.iter()
+            .all(|u| u.retry_number == 2 && u.force_single && u.forced_single_tracker.is_some())
+    );
+    assert_eq!(thread.context.stats.total_batch_single_fallbacks(), 2);
+}
+
+#[tokio::test]
+async fn batch_envelope_already_forced_url_is_not_recounted() {
+    let (mut call, response) = envelope_case(2, 503);
+    if let Some(bd) = call.batch_data.as_mut() {
+        for c in bd.initial_data.values_mut() {
+            c.url.force_single = true;
+        }
+    }
+    let (_rx, thread, _dir) = setup_response_thread(call, response).await;
+    let urls = thread.process_batch().await;
+    assert!(urls.iter().all(|u| u.force_single));
+    assert_eq!(
+        thread.context.stats.total_batch_single_fallbacks(),
+        0,
+        "the flip happens once per URL"
+    );
+}
+
+#[tokio::test]
+async fn batch_envelope_4xx_never_degrades() {
+    let (call, response) = envelope_case(3, 400);
+    let (_rx, thread, _dir) = setup_response_thread(call, response).await;
+    let urls = thread.process_batch().await;
+    assert!(urls.iter().all(|u| !u.force_single));
+    assert_eq!(thread.context.stats.total_batch_single_fallbacks(), 0);
+}
+
 /// B-2: a 401 at the batch ENVELOPE level (the whole `$batch` POST rejected — e.g.
 /// the bearer was revoked mid-run) must emit `TokenExpirationError` so the token is
 /// refreshed before the re-queued sub-URLs go out again. Previously the envelope 401
@@ -2090,4 +2181,273 @@ async fn breaker_trips_only_on_breaker_eligible_expected_errors() {
         1,
         "any code flagged breaker_eligible drives the breaker, not only 403"
     );
+}
+
+// ─── forced-single closure (CAS) and serde compatibility ─────────────────────
+
+/// The first written 2xx for a forced-single URL closes its tracker as a
+/// success — exactly once — and a later lost-data write sharing the same
+/// tracker is a no-op (the CAS guarantees one terminal outcome, never both).
+#[tokio::test]
+async fn forced_single_first_written_2xx_counts_one_success() {
+    use oradaz::utils::url::ForcedSingleTracker;
+
+    let mut url = create_test_url();
+    url.force_single = true;
+    let tracker = Arc::new(ForcedSingleTracker::new());
+    url.forced_single_tracker = Some(Arc::clone(&tracker));
+    let api_call = create_test_api_call(url);
+    let response = Response {
+        status: 200,
+        retry_after: None,
+        content: json!({ "value": [{ "id": "obj-1" }] }),
+    };
+    let (mut update_rx, thread, _tmp) = setup_response_thread(api_call, response).await;
+    let context = thread.context.clone();
+    let stats = Arc::clone(&context.stats);
+    thread.process().await;
+    let _ = update_rx.try_recv();
+
+    let read = |field: &str| -> u64 {
+        let json: serde_json::Value = serde_json::to_value(&*stats).unwrap();
+        json["apis"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["api"] == "users")
+            .map(|a| a[field].as_u64().unwrap_or(0))
+            .unwrap_or(0)
+    };
+    assert_eq!(
+        read("batch_single_fallback_successes"),
+        1,
+        "one success closure"
+    );
+    assert_eq!(read("batch_single_fallback_lost"), 0);
+
+    // A later terminal loss carrying the same tracker must NOT count: the
+    // tracker is already terminal.
+    let late_loss = DumpError {
+        folder: "graph".to_string(),
+        file: "users".to_string(),
+        url: "https://graph.microsoft.com/v1.0/users".to_string(),
+        status: 0,
+        code: String::from("NetworkStalled"),
+        message: String::from("late loss after a recorded success"),
+        expected: false,
+        forced_single_tracker: Some(Arc::clone(&tracker)),
+        full_response: None,
+        post_data: None,
+    };
+    context.write_dump_error(&late_loss, 9).await.unwrap();
+    assert_eq!(
+        read("batch_single_fallback_successes"),
+        1,
+        "still exactly one"
+    );
+    assert_eq!(read("batch_single_fallback_lost"), 0, "never both outcomes");
+}
+
+/// Symmetric CAS order: when the loss lands first, a later 2xx for the same
+/// tracker adds no success.
+#[tokio::test]
+async fn forced_single_loss_first_blocks_late_success() {
+    use oradaz::utils::url::ForcedSingleTracker;
+
+    let tracker = Arc::new(ForcedSingleTracker::new());
+    let mut url = create_test_url();
+    url.force_single = true;
+    url.forced_single_tracker = Some(Arc::clone(&tracker));
+    let api_call = create_test_api_call(url);
+    let response = Response {
+        status: 200,
+        retry_after: None,
+        content: json!({ "value": [{ "id": "obj-1" }] }),
+    };
+    let (mut update_rx, thread, _tmp) = setup_response_thread(api_call, response).await;
+    let context = thread.context.clone();
+    let stats = Arc::clone(&context.stats);
+
+    let loss = DumpError {
+        folder: "graph".to_string(),
+        file: "users".to_string(),
+        url: "https://graph.microsoft.com/v1.0/users".to_string(),
+        status: 0,
+        code: String::from("NetworkStalled"),
+        message: String::from("lost before any written 2xx"),
+        expected: false,
+        forced_single_tracker: Some(Arc::clone(&tracker)),
+        full_response: None,
+        post_data: None,
+    };
+    context.write_dump_error(&loss, 3).await.unwrap();
+    thread.process().await;
+    let _ = update_rx.try_recv();
+
+    let json: serde_json::Value = serde_json::to_value(&*stats).unwrap();
+    let api = json["apis"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["api"] == "users")
+        .cloned()
+        .unwrap();
+    assert_eq!(
+        api["batch_single_fallback_lost"], 1,
+        "the loss closed the tracker"
+    );
+    assert_eq!(
+        api["batch_single_fallback_successes"], 0,
+        "never both outcomes"
+    );
+}
+
+/// A next page created after a 2xx is a NEW Url: it keeps the forced-single
+/// flag and timeout count of the page that produced it, but never its tracker.
+#[tokio::test]
+async fn forced_single_next_link_page_inherits_flag_not_tracker() {
+    use oradaz::utils::url::ForcedSingleTracker;
+
+    let mut url = create_test_url();
+    url.force_single = true;
+    url.timeout_strikes = 2;
+    url.forced_single_tracker = Some(Arc::new(ForcedSingleTracker::new()));
+    let api_call = create_test_api_call(url);
+    let response = Response {
+        status: 200,
+        retry_after: None,
+        content: json!({
+            "value": [{ "id": "obj-1" }],
+            "@odata.nextLink": "https://graph.microsoft.com/v1.0/users?$skiptoken=page2",
+        }),
+    };
+    let (mut update_rx, thread, _tmp) = setup_response_thread(api_call, response).await;
+    thread.process().await;
+
+    match update_rx.try_recv().expect("a RequestCompleted event") {
+        CoordinatorEvent::RequestCompleted { new_urls, .. } => {
+            let next = new_urls
+                .iter()
+                .find(|u| u.url.contains("skiptoken"))
+                .expect("the next page URL is generated");
+            assert!(
+                next.force_single,
+                "a next page keeps the forced-single routing"
+            );
+            assert_eq!(
+                next.timeout_strikes, 2,
+                "a next page keeps the timeout count"
+            );
+            assert!(
+                next.forced_single_tracker.is_none(),
+                "a next page must not inherit the tracker"
+            );
+        }
+        _ => panic!("expected RequestCompleted"),
+    }
+}
+
+/// A forced-single URL abandoned as `ThrottleStalled` (429 on a bucket stalled
+/// past the liveness ceiling) closes its transition as one loss: the abandonment
+/// `DumpError` carries the URL's tracker to the loss chokepoint.
+#[tokio::test(start_paused = true)]
+async fn forced_single_throttle_stalled_records_one_loss() {
+    use oradaz::utils::url::ForcedSingleTracker;
+
+    let tracker = Arc::new(ForcedSingleTracker::new());
+    let forced_call = || {
+        let mut url = create_test_url();
+        url.force_single = true;
+        url.forced_single_tracker = Some(Arc::clone(&tracker));
+        create_test_api_call(url)
+    };
+    let throttle = || Response {
+        status: 429,
+        retry_after: Some(30),
+        content: json!({}),
+    };
+    let (_rx, thread, _dir) = setup_response_thread(forced_call(), throttle()).await;
+    thread.context.stats.set_liveness_ceiling_secs(100);
+
+    // First 429: bucket seen for the first time → re-queued, transition open.
+    let urls1 = thread.process_single(&throttle(), &forced_call()).await;
+    assert_eq!(urls1.len(), 1, "first 429 must re-queue, not abandon");
+    assert_eq!(thread.context.stats.total_batch_single_fallback_lost(), 0);
+
+    tokio::time::advance(std::time::Duration::from_secs(101)).await;
+
+    // Second 429 past the ceiling → abandoned as ThrottleStalled.
+    let urls2 = thread.process_single(&throttle(), &forced_call()).await;
+    assert!(urls2.is_empty(), "the stalled bucket must be abandoned");
+    assert_eq!(
+        thread.context.stats.total_batch_single_fallback_lost(),
+        1,
+        "the ThrottleStalled abandonment closes the transition as a loss"
+    );
+    assert_eq!(
+        thread.context.stats.total_batch_single_fallback_successes(),
+        0,
+        "no success closure"
+    );
+}
+
+/// The `$expand` extraction path is a success chokepoint too: a forced-single
+/// seed whose page is written closes its transition as one success.
+#[tokio::test]
+async fn forced_single_expand_extract_page_counts_one_success() {
+    use oradaz::utils::url::ForcedSingleTracker;
+
+    let mut url = create_expand_url();
+    url.force_single = true;
+    url.forced_single_tracker = Some(Arc::new(ForcedSingleTracker::new()));
+    let api_call = create_test_api_call(url);
+    // No parent reaches `expand_max` (2): the page is fully written, no fallback.
+    let response = Response {
+        status: 200,
+        retry_after: None,
+        content: json!({"value": [
+            { "id": "user-1", "registeredDevices": [ {"id": "dev-a", "displayName": "A"} ] }
+        ]}),
+    };
+    let (_rx, thread, _dir) = setup_response_thread(api_call.clone(), response.clone()).await;
+    let new_urls = thread.process_single(&response, &api_call).await;
+    assert!(new_urls.is_empty(), "no parent at the cap → no fallback");
+
+    assert_eq!(
+        thread.context.stats.total_batch_single_fallback_successes(),
+        1,
+        "the written expand page closes the transition as a success"
+    );
+    assert_eq!(thread.context.stats.total_batch_single_fallback_lost(), 0);
+}
+
+/// Wire-compat: `force_single` is omitted when false and the tracker is never
+/// serialized; a pre-existing DumpError JSON (without the new fields) still
+/// deserializes with the defaults.
+#[test]
+fn forced_single_serde_compat_dump_error() {
+    use oradaz::utils::url::ForcedSingleTracker;
+
+    let err = DumpError {
+        folder: "graph".to_string(),
+        file: "users".to_string(),
+        url: "u".to_string(),
+        status: 0,
+        code: "NetworkStalled".to_string(),
+        message: "m".to_string(),
+        expected: false,
+        forced_single_tracker: Some(Arc::new(ForcedSingleTracker::new())),
+        full_response: None,
+        post_data: None,
+    };
+    let json = serde_json::to_string(&err).unwrap();
+    assert!(
+        !json.contains("forced_single_tracker"),
+        "no tracking state may enter the archive: {json}"
+    );
+
+    let old = r#"{"folder":"graph","file":"users","url":"u","status":0,
+                  "code":"NetworkStalled","message":"m","expected":false}"#;
+    let parsed: DumpError = serde_json::from_str(old).unwrap();
+    assert!(parsed.forced_single_tracker.is_none());
 }

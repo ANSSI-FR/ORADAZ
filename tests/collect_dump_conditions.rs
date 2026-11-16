@@ -288,6 +288,7 @@ fn make_config_with_org_url(_org_url: String) -> Config {
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
         concurrency_slow_start: None,
+        http_timeout_max_seconds: None,
     }
 }
 

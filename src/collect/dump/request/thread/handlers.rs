@@ -87,6 +87,7 @@ impl RequestHandlers for RequestsThread {
                     self.api_call.url.service_name.clone()
                 ),
                 expected: false,
+                forced_single_tracker: self.api_call.url.forced_single_tracker.clone(),
                 full_response: None,
                 post_data: None,
             }),

@@ -98,6 +98,7 @@ impl ResponseThread {
                         url.rate_limit_total_wait_secs
                     ),
                     expected: false,
+                    forced_single_tracker: url.forced_single_tracker.clone(),
                     full_response: None,
                     post_data: None,
                 })

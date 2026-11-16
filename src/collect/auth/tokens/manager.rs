@@ -48,7 +48,7 @@ impl Tokens {
                 if service.mandatory_auth || Config::service_enable(config, &service.name) {
                     debug!(
                         "{:FL$}Acquiring client credentials token for service {:?}.",
-                        "Tokens", &service.name
+                        "Tokens", service.name
                     );
                     // IMDS (managed identity) can fail transiently at VM boot, during
                     // live-migration, or under load. Retry a bounded number of times
@@ -79,7 +79,7 @@ impl Tokens {
                                 let backoff = 2u64.saturating_pow(attempt - 1).min(8);
                                 warn!(
                                     "{:FL$}Managed-identity token acquisition for service {:?} failed (attempt {}/{}): {} — retrying in {}s",
-                                    "Tokens", &service.name, attempt, max_attempts, err, backoff
+                                    "Tokens", service.name, attempt, max_attempts, err, backoff
                                 );
                                 tokio::time::sleep(std::time::Duration::from_secs(backoff)).await;
                             }
@@ -90,7 +90,7 @@ impl Tokens {
                         Err(err) => {
                             warn!(
                                 "{:FL$}Authentication error while acquiring client credentials token for service {:?}: {}",
-                                "Tokens", &service.name, err
+                                "Tokens", service.name, err
                             );
                             auth_errors.push(AuthError {
                                 api: service.name.clone(),
@@ -156,7 +156,7 @@ impl Tokens {
             if service.mandatory_auth || Config::service_enable(config, &service.name) {
                 debug!(
                     "{:FL$}Acquiring new token for service {:?} based on graph token.",
-                    "Tokens", &service.name
+                    "Tokens", service.name
                 );
                 match initial_token
                     .refresh_for_scope(
@@ -172,7 +172,7 @@ impl Tokens {
                     Err(err) => {
                         warn!(
                             "{:FL$}Authentication error while refreshing token for service {:?}: {}",
-                            "Tokens", &service.name, err
+                            "Tokens", service.name, err
                         );
                         auth_errors.push(AuthError {
                             api: service.name.clone(),

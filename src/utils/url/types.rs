@@ -3,6 +3,7 @@ use crate::utils::errors::Error;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 /// Represents a URL to be collected, including its service context,
 /// API endpoint, and associated metadata for the collection process.
@@ -51,6 +52,76 @@ pub struct Url {
     /// when absent so GET-only URLs remain wire-compatible with prior versions.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub post_body: Option<serde_json::Value>,
+    /// Forces this URL to be dispatched as a single request: it must never be
+    /// packed into a batch envelope again. Set when the URL's batch envelope
+    /// failed at the transport layer repeatedly, or was rejected with a 5xx
+    /// once the URL had already been retried, so re-batching would rebuild the
+    /// same failing request. Omitted from the serialised form when `false`,
+    /// keeping the wire shape unchanged for the common case; archives written
+    /// before the field existed deserialize to `false`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub force_single: bool,
+    /// Outcome tracker created at the batch→single transition and shared by
+    /// every clone/retry of this URL (and by the terminal `DumpError`s built
+    /// from it), so the transition is closed at most once, as a success or a
+    /// loss. A transition ended by an error that is not lost data (an
+    /// unexpected HTTP status, an expected error code) records no outcome.
+    /// Never serialized — no tracking state enters the archive.
+    #[serde(skip, default)]
+    pub forced_single_tracker: Option<Arc<ForcedSingleTracker>>,
+    /// Number of times this URL timed out as a *single* request. Each strike
+    /// doubles the timeout of its next single attempt
+    /// (`escalated_timeout_secs`), up to `httpTimeoutMaxSeconds`. A batch
+    /// envelope timeout never counts: it does not say which sub-request is
+    /// slow. Inherited by the next page of a paginated response. Omitted from
+    /// the serialised form when zero.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub timeout_strikes: usize,
+}
+
+/// Terminal outcome of a batch→single fallback transition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForcedSingleOutcome {
+    /// The original URL obtained its first written 2xx as a single request.
+    Success,
+    /// The original URL was abandoned as lost data before any written 2xx.
+    Lost,
+}
+
+/// Private tracker states (`Pending` → `Success` | `Lost`).
+const FORCED_SINGLE_PENDING: u8 = 0;
+const FORCED_SINGLE_SUCCESS: u8 = 1;
+const FORCED_SINGLE_LOST: u8 = 2;
+
+/// One-shot outcome latch for a forced-single transition. Shared (`Arc`)
+/// between the URL's clones/retries and the `DumpError`s built from it; the
+/// compare-and-swap in [`ForcedSingleTracker::try_finish`] guarantees at most
+/// one terminal outcome is ever recorded, never both.
+#[derive(Debug, Default)]
+pub struct ForcedSingleTracker(AtomicU8);
+
+impl ForcedSingleTracker {
+    pub fn new() -> Self {
+        Self(AtomicU8::new(FORCED_SINGLE_PENDING))
+    }
+
+    /// Latches `outcome` if the tracker is still pending. Returns `true` iff
+    /// this call performed the transition (the caller then owns the single
+    /// counter increment); an already-terminal tracker is a no-op.
+    pub fn try_finish(&self, outcome: ForcedSingleOutcome) -> bool {
+        let terminal = match outcome {
+            ForcedSingleOutcome::Success => FORCED_SINGLE_SUCCESS,
+            ForcedSingleOutcome::Lost => FORCED_SINGLE_LOST,
+        };
+        self.0
+            .compare_exchange(
+                FORCED_SINGLE_PENDING,
+                terminal,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_ok()
+    }
 }
 
 /// Describes a relationship between a collected object and another URL
@@ -104,10 +175,17 @@ pub struct ExpectedErrorCode {
     pub breaker_eligible: bool,
 }
 
-/// `skip_serializing_if` predicate so a `false` `breaker_eligible` is omitted
-/// from the serialised form, keeping the wire shape unchanged for the common case.
+/// `skip_serializing_if` predicate so a `false` flag (`breaker_eligible`,
+/// `Url::force_single`) is omitted from the serialised form, keeping the wire
+/// shape unchanged for the common case.
 fn is_false(b: &bool) -> bool {
     !*b
+}
+
+/// `skip_serializing_if` predicate so a zero `timeout_strikes` is omitted,
+/// keeping the wire shape unchanged for the common case.
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 /// Represents a parameter to be passed to an API call, potentially

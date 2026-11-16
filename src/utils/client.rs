@@ -193,6 +193,7 @@ mod tests {
             response_memory_budget_bytes: None,
             expected_error_breaker_threshold: None,
             logs_days_filter: None,
+            http_timeout_max_seconds: None,
         }
     }
 
@@ -242,6 +243,7 @@ mod tests {
             response_memory_budget_bytes: None,
             expected_error_breaker_threshold: None,
             logs_days_filter: None,
+            http_timeout_max_seconds: None,
         }
     }
 

@@ -7,7 +7,7 @@ use crate::collect::dump::request::{
 };
 use crate::collect::dump::response::{DumpError, Response, ResponseContent, ResponseMsg};
 use crate::utils::stats::NetworkErrorKind;
-use crate::utils::url::{ApiCall, Url};
+use crate::utils::url::{ApiCall, ForcedSingleTracker, Url};
 
 use log::{debug, trace, warn};
 use serde_json::json;
@@ -16,6 +16,7 @@ use std::sync::{Arc, atomic::Ordering};
 use std::time::Duration;
 use tokio::sync::mpsc::Sender;
 
+mod diagnostics;
 mod handlers;
 pub use handlers::RequestHandlers;
 
@@ -56,7 +57,12 @@ impl RequestsThread {
             .unwrap_or_default()
     }
 
-    async fn finalize_retry(&self, urls: Vec<Url>) {
+    async fn finalize_retry(
+        &self,
+        urls: Vec<Url>,
+        kind: NetworkErrorKind,
+        attempt_timeout_secs: u64,
+    ) {
         // Backoff grows with the per-URL *network* retry count. A transport
         // failure does not touch `retry_number` (the real-error 4xx/5xx budget)
         // — it has its own `network_retry_number`, and is bounded only by the
@@ -85,8 +91,41 @@ impl RequestsThread {
         self.context
             .stats
             .record_http_call_failure(&self.api_call.url.service_name);
+        // Whether the failed call was a batch envelope: only batch-level
+        // failures may degrade their sub-URLs to forced-single dispatch — a
+        // single request that fails at the transport layer stays single.
+        let failed_call_was_batch = self.api_call.is_batch;
+        // Name every sub-request of a failed batch envelope: the envelope URL
+        // alone does not say which endpoint is slow.
+        if failed_call_was_batch {
+            let total = urls.len();
+            for (i, sub) in urls.iter().enumerate() {
+                debug!(
+                    "{:FL$}{}",
+                    "RequestsThread",
+                    diagnostics::batch_sub_request_line(self.api_call.id, kind, i + 1, total, sub)
+                );
+            }
+        }
+        let svc_timeout = crate::utils::config::Config::http_timeout_seconds_for(
+            &self.context.config,
+            &self.api_call.url.service_name,
+        );
+        let max_timeout =
+            crate::utils::config::Config::http_timeout_max_seconds(&self.context.config);
         let mut requeue: Vec<Url> = Vec::with_capacity(urls.len());
         for mut url in urls {
+            // Network-error count with the current failure included: it is the
+            // value the liveness abandonment message reports and the one the
+            // forced-single threshold reads, so both see this failure.
+            let next_network_retry = url.network_retry_number + 1;
+            // Single-request timeouts with the current failure included: the
+            // abandonment message must count the timeout that just occurred.
+            let single_timeouts = if kind == NetworkErrorKind::Timeout && !failed_call_was_batch {
+                url.timeout_strikes.saturating_add(1)
+            } else {
+                url.timeout_strikes
+            };
             // Abandon (lost data, NetworkStalled) iff the bucket has written no
             // data within the liveness ceiling despite retries; else re-queue.
             if self
@@ -94,6 +133,17 @@ impl RequestsThread {
                 .stats
                 .liveness_should_abandon(&url.service_name, &url.api)
             {
+                warn!(
+                    "{:FL$}{}",
+                    "RequestsThread",
+                    diagnostics::network_stalled_line(
+                        &url,
+                        next_network_retry,
+                        single_timeouts,
+                        attempt_timeout_secs,
+                        self.api_call.id
+                    )
+                );
                 // Counter-NEUTRAL write (ResponseMsg::LostData): the single
                 // RequestCompleted below already accounts for this ApiCall's
                 // dispatched item, so an abandoned sub-URL must not emit its own
@@ -106,10 +156,15 @@ impl RequestsThread {
                         status: 0,
                         code: String::from("NetworkStalled"),
                         message: format!(
-                            "Endpoint {:?} ({}) kept failing at the transport layer with no successful data write within the liveness ceiling; abandoned so the run can terminate ({} network retries).",
-                            url.api, url.service_name, url.network_retry_number
+                            "Endpoint {:?} ({}) kept failing at the transport layer with no successful data write within the liveness ceiling; abandoned so the run can terminate ({} network retries, {} single-request timeouts, last attempt timeout {}s).",
+                            url.api,
+                            url.service_name,
+                            next_network_retry,
+                            single_timeouts,
+                            attempt_timeout_secs
                         ),
                         expected: false,
+                        forced_single_tracker: url.forced_single_tracker.clone(),
                         full_response: None,
                         post_data: None,
                     }),
@@ -118,13 +173,58 @@ impl RequestsThread {
                 .await;
                 continue;
             }
-            url.network_retry_number += 1;
+            // The re-emission is authorized: only now does the counter advance
+            // and only now may the forced-single flip happen — an abandoned URL
+            // records neither.
+            url.network_retry_number = next_network_retry;
+            // Timeout escalation: a single request that timed out gets a longer
+            // budget on its next attempt. Batch-envelope timeouts never count (they
+            // do not say which sub-request is slow).
+            if kind == NetworkErrorKind::Timeout && !failed_call_was_batch {
+                url.timeout_strikes = single_timeouts;
+                debug!(
+                    "{:FL$}{}",
+                    "RequestsThread",
+                    diagnostics::escalation_line(
+                        &url,
+                        crate::collect::dump::request::escalated_timeout_secs(
+                            crate::collect::dump::request::api_timeout_base_secs(
+                                svc_timeout,
+                                [url.api_behavior.as_ref()]
+                            ),
+                            url.timeout_strikes,
+                            max_timeout
+                        ),
+                        self.api_call.id
+                    )
+                );
+            }
             // Network retries are tracked by `record_network_error` alone; they
             // must not feed `retries_real`, which counts real-error (4xx/5xx)
             // retries used to distinguish server errors from transport trouble.
             self.context
                 .stats
                 .record_network_error(&url.service_name, &url.api);
+            // Batch→single fallback: after the cumulative network-error count
+            // reaches the threshold on a batch-level failure, this URL must
+            // never be re-batched. The flip happens exactly once per URL (the
+            // flag guard) and creates the shared outcome tracker that the
+            // success/loss chokepoints close.
+            if failed_call_was_batch
+                && !url.force_single
+                && next_network_retry >= super::BATCH_SINGLE_FALLBACK_AFTER_NETWORK_ERRORS
+            {
+                url.force_single = true;
+                url.forced_single_tracker = Some(Arc::new(ForcedSingleTracker::new()));
+                self.context
+                    .stats
+                    .record_batch_single_fallback(&url.service_name, &url.api);
+                warn!(
+                    "{:FL$}{}",
+                    "RequestsThread",
+                    diagnostics::degrade_line(&url, next_network_retry, self.api_call.id)
+                );
+            }
             requeue.push(url);
         }
         self.send_to_update(CoordinatorEvent::RequestCompleted {
@@ -265,17 +365,44 @@ impl RequestsThread {
             return;
         }
 
-        // Resolve the per-service HTTP timeout once for this request. Apply it
-        // only if it differs from the client default, to avoid overriding when
-        // no per-service config was supplied.
+        // Resolve the HTTP timeout once for this request: the per-service
+        // timeout, raised to the timeout the schema declares for the request's
+        // API (a batch envelope takes the largest among its sub-URLs), then
+        // escalated for a single request whose URL already timed out as a
+        // single request. A batch envelope is never escalated.
+        // Applied only when it differs from the client default.
         let svc_timeout = crate::utils::config::Config::http_timeout_seconds_for(
             &self.context.config,
             &self.api_call.url.service_name,
         );
+        let base_timeout = if self.api_call.is_batch {
+            crate::collect::dump::request::api_timeout_base_secs(
+                svc_timeout,
+                self.api_call
+                    .batch_data
+                    .iter()
+                    .flat_map(|bd| bd.initial_data.values())
+                    .map(|c| c.url.api_behavior.as_ref()),
+            )
+        } else {
+            crate::collect::dump::request::api_timeout_base_secs(
+                svc_timeout,
+                [self.api_call.url.api_behavior.as_ref()],
+            )
+        };
+        let effective_timeout = if self.api_call.is_batch {
+            base_timeout
+        } else {
+            crate::collect::dump::request::escalated_timeout_secs(
+                base_timeout,
+                self.api_call.url.timeout_strikes,
+                crate::utils::config::Config::http_timeout_max_seconds(&self.context.config),
+            )
+        };
         let client_timeout =
             crate::utils::config::Config::http_timeout_seconds(&self.context.config);
-        let per_req_timeout = if svc_timeout != client_timeout {
-            Some(svc_timeout)
+        let per_req_timeout = if effective_timeout != client_timeout {
+            Some(effective_timeout)
         } else {
             None
         };
@@ -306,7 +433,7 @@ impl RequestsThread {
                                 "{:FL$}Permanent request error for [ID: {}] to url {:?} (kind={}), retrying as a real error.",
                                 "RequestsThread",
                                 self.api_call.id,
-                                &self.api_call.url.url,
+                                self.api_call.url.url,
                                 if err.is_builder() {
                                     "builder"
                                 } else {
@@ -315,47 +442,49 @@ impl RequestsThread {
                             );
                             debug!(
                                 "{:FL$}Request error [ID: {}] for url {:?}: {:?}",
-                                "RequestsThread", self.api_call.id, &self.api_call.url.url, err
+                                "RequestsThread", self.api_call.id, self.api_call.url.url, err
                             );
                             self.finalize_real_error_retry(self.api_call.url.clone())
                                 .await;
                         } else {
-                            if err.is_timeout() {
+                            let kind = if err.is_timeout() {
                                 debug!(
-                                    "{:FL$}Timeout for request [ID: {}] to url {:?}, retrying.",
-                                    "RequestsThread", self.api_call.id, &self.api_call.url.url
+                                    "{:FL$}Timeout after {}s for request [ID: {}] to url {:?}, retrying.",
+                                    "RequestsThread",
+                                    effective_timeout,
+                                    self.api_call.id,
+                                    self.api_call.url.url
                                 );
-                                self.context.stats.record_network_error_kind(
-                                    &self.api_call.url.service_name,
-                                    NetworkErrorKind::Timeout,
-                                );
+                                NetworkErrorKind::Timeout
                             } else if err.is_connect() {
                                 debug!(
                                     "{:FL$}Network error for request [ID: {}] to url {:?}, retrying.",
-                                    "RequestsThread", self.api_call.id, &self.api_call.url.url
+                                    "RequestsThread", self.api_call.id, self.api_call.url.url
                                 );
-                                self.context.stats.record_network_error_kind(
-                                    &self.api_call.url.service_name,
-                                    NetworkErrorKind::Connect,
-                                );
+                                NetworkErrorKind::Connect
                             } else {
                                 // Reached only when the error is neither a timeout nor a
                                 // connect error (both handled above), so the kind is
                                 // always "Other"; the full error is logged at debug.
                                 warn!(
                                     "{:FL$}Error performing request [ID: {}] to url {:?}, retrying. kind=Other",
-                                    "RequestsThread", self.api_call.id, &self.api_call.url.url
+                                    "RequestsThread", self.api_call.id, self.api_call.url.url
                                 );
                                 debug!(
                                     "{:FL$}Request error [ID: {}] for url {:?}: {:?}",
-                                    "RequestsThread", self.api_call.id, &self.api_call.url.url, err
+                                    "RequestsThread", self.api_call.id, self.api_call.url.url, err
                                 );
-                                self.context.stats.record_network_error_kind(
-                                    &self.api_call.url.service_name,
-                                    NetworkErrorKind::Other,
-                                );
-                            }
-                            self.finalize_retry(vec![self.api_call.url.clone()]).await;
+                                NetworkErrorKind::Other
+                            };
+                            self.context
+                                .stats
+                                .record_network_error_kind(&self.api_call.url.service_name, kind);
+                            self.finalize_retry(
+                                vec![self.api_call.url.clone()],
+                                kind,
+                                effective_timeout,
+                            )
+                            .await;
                         }
                     }
                     Ok(res) => {
@@ -382,14 +511,19 @@ impl RequestsThread {
                                 self.api_call.id,
                                 res.status,
                                 res.content_type.as_deref().unwrap_or("?"),
-                                &self.api_call.url.url
+                                self.api_call.url.url
                             );
                             debug!(
                                 "{:FL$}Non-JSON body [ID: {}]: {}",
                                 "RequestsThread", self.api_call.id, excerpt
                             );
                             if res.status == self.api_call.success_code {
-                                self.finalize_retry(vec![self.api_call.url.clone()]).await;
+                                self.finalize_retry(
+                                    vec![self.api_call.url.clone()],
+                                    NetworkErrorKind::Other,
+                                    effective_timeout,
+                                )
+                                .await;
                                 return;
                             }
                         }
@@ -436,7 +570,7 @@ impl RequestsThread {
                     None => {
                         warn!(
                             "{:FL$}Received POST request [ID: {}] with no data for service {:?}, retrying.",
-                            "RequestsThread", self.api_call.id, &self.api_call.url.service_name
+                            "RequestsThread", self.api_call.id, self.api_call.url.service_name
                         );
                         // Send an error indicating the invalid API
                         self.send_to_response(ResponseMsg::DumpError(
@@ -451,6 +585,7 @@ impl RequestsThread {
                                     self.api_call.url.service_name.clone()
                                 ),
                                 expected: false,
+                                forced_single_tracker: None,
                                 full_response: None,
                                 post_data: None,
                             }),
@@ -483,42 +618,40 @@ impl RequestsThread {
                         // arise per-request. If that endpoint itself were
                         // broken, every batch would fail identically and the
                         // liveness ceiling still bounds the run.
-                        if err.is_timeout() {
+                        let kind = if err.is_timeout() {
                             debug!(
-                                "{:FL$}Timeout for request [ID: {}] to url {:?}, retrying.",
-                                "RequestsThread", self.api_call.id, &self.api_call.url.url
+                                "{:FL$}Timeout after {}s for batch request [ID: {}] to url {:?}, retrying.",
+                                "RequestsThread",
+                                effective_timeout,
+                                self.api_call.id,
+                                self.api_call.url.url
                             );
-                            self.context.stats.record_network_error_kind(
-                                &self.api_call.url.service_name,
-                                NetworkErrorKind::Timeout,
-                            );
+                            NetworkErrorKind::Timeout
                         } else if err.is_connect() {
                             debug!(
                                 "{:FL$}Network error for request [ID: {}] to url {:?}, retrying.",
-                                "RequestsThread", self.api_call.id, &self.api_call.url.url
+                                "RequestsThread", self.api_call.id, self.api_call.url.url
                             );
-                            self.context.stats.record_network_error_kind(
-                                &self.api_call.url.service_name,
-                                NetworkErrorKind::Connect,
-                            );
+                            NetworkErrorKind::Connect
                         } else {
                             // Reached only when the error is neither a timeout nor a
                             // connect error (both handled above), so the kind is
                             // always "Other"; the full error is logged at debug.
                             warn!(
                                 "{:FL$}Error performing batch request [ID: {}] to url {:?}, retrying. kind=Other",
-                                "RequestsThread", self.api_call.id, &self.api_call.url.url
+                                "RequestsThread", self.api_call.id, self.api_call.url.url
                             );
                             debug!(
                                 "{:FL$}Batch request error [ID: {}] for url {:?}: {:?}",
-                                "RequestsThread", self.api_call.id, &self.api_call.url.url, err
+                                "RequestsThread", self.api_call.id, self.api_call.url.url, err
                             );
-                            self.context.stats.record_network_error_kind(
-                                &self.api_call.url.service_name,
-                                NetworkErrorKind::Other,
-                            );
-                        }
-                        self.finalize_retry(self.batch_sub_urls()).await;
+                            NetworkErrorKind::Other
+                        };
+                        self.context
+                            .stats
+                            .record_network_error_kind(&self.api_call.url.service_name, kind);
+                        self.finalize_retry(self.batch_sub_urls(), kind, effective_timeout)
+                            .await;
                     }
                     Ok(res) => {
                         // Service-level HTTP latency only: a batch envelope carries
@@ -544,14 +677,19 @@ impl RequestsThread {
                                 self.api_call.id,
                                 res.status,
                                 res.content_type.as_deref().unwrap_or("?"),
-                                &self.api_call.url.url
+                                self.api_call.url.url
                             );
                             debug!(
                                 "{:FL$}Non-JSON batch body [ID: {}]: {}",
                                 "RequestsThread", self.api_call.id, excerpt
                             );
                             if res.status == self.api_call.success_code {
-                                self.finalize_retry(self.batch_sub_urls()).await;
+                                self.finalize_retry(
+                                    self.batch_sub_urls(),
+                                    NetworkErrorKind::Other,
+                                    effective_timeout,
+                                )
+                                .await;
                                 return;
                             }
                         }

@@ -95,6 +95,28 @@ pub struct Metadata {
     /// in `stats.json` (`lost_data_by_code`).
     #[serde(default)]
     lost_data_errors: usize,
+    /// Batch→single fallback transitions: URLs switched from batch to
+    /// forced-single dispatch after repeated batch-level network failures or
+    /// a 5xx rejection of their batch envelope once already retried (run
+    /// total; per-API breakdown in `stats.json` `batch_single_fallbacks`).
+    /// `#[serde(default)]` → 0 on archives predating this field.
+    #[serde(default)]
+    batch_single_fallbacks: usize,
+    /// Single HTTP dispatches performed for forced-single URLs (run total;
+    /// per-API breakdown in `stats.json`). `#[serde(default)]` → 0 on archives
+    /// predating this field.
+    #[serde(default)]
+    forced_single_dispatches: usize,
+    /// Fallback transitions whose original URL obtained its first written 2xx
+    /// as a single request (run total). `#[serde(default)]` → 0 on archives
+    /// predating this field.
+    #[serde(default)]
+    batch_single_fallback_successes: usize,
+    /// Fallback transitions whose original URL was abandoned as lost data
+    /// before any written 2xx (run total). `#[serde(default)]` → 0 on archives
+    /// predating this field.
+    #[serde(default)]
+    batch_single_fallback_lost: usize,
     auth_errors: usize,
     prerequisites_errors: usize,
     /// Peak process RSS (bytes) observed during the dump, or 0 when unavailable
@@ -317,6 +339,10 @@ impl Metadata {
             unexpected_errors,
             non_http_errors: dumper.stats.non_http_errors(),
             lost_data_errors: dumper.stats.total_lost_data(),
+            batch_single_fallbacks: dumper.stats.total_batch_single_fallbacks(),
+            forced_single_dispatches: dumper.stats.total_forced_single_dispatches(),
+            batch_single_fallback_successes: dumper.stats.total_batch_single_fallback_successes(),
+            batch_single_fallback_lost: dumper.stats.total_batch_single_fallback_lost(),
             auth_errors: dumper.auth_errors_number,
             prerequisites_errors: dumper.prerequisites_errors_number,
             peak_rss_bytes: crate::utils::sysmem::peak_rss_bytes(),
@@ -476,6 +502,10 @@ mod tests {
             unexpected_errors: 2,
             non_http_errors: 0,
             lost_data_errors: 0,
+            batch_single_fallbacks: 0,
+            forced_single_dispatches: 0,
+            batch_single_fallback_successes: 0,
+            batch_single_fallback_lost: 0,
             auth_errors: 2,
             prerequisites_errors: 1,
             peak_rss_bytes: 0,
@@ -585,6 +615,10 @@ mod tests {
             unexpected_errors: 0,
             non_http_errors: 0,
             lost_data_errors: 0,
+            batch_single_fallbacks: 0,
+            forced_single_dispatches: 0,
+            batch_single_fallback_successes: 0,
+            batch_single_fallback_lost: 0,
             auth_errors: 0,
             prerequisites_errors: 0,
             peak_rss_bytes: 0,
@@ -641,6 +675,10 @@ mod tests {
             unexpected_errors: 6,
             non_http_errors: 0,
             lost_data_errors: 0,
+            batch_single_fallbacks: 0,
+            forced_single_dispatches: 0,
+            batch_single_fallback_successes: 0,
+            batch_single_fallback_lost: 0,
             auth_errors: 3,
             prerequisites_errors: 2,
             peak_rss_bytes: 0,

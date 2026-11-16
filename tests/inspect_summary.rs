@@ -202,6 +202,7 @@ fn summary_partial_when_unexpected_errors_present() {
         code: "Forbidden".to_string(),
         message: "Access denied".to_string(),
         expected: false,
+        forced_single_tracker: None,
         full_response: None,
         post_data: None,
     }];
@@ -483,6 +484,7 @@ fn summary_partial_when_lost_data_abandonment_present() {
         code: "UrlRetryLimit".to_string(),
         message: "retry budget exhausted".to_string(),
         expected: false,
+        forced_single_tracker: None,
         full_response: None,
         post_data: None,
     }];
@@ -507,6 +509,7 @@ fn summary_missing_token_for_relationships_does_not_flip_to_partial() {
         code: "MissingTokenForRelationships".to_string(),
         message: "no token for relationship expansion".to_string(),
         expected: false,
+        forced_single_tracker: None,
         full_response: None,
         post_data: None,
     }];

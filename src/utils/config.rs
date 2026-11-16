@@ -144,6 +144,13 @@ pub struct Config {
     /// HTTP request timeout in seconds (default: 30).
     #[serde(rename = "httpTimeoutSeconds")]
     pub http_timeout_seconds: Option<u64>,
+    /// Upper bound (seconds) of the per-URL timeout escalation (default: 300).
+    /// A single request that timed out is retried with its service timeout
+    /// doubled per timeout, up to this value; a configured
+    /// `httpTimeoutSeconds` above it is never shortened. Global only. Must be
+    /// > 0; keep it below `stallDetectionTimeout`.
+    #[serde(rename = "httpTimeoutMaxSeconds")]
+    pub http_timeout_max_seconds: Option<u64>,
     /// Maximum number of API calls dispatched in one batch to the RequestModule (default: 256).
     #[serde(rename = "dispatchBurstCap")]
     pub dispatch_burst_cap: Option<usize>,
@@ -263,6 +270,7 @@ pub struct StoredConfig {
     pub concurrency_max_window: Option<usize>,
     pub default_retry_after_seconds: Option<u64>,
     pub http_timeout_seconds: Option<u64>,
+    pub http_timeout_max_seconds: Option<u64>,
     pub dispatch_burst_cap: Option<usize>,
     pub url_retry_limit: Option<usize>,
     pub rate_limit_retry_limit: Option<usize>,
@@ -386,6 +394,10 @@ impl Config {
 
     pub fn http_timeout_seconds(config: &Config) -> u64 {
         config.http_timeout_seconds.unwrap_or(30)
+    }
+
+    pub fn http_timeout_max_seconds(config: &Config) -> u64 {
+        config.http_timeout_max_seconds.unwrap_or(300)
     }
 
     /// Per-service variant of [`Self::http_timeout_seconds`].
@@ -662,6 +674,11 @@ impl Config {
                 "httpTimeoutSeconds must be greater than 0".to_string(),
             ));
         }
+        if self.http_timeout_max_seconds == Some(0) {
+            return Err(Error::InvalidConfigValue(
+                "httpTimeoutMaxSeconds must be greater than 0".to_string(),
+            ));
+        }
         let connect_timeout = self.http_connect_timeout_seconds.unwrap_or(10);
         if connect_timeout == 0 {
             return Err(Error::InvalidConfigValue(
@@ -810,6 +827,16 @@ impl Config {
                 Self::rate_limit_max_wait_secs(self)
             );
         }
+        // An escalated single request may stay in flight up to
+        // httpTimeoutMaxSeconds; at or above stallDetectionTimeout the watchdog
+        // would report it as a stall. Warn rather than reject.
+        let max_timeout = Self::http_timeout_max_seconds(self);
+        if max_timeout >= stall {
+            warn!(
+                "{:FL$}httpTimeoutMaxSeconds ({}) is not below stallDetectionTimeout ({}): an escalated request may be reported as a stall; keep httpTimeoutMaxSeconds < stallDetectionTimeout.",
+                "Config", max_timeout, stall
+            );
+        }
         if let Some(overrides) = &self.service_overrides {
             for ov in &overrides.services {
                 if ov.rate_limit_max_wait_secs.is_none() {
@@ -855,6 +882,7 @@ impl Config {
             concurrency_max_window: self.concurrency_max_window,
             default_retry_after_seconds: self.default_retry_after_seconds,
             http_timeout_seconds: self.http_timeout_seconds,
+            http_timeout_max_seconds: self.http_timeout_max_seconds,
             dispatch_burst_cap: self.dispatch_burst_cap,
             url_retry_limit: self.url_retry_limit,
             rate_limit_retry_limit: self.rate_limit_retry_limit,
@@ -913,7 +941,7 @@ impl ConfigParser {
             Err(err) => {
                 error!(
                     "{:FL$}Cannot open config file {:?}.",
-                    "ConfigParser", &self.config_file
+                    "ConfigParser", self.config_file
                 );
                 debug!(
                     "{:FL$}IO error reading config file: {:?}",
@@ -977,6 +1005,7 @@ impl ConfigParser {
         "concurrencyMaxWindow",
         "defaultRetryAfterSeconds",
         "httpTimeoutSeconds",
+        "httpTimeoutMaxSeconds",
         "dispatchBurstCap",
         "urlRetryLimit",
         "rateLimitRetryLimit",

@@ -896,6 +896,69 @@ pub fn print_stats_section(
         }
     }
 
+    // Batch→single fallbacks: URLs switched from batch to forced-single
+    // dispatch after repeated batch-level network failures or a 5xx rejection
+    // of their batch envelope, with how many single dispatches that cost and
+    // how each transition ended (recovered by a written 2xx vs lost). All four
+    // counters default to 0 on archives predating this telemetry.
+    out.push(String::new());
+    out.push(section_line("BATCH-TO-SINGLE FALLBACKS", None));
+    out.push(String::new());
+
+    let mut fallback_rows: Vec<(u64, &Value)> = filtered_apis
+        .iter()
+        .filter_map(|a| {
+            let transitions = u64_field(a, "batch_single_fallbacks");
+            let dispatches = u64_field(a, "forced_single_dispatches");
+            if transitions == 0 && dispatches == 0 {
+                return None;
+            }
+            Some((transitions, a))
+        })
+        .collect();
+    fallback_rows.sort_by_key(|r| std::cmp::Reverse(r.0));
+
+    if fallback_rows.is_empty() {
+        out.push(format!("{}(no batch-to-single fallback recorded)", INDENT));
+    } else {
+        let limit_f = if all {
+            fallback_rows.len()
+        } else {
+            top.min(fallback_rows.len())
+        };
+        let mut rows: Vec<Row> = Vec::new();
+        for (transitions, api) in fallback_rows.iter().take(limit_f) {
+            rows.push(Row::Cells(vec![
+                api_label(api),
+                transitions.to_string(),
+                u64_field(api, "forced_single_dispatches").to_string(),
+                u64_field(api, "batch_single_fallback_successes").to_string(),
+                u64_field(api, "batch_single_fallback_lost").to_string(),
+            ]));
+        }
+        render_table(
+            "  ",
+            &["API", "transitions", "dispatches", "recovered", "lost"],
+            &[
+                Align::Left,
+                Align::Right,
+                Align::Right,
+                Align::Right,
+                Align::Right,
+            ],
+            &rows,
+            out,
+        );
+        if !all && fallback_rows.len() > limit_f {
+            out.push(format!(
+                "{}{} {} more APIs (use --all to see them)",
+                INDENT,
+                ellipsis(),
+                fallback_rows.len() - limit_f
+            ));
+        }
+    }
+
     // Conditions
     out.push(String::new());
     out.push(section_line("CONDITIONS EVALUATED", None));

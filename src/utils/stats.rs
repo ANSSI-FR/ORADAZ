@@ -280,6 +280,20 @@ pub struct ApiStats {
     /// They are *skipped*, not lost: every one of them would have returned the
     /// same schema-declared expected error the streak was made of.
     pub breaker_skipped: AtomicUsize,
+    /// Batch→single fallback transitions: URLs of this bucket that were switched
+    /// from batch to forced-single dispatch after repeated batch-level network
+    /// failures or a 5xx rejection of their batch envelope once already
+    /// retried (one count per URL, at the moment its flag flips).
+    pub batch_single_fallbacks: AtomicUsize,
+    /// Single HTTP dispatches performed for forced-single URLs of this bucket
+    /// (each dispatch of a flagged URL counts once, retries included).
+    pub forced_single_dispatches: AtomicUsize,
+    /// Fallback transitions whose original URL obtained its first written 2xx
+    /// as a single request (the fallback recovered the data).
+    pub batch_single_fallback_successes: AtomicUsize,
+    /// Fallback transitions whose original URL was abandoned as lost data
+    /// before any written 2xx (the fallback did not recover the data).
+    pub batch_single_fallback_lost: AtomicUsize,
     /// 2xx responses for this bucket whose value array was empty: the endpoint
     /// was queried but the server held no objects for it. Separates "called but
     /// empty" from an error when reading per-API yield (objects / request), so a
@@ -332,6 +346,10 @@ impl ApiStats {
             ever_wrote: AtomicBool::new(false),
             breaker_tripped: AtomicBool::new(false),
             breaker_skipped: AtomicUsize::new(0),
+            batch_single_fallbacks: AtomicUsize::new(0),
+            forced_single_dispatches: AtomicUsize::new(0),
+            batch_single_fallback_successes: AtomicUsize::new(0),
+            batch_single_fallback_lost: AtomicUsize::new(0),
             empty_responses: AtomicUsize::new(0),
             expand_cap_hits: AtomicUsize::new(0),
         }
@@ -874,6 +892,89 @@ impl Stats {
         });
     }
 
+    /// Record one batch→single fallback transition for `(service, api)`: a URL
+    /// of this bucket was switched to forced-single dispatch after repeated
+    /// batch-level network failures or a 5xx rejection of its batch envelope
+    /// once already retried. Called once per URL, at the flip.
+    pub fn record_batch_single_fallback(&self, service: &str, api: &str) {
+        self.with_api(service, api, |stats| {
+            stats.batch_single_fallbacks.fetch_add(1, Ordering::Relaxed);
+        });
+    }
+
+    /// Record one single HTTP dispatch of a forced-single URL for
+    /// `(service, api)` (each dispatch counts, retries included).
+    pub fn record_forced_single_dispatch(&self, service: &str, api: &str) {
+        self.with_api(service, api, |stats| {
+            stats
+                .forced_single_dispatches
+                .fetch_add(1, Ordering::Relaxed);
+        });
+    }
+
+    /// Record that a fallback transition ended in a written 2xx for its
+    /// original URL. Called only by `finish_forced_single`
+    /// (`collect::dump::response`), which guarantees at most one terminal
+    /// outcome per transition.
+    pub fn record_batch_single_fallback_success(&self, service: &str, api: &str) {
+        self.with_api(service, api, |stats| {
+            stats
+                .batch_single_fallback_successes
+                .fetch_add(1, Ordering::Relaxed);
+        });
+    }
+
+    /// Record that a fallback transition ended with its original URL abandoned
+    /// as lost data. Called only by `finish_forced_single`
+    /// (`collect::dump::response`), which guarantees at most one terminal
+    /// outcome per transition.
+    pub fn record_batch_single_fallback_lost(&self, service: &str, api: &str) {
+        self.with_api(service, api, |stats| {
+            stats
+                .batch_single_fallback_lost
+                .fetch_add(1, Ordering::Relaxed);
+        });
+    }
+
+    /// Run-level total of batch→single fallback transitions (sum of the
+    /// per-API counters), persisted in `metadata.json`.
+    pub fn total_batch_single_fallbacks(&self) -> usize {
+        self.apis
+            .iter()
+            .map(|e| e.value().batch_single_fallbacks.load(Ordering::Relaxed))
+            .sum()
+    }
+
+    /// Run-level total of forced-single dispatches, persisted in `metadata.json`.
+    pub fn total_forced_single_dispatches(&self) -> usize {
+        self.apis
+            .iter()
+            .map(|e| e.value().forced_single_dispatches.load(Ordering::Relaxed))
+            .sum()
+    }
+
+    /// Run-level total of fallback transitions recovered by a written 2xx,
+    /// persisted in `metadata.json`.
+    pub fn total_batch_single_fallback_successes(&self) -> usize {
+        self.apis
+            .iter()
+            .map(|e| {
+                e.value()
+                    .batch_single_fallback_successes
+                    .load(Ordering::Relaxed)
+            })
+            .sum()
+    }
+
+    /// Run-level total of fallback transitions lost before any written 2xx,
+    /// persisted in `metadata.json`.
+    pub fn total_batch_single_fallback_lost(&self) -> usize {
+        self.apis
+            .iter()
+            .map(|e| e.value().batch_single_fallback_lost.load(Ordering::Relaxed))
+            .sum()
+    }
+
     /// Record one 2xx response for `(service, api)` whose value array was empty.
     /// The endpoint answered but held no objects; counting these separates a
     /// legitimately empty endpoint from one that errored, so per-API yield
@@ -1226,7 +1327,7 @@ impl Serialize for ApiStatsView<'_> {
             a.condition_checks.iter().map(|r| r.key().clone()).collect();
         cond_keys.sort();
 
-        let mut map = serializer.serialize_map(Some(30))?;
+        let mut map = serializer.serialize_map(Some(34))?;
         map.serialize_entry("service", &a.service)?;
         map.serialize_entry("api", &a.api)?;
         map.serialize_entry("requests_sent", &a.requests_sent.load(Ordering::Relaxed))?;
@@ -1332,6 +1433,22 @@ impl Serialize for ApiStatsView<'_> {
         map.serialize_entry(
             "breaker_skipped",
             &a.breaker_skipped.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
+            "batch_single_fallbacks",
+            &a.batch_single_fallbacks.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
+            "forced_single_dispatches",
+            &a.forced_single_dispatches.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
+            "batch_single_fallback_successes",
+            &a.batch_single_fallback_successes.load(Ordering::Relaxed),
+        )?;
+        map.serialize_entry(
+            "batch_single_fallback_lost",
+            &a.batch_single_fallback_lost.load(Ordering::Relaxed),
         )?;
         map.serialize_entry(
             "empty_responses",

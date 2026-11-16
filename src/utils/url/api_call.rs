@@ -123,6 +123,15 @@ impl ApiCall {
         urls: &mut Vec<Url>,
         limits: RetryLimits,
     ) -> Result<Vec<ApiCallItem>, Error> {
+        // A forced-single URL must never enter a batch envelope: when it is
+        // the next LIFO candidate, dispatch it through the default single
+        // builder whatever the service. Together with the per-loop push-back
+        // guards below, this makes the invariant two-sided (same pattern as
+        // the ARG / exchange-root routing): the batchers' first pop is never
+        // forced, and a forced URL deeper in the tail ends the batch early.
+        if urls.last().is_some_and(|u| u.force_single) {
+            return ApiCall::get_default_next_api_call(service.to_string(), urls, limits);
+        }
         let api_call = match service {
             "graph" => ApiCall::get_graph_next_api_call(urls, limits)?,
             "resources" => {
@@ -252,6 +261,15 @@ impl ApiCall {
         for _ in 0..batch_size {
             match urls.pop() {
                 Some(url) => {
+                    // A forced-single URL must not be absorbed into this batch:
+                    // push it back untouched and stop filling — it becomes the
+                    // next LIFO candidate and the `ApiCall::from` pre-check
+                    // dispatches it single. The queue is never scanned or
+                    // reordered (the LIFO/DFS dispatch order is load-bearing).
+                    if url.force_single {
+                        urls.push(url);
+                        break;
+                    }
                     if let Some(skip_item) = check_retry_exhaustion(&url, &limits) {
                         res.push(skip_item);
                         continue;
@@ -380,7 +398,10 @@ impl ApiCall {
                     rate_limit_retry_number: 0,
                     rate_limit_total_wait_secs: 0,
                     network_retry_number: 0,
+                    force_single: false,
+                    forced_single_tracker: None,
                     post_body: None,
+                    timeout_strikes: 0,
                 },
                 success_code: 200,
                 value_pointer: "/responses".to_string(),
@@ -406,7 +427,10 @@ impl ApiCall {
                     rate_limit_retry_number: 0,
                     rate_limit_total_wait_secs: 0,
                     network_retry_number: 0,
+                    force_single: false,
+                    forced_single_tracker: None,
                     post_body: None,
+                    timeout_strikes: 0,
                 },
                 success_code: 200,
                 value_pointer: "/responses".to_string(),
@@ -449,6 +473,14 @@ impl ApiCall {
         for _ in 0..batch_size {
             match urls.pop() {
                 Some(url) => {
+                    // A forced-single URL must not be absorbed into this batch:
+                    // push it back untouched and stop filling — it becomes the
+                    // next LIFO candidate and the `ApiCall::from` pre-check
+                    // dispatches it single. Never scan or reorder the queue.
+                    if url.force_single {
+                        urls.push(url);
+                        break;
+                    }
                     // ARG URLs must not enter the ARM `$batch`: push the URL
                     // back and break so the next dispatch iteration routes it
                     // via `get_default_next_api_call`. Use the `is_arg` flag
@@ -539,7 +571,10 @@ impl ApiCall {
                 rate_limit_retry_number: 0,
                 rate_limit_total_wait_secs: 0,
                 network_retry_number: 0,
+                force_single: false,
+                forced_single_tracker: None,
                 post_body: None,
+                timeout_strikes: 0,
             },
             success_code: 200,
             value_pointer: "/responses".to_string(),
@@ -590,6 +625,14 @@ impl ApiCall {
         for _ in 0..batch_size {
             match urls.pop() {
                 Some(url) => {
+                    // A forced-single URL must not be absorbed into this batch:
+                    // push it back untouched and stop filling — it becomes the
+                    // next LIFO candidate and the `ApiCall::from` pre-check
+                    // dispatches it single. Never scan or reorder the queue.
+                    if url.force_single {
+                        urls.push(url);
+                        break;
+                    }
                     // A URL that cannot join this batch — POST body, underivable
                     // admin-API root, or a root differing from the batch's — is
                     // pushed back so the next dispatch pass handles it (single
@@ -698,7 +741,10 @@ impl ApiCall {
                 rate_limit_retry_number: 0,
                 rate_limit_total_wait_secs: 0,
                 network_retry_number: 0,
+                force_single: false,
+                forced_single_tracker: None,
                 post_body: None,
+                timeout_strikes: 0,
             },
             success_code: 200,
             value_pointer: "/responses".to_string(),

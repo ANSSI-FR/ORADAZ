@@ -40,6 +40,13 @@ pub enum RequestMsg {
 /// Global counter for requests that were retried due to transient errors.
 pub static RETRY_COUNT: AtomicU64 = AtomicU64::new(0);
 
+/// Cumulative network-error count at which a sub-URL of a failing batch is
+/// switched to forced-single dispatch (`Url::force_single`): the second
+/// batch-level transport failure proves re-batching rebuilds the same failing
+/// envelope, so its sub-URLs degrade to unit requests. Private to the request
+/// module — the flip happens only in `RequestsThread::finalize_retry`.
+pub(in crate::collect::dump::request) const BATCH_SINGLE_FALLBACK_AFTER_NETWORK_ERRORS: usize = 2;
+
 /// Instantaneous count of request slots currently sleeping in a retry/cooldown
 /// backoff. Each counted slot holds an AIMD concurrency permit while its worker
 /// waits instead of issuing a request, so a high value is a throttling/transport
@@ -83,6 +90,36 @@ impl Drop for BackoffGuard {
     fn drop(&mut self) {
         BACKOFF_ACTIVE.fetch_sub(1, Ordering::Relaxed);
     }
+}
+
+/// Timeout (seconds) for a single request whose URL already timed out
+/// `strikes` times as a single request: the base timeout doubled per strike,
+/// bounded by `cap` (`httpTimeoutMaxSeconds`), and never below the base
+/// itself — a base above the cap is kept. The base is the service timeout
+/// raised by `api_timeout_base_secs`.
+pub fn escalated_timeout_secs(base: u64, strikes: usize, cap: u64) -> u64 {
+    if strikes == 0 {
+        return base;
+    }
+    let factor = 1u64 << strikes.min(16);
+    base.saturating_mul(factor).min(cap).max(base)
+}
+
+/// Base timeout (seconds) of a request whose URLs carry the given
+/// `api_behavior` maps: the service timeout, raised — never lowered — to
+/// the largest valid `http_timeout_seconds` declared among them. A batch
+/// envelope passes the maps of all its sub-URLs; a single request passes
+/// its own. Non-numeric, empty or zero values are ignored.
+pub fn api_timeout_base_secs<'a>(
+    service_timeout: u64,
+    behaviors: impl IntoIterator<Item = &'a std::collections::HashMap<String, String>>,
+) -> u64 {
+    behaviors
+        .into_iter()
+        .filter_map(|b| b.get("http_timeout_seconds"))
+        .filter_map(|v| v.trim().parse::<u64>().ok())
+        .filter(|v| *v > 0)
+        .fold(service_timeout, u64::max)
 }
 
 /// Computes an exponential backoff with up to +50 % jitter.

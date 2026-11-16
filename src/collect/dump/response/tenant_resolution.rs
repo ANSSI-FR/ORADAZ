@@ -102,7 +102,10 @@ pub(super) fn lookup_urls(
             rate_limit_retry_number: 0,
             rate_limit_total_wait_secs: 0,
             network_retry_number: 0,
+            force_single: false,
+            forced_single_tracker: None,
             post_body: None,
+            timeout_strikes: 0,
         });
     }
     urls

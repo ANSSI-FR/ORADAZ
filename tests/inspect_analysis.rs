@@ -252,6 +252,7 @@ fn dump_error(folder: &str, file: &str, status: u16, code: &str, expected: bool)
         code: code.to_string(),
         message: format!("msg for {folder}/{file} {status}"),
         expected,
+        forced_single_tracker: None,
         full_response: None,
         post_data: None,
     }
@@ -287,6 +288,7 @@ fn aggregate_errors_picks_deterministic_representative_message() {
         code: "InternalServerError".to_string(),
         message: msg.to_string(),
         expected: false,
+        forced_single_tracker: None,
         full_response: None,
         post_data: None,
     };

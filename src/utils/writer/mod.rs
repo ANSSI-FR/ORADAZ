@@ -40,18 +40,12 @@ impl OradazWriter {
             Some(false) => None,
             _ => {
                 let public_keys = load_mla_public_keys(config)?;
-                match MlaWriter::new(output, name, &public_keys) {
-                    Ok(m) => Some(m),
-                    Err(err) => return Err(err),
-                }
+                Some(MlaWriter::new(output, name, &public_keys)?)
             }
         };
         // File output is disabled by default for security reasons
         let file_writer: Option<FileWriter> = match config.output_files {
-            Some(true) => match FileWriter::new(output, name) {
-                Ok(m) => Some(m),
-                Err(err) => return Err(err),
-            },
+            Some(true) => Some(FileWriter::new(output, name)?),
             _ => None,
         };
 

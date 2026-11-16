@@ -64,7 +64,10 @@ fn make_url(service: &str, api: &str, url: &str) -> OradazUrl {
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     }
 }
 
@@ -1237,4 +1240,78 @@ async fn dispatch_requests_skips_paused_services_and_dispatches_the_rest() {
         }
     }
     assert_eq!(dispatched, 1, "only the non-paused service may dispatch");
+}
+
+/// Dispatch of a forced-single URL: a URL that exhausted its real-error budget
+/// is abandoned as `UrlRetryLimit` with its own tracker (so the loss chokepoint
+/// closes the transition), and a URL under budget is sent as a single request
+/// counted once in `forced_single_dispatches`.
+#[tokio::test]
+async fn dispatch_requests_forced_single_retry_limit_and_dispatch_count() {
+    use oradaz::collect::dump::orchestration::dispatch::dispatch_requests;
+    use oradaz::utils::ui::progress::ProgressState;
+    use oradaz::utils::url::ForcedSingleTracker;
+    use std::collections::HashSet;
+    use std::sync::Mutex;
+
+    let temp_dir = TempDir::new().unwrap();
+    let (mut dumper, _event_tx) = make_dumper(&temp_dir).await;
+    let progress_state = Arc::new(Mutex::new(ProgressState::default()));
+    let paused: HashSet<Arc<str>> = HashSet::new();
+    let forced = |retry_number: usize, tracker: &Arc<ForcedSingleTracker>| {
+        let mut url = make_url(
+            "graph",
+            "devices",
+            "https://graph.microsoft.com/v1.0/devices",
+        );
+        url.retry_number = retry_number;
+        url.force_single = true;
+        url.forced_single_tracker = Some(Arc::clone(tracker));
+        url
+    };
+
+    // Budget exhausted (default `urlRetryLimit` = 5) → UrlRetryLimit DumpError.
+    let exhausted = Arc::new(ForcedSingleTracker::new());
+    dumper
+        .current_urls
+        .insert(Arc::from("graph"), vec![forced(5, &exhausted)]);
+    let (req_tx, mut req_rx) = mpsc::channel::<RequestMsg>(64);
+    let (res_tx, mut res_rx) = mpsc::channel::<ResponseMsg>(64);
+    dispatch_requests(&mut dumper, &req_tx, &res_tx, &progress_state, &paused)
+        .await
+        .expect("dispatch must not fail");
+    match res_rx.try_recv() {
+        Ok(ResponseMsg::DumpError(err, _)) => {
+            assert_eq!(err.code, "UrlRetryLimit");
+            let carried = err
+                .forced_single_tracker
+                .as_ref()
+                .expect("the abandonment must carry the tracker");
+            assert!(
+                Arc::ptr_eq(carried, &exhausted),
+                "the abandonment must carry the URL's own tracker"
+            );
+        }
+        _ => panic!("expected a UrlRetryLimit DumpError"),
+    }
+    assert!(req_rx.try_recv().is_err(), "nothing is sent to the network");
+    assert_eq!(dumper.stats.total_forced_single_dispatches(), 0);
+
+    // Under budget → one single request, one forced-single dispatch.
+    let pending = Arc::new(ForcedSingleTracker::new());
+    dumper
+        .current_urls
+        .insert(Arc::from("graph"), vec![forced(0, &pending)]);
+    dispatch_requests(&mut dumper, &req_tx, &res_tx, &progress_state, &paused)
+        .await
+        .expect("dispatch must not fail");
+    match req_rx.try_recv() {
+        Ok(RequestMsg::ApiCall(call)) => assert!(!call.is_batch, "dispatched single"),
+        _ => panic!("expected a dispatched ApiCall"),
+    }
+    assert_eq!(
+        dumper.stats.total_forced_single_dispatches(),
+        1,
+        "each dispatch of a forced URL is counted"
+    );
 }

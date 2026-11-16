@@ -83,7 +83,10 @@ pub fn build_arg_next_url(response: &Response, api_call: &ApiCall) -> Option<Url
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: Some(new_body),
+        timeout_strikes: 0,
     })
 }
 
@@ -134,7 +137,14 @@ pub async fn handle_next_link(
                     rate_limit_retry_number: 0,
                     rate_limit_total_wait_secs: 0,
                     network_retry_number: 0,
+                    // A next page keeps its parent's forced-single routing and timeout
+                    // count (the query that broke its batch or timed out is the same
+                    // query), but never the parent's outcome tracker: that tracker closes
+                    // the parent URL's own transition only.
+                    force_single: api_call.url.force_single,
+                    forced_single_tracker: None,
                     post_body: None,
+                    timeout_strikes: api_call.url.timeout_strikes,
                 });
             }
             None => {
@@ -154,6 +164,11 @@ pub async fn handle_next_link(
                             api_call.url.api, api_call.url.service_name
                         ),
                         expected: false,
+                        // Deliberately no tracker: this loss is the NEXT page
+                        // (a URL that never got created), while the current
+                        // URL's own 2xx is being written — its forced-single
+                        // outcome is decided by the success chokepoint.
+                        forced_single_tracker: None,
                         full_response: None,
                         post_data: None,
                     })
@@ -377,7 +392,10 @@ fn build_expand_fallback(
         rate_limit_retry_number: 0,
         rate_limit_total_wait_secs: 0,
         network_retry_number: 0,
+        force_single: false,
+        forced_single_tracker: None,
         post_body: None,
+        timeout_strikes: 0,
     }
 }
 
@@ -552,7 +570,7 @@ pub async fn handle_relationships(
                 .relationships
                 .iter()
                 .map(|relationship_url| {
-                    let api = format!("{}_{}", &relationship_url.api, &relationship_url.name);
+                    let api = format!("{}_{}", relationship_url.api, relationship_url.name);
                     let mut api_behavior: HashMap<String, String> =
                         relationship_url.default_api_behavior.clone();
                     if let Some(a) = &relationship_url.api_behavior {
@@ -641,7 +659,10 @@ pub async fn handle_relationships(
                             rate_limit_retry_number: 0,
                             rate_limit_total_wait_secs: 0,
                             network_retry_number: 0,
+                            force_single: false,
+                            forced_single_tracker: None,
                             post_body: None,
+                            timeout_strikes: 0,
                         };
                         new_urls.push(new_url);
                     }
@@ -665,6 +686,7 @@ pub async fn handle_relationships(
                         api_call.url.service_name
                     ),
                     expected: false,
+                    forced_single_tracker: None,
                     full_response: None,
                     post_data: None,
                 })
@@ -721,7 +743,10 @@ mod tests {
                 rate_limit_retry_number: 0,
                 rate_limit_total_wait_secs: 0,
                 network_retry_number: 0,
+                force_single: false,
+                forced_single_tracker: None,
                 post_body: None,
+                timeout_strikes: 0,
             },
             success_code: 200,
             value_pointer: "/value".to_string(),

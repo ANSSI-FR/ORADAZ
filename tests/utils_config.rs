@@ -50,6 +50,7 @@ fn make_config_with_emergency_attr(attr: Option<String>) -> Config {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     }
 }
 
@@ -517,6 +518,7 @@ fn test_service_enable_when_service_exists() {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     };
 
     assert!(Config::service_enable(&config, &"graph".to_string()));
@@ -572,6 +574,7 @@ fn test_service_enable_when_service_disabled() {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     };
 
     assert!(!Config::service_enable(&config, &"graph".to_string()));
@@ -620,6 +623,7 @@ fn test_service_enable_when_no_services() {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     };
 
     assert!(!Config::service_enable(&config, &"graph".to_string()));
@@ -668,6 +672,7 @@ fn test_force_device_code_auth_true() {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     };
 
     assert!(Config::force_device_code_auth(&config));
@@ -716,6 +721,7 @@ fn test_force_device_code_auth_false() {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     };
 
     assert!(!Config::force_device_code_auth(&config));
@@ -764,6 +770,7 @@ fn test_force_device_code_auth_none() {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     };
 
     assert!(!Config::force_device_code_auth(&config));
@@ -821,6 +828,7 @@ async fn test_config_write_to_writer() {
         prereq_recheck_cache_secs: None,
         liveness_ceiling_secs: None,
         service_overrides: None,
+        http_timeout_max_seconds: None,
     };
 
     let (writer, _handle) = spawn_writer_task(
@@ -939,6 +947,7 @@ fn test_service_enable_with_multiple_services() {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     };
 
     assert!(Config::service_enable(&config, &"graph".to_string()));
@@ -995,6 +1004,7 @@ fn test_config_with_proxy() {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     };
 
     assert!(config.proxy.is_some());
@@ -1047,6 +1057,7 @@ fn test_config_with_listener_settings() {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     };
 
     assert_eq!(config.listener_address, Some("127.0.0.1".to_string()));
@@ -1096,6 +1107,7 @@ fn test_config_validation_invalid_windows() {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     };
 
     let result = config.validate();
@@ -1345,6 +1357,7 @@ fn make_config_with_app_creds(cred_type: &str, value: Option<&str>) -> Config {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     };
     config.application_credentials = Some(ApplicationCredentials {
         credential_type: cred_type.to_string(),
@@ -1746,6 +1759,7 @@ fn test_complete_config_recognizes_every_known_element() {
     <concurrencyMaxWindow>30</concurrencyMaxWindow>
     <defaultRetryAfterSeconds>5</defaultRetryAfterSeconds>
     <httpTimeoutSeconds>30</httpTimeoutSeconds>
+    <httpTimeoutMaxSeconds>300</httpTimeoutMaxSeconds>
     <dispatchBurstCap>256</dispatchBurstCap>
     <urlRetryLimit>5</urlRetryLimit>
     <rateLimitRetryLimit>50</rateLimitRetryLimit>
@@ -1787,6 +1801,7 @@ fn test_complete_config_recognizes_every_known_element() {
     assert_eq!(config.tenant, "12345678-1234-1234-1234-123456789012");
     assert_eq!(config.output.as_deref(), Some("./oradaz-out"));
     assert_eq!(config.http_connect_timeout_seconds, Some(10));
+    assert_eq!(config.http_timeout_max_seconds, Some(300));
     assert_eq!(config.retry_backoff_base_ms, Some(250));
     assert_eq!(config.retry_backoff_cap_ms, Some(8000));
     assert_eq!(config.liveness_ceiling_secs, Some(900));
@@ -1824,6 +1839,57 @@ fn test_config_validation_liveness_below_maxwait_warns_not_fails() {
     assert!(
         config.validate().is_ok(),
         "livenessCeilingSecs below rateLimitMaxWaitSecs should warn, not fail"
+    );
+}
+
+#[test]
+fn test_config_validation_rejects_zero_http_timeout_max() {
+    let mut config = make_config_with_emergency_attr(None);
+    config.http_timeout_max_seconds = Some(0);
+    let err = config
+        .validate()
+        .expect_err("zero httpTimeoutMaxSeconds must fail");
+    assert!(
+        format!("{:?}", err).contains("httpTimeoutMaxSeconds"),
+        "{err:?}"
+    );
+}
+
+#[test]
+fn test_config_http_timeout_max_default_and_xml() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let config = default_test_config();
+    assert_eq!(Config::http_timeout_max_seconds(&config), 300);
+
+    let temp_dir = TempDir::new().expect("temp dir");
+    let path = temp_dir.path().join("timeout-max.xml");
+    let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<config>
+    <tenant>11111111-1111-1111-1111-111111111111</tenant>
+    <outputMLA>true</outputMLA>
+    <httpTimeoutMaxSeconds>120</httpTimeoutMaxSeconds>
+</config>"#;
+    fs::write(&path, content).expect("write config");
+    let parsed = ConfigParser::new(&path.to_string_lossy())
+        .expect("parser")
+        .deserialize()
+        .expect("deserialize");
+    assert_eq!(Config::http_timeout_max_seconds(&parsed), 120);
+    assert!(
+        ConfigParser::unknown_root_elements(content).is_empty(),
+        "httpTimeoutMaxSeconds must be a known root element"
+    );
+}
+
+#[test]
+fn test_config_validation_http_timeout_max_above_stall_warns_not_fails() {
+    let mut config = default_test_config();
+    config.http_timeout_max_seconds = Some(900);
+    assert!(
+        config.validate().is_ok(),
+        "httpTimeoutMaxSeconds at or above stallDetectionTimeout should warn, not fail"
     );
 }
 

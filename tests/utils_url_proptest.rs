@@ -56,6 +56,7 @@ fn make_minimal_config() -> Config {
         response_workers_max: None,
         response_memory_budget_bytes: None,
         expected_error_breaker_threshold: None,
+        http_timeout_max_seconds: None,
     }
 }
 

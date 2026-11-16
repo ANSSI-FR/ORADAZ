@@ -17,6 +17,7 @@ fn dump_error(folder: &str, file: &str, status: u16, code: &str, expected: bool)
         code: code.to_string(),
         message: format!("err {folder}/{file} {status}"),
         expected,
+        forced_single_tracker: None,
         full_response: None,
         post_data: None,
     }

@@ -485,3 +485,42 @@ fn print_stats_section_service_filter_narrows_per_api_sections() {
     assert!(summary_block.contains("graph"));
     assert!(summary_block.contains("resources"));
 }
+
+/// The batch-to-single fallback section renders its empty fallback on a clean
+/// run, and one row per affected API (transitions/dispatches/recovered/lost)
+/// when the counters are populated. Absent fields (older archives) read as 0.
+#[test]
+fn print_stats_section_renders_batch_single_fallbacks() {
+    let clean = serde_json::json!({
+        "duration_seconds": 10,
+        "apis": [{ "service": "graph", "api": "users", "requests_sent": 4 }],
+    });
+    let text = rendered_filtered(Some(&clean), 10, false, None);
+    assert!(text.contains("BATCH-TO-SINGLE FALLBACKS"), "{text}");
+    assert!(
+        text.contains("no batch-to-single fallback recorded"),
+        "{text}"
+    );
+
+    let with_fallbacks = serde_json::json!({
+        "duration_seconds": 10,
+        "apis": [{
+            "service": "graph",
+            "api": "devices",
+            "requests_sent": 9,
+            "batch_single_fallbacks": 2,
+            "forced_single_dispatches": 3,
+            "batch_single_fallback_successes": 1,
+            "batch_single_fallback_lost": 1,
+        }],
+    });
+    let text = rendered_filtered(Some(&with_fallbacks), 10, false, None);
+    assert!(text.contains("BATCH-TO-SINGLE FALLBACKS"), "{text}");
+    assert!(text.contains("graph/devices"), "{text}");
+    assert!(text.contains("transitions"), "{text}");
+    assert!(text.contains("recovered"), "{text}");
+    assert!(
+        !text.contains("no batch-to-single fallback recorded"),
+        "{text}"
+    );
+}

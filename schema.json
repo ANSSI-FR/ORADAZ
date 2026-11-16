@@ -1,6 +1,6 @@
 {
-    "oradaz_version": "3.0.10.09",
-    "schema_version": "3.0.10.09",
+    "oradaz_version": "3.0.11.16",
+    "schema_version": "3.0.11.16",
     "services": [
         {
             "name": "graph",
@@ -713,6 +713,9 @@
                         {
                             "name": "signIns",
                             "uri": "auditLogs/signIns?$filter=userId eq '[1]'",
+                            "api_behavior": {
+                                "http_timeout_seconds": "120"
+                            },
                             "keys": [
                                 {
                                     "name": "[1]",
@@ -2014,6 +2017,9 @@
                         {
                             "name": "emergencySignIns",
                             "uri": "auditLogs/signIns?$filter=userId eq '[1]'",
+                            "api_behavior": {
+                                "http_timeout_seconds": "120"
+                            },
                             "keys": [
                                 {
                                     "name": "[1]",

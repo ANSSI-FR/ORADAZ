@@ -356,7 +356,7 @@ impl Token {
             None => {
                 warn!(
                     "{:FL$}Missing refresh token for service {:?}, performing new authentication",
-                    "Token", &service
+                    "Token", service
                 );
                 return Err(Error::RefreshTokenNewScope(
                     "no refresh token available for this token".to_string(),
@@ -369,7 +369,7 @@ impl Token {
 
         trace!(
             "{:FL$}Exchanging token for service {} using refresh token ",
-            "Token", &service
+            "Token", service
         );
         let token_response = exchange_refresh_token(
             &oradaz_client.client,

@@ -91,7 +91,7 @@ impl RelationshipUrl {
                 c => {
                     trace!(
                         "{:FL$}Checking condition {:?} for relationship {:?} of API {:?} for service {:?} (id: {}).",
-                        "RelationshipUrl", c, &self.name, &self.api, &self.service, request_id
+                        "RelationshipUrl", c, self.name, self.api, self.service, request_id
                     );
                     if !condition_checker
                         .check(token, c.to_string(), Some((&self.service, &self.api)))
@@ -125,10 +125,10 @@ impl RelationshipUrl {
                         None => debug!(
                             "{:FL$}Could not convert parent key {:?} to str for relationship {:?} of API {:?} for service {:?} (id: {})",
                             "RelationshipUrl",
-                            &key.name,
-                            &self.name,
-                            &self.api,
-                            &self.service,
+                            key.name,
+                            self.name,
+                            self.api,
+                            self.service,
                             request_id
                         ),
                     },
@@ -136,10 +136,10 @@ impl RelationshipUrl {
                         debug!(
                             "{:FL$}Trying to insert parent key {:?} for relationship {:?} of API {:?} for service {:?} while data does not contain it (id: {})",
                             "RelationshipUrl",
-                            &key.name,
-                            &self.name,
-                            &self.api,
-                            &self.service,
+                            key.name,
+                            self.name,
+                            self.api,
+                            self.service,
                             request_id
                         );
                     }
@@ -210,10 +210,10 @@ impl RelationshipUrl {
                                             "{:FL$}Condition {:?}, is not met for key {:?} for relationship {:?} of API {:?} for service {:?} (id: {}) - {:?}",
                                             "RelationshipUrl",
                                             c,
-                                            &key.name,
-                                            &self.name,
-                                            &self.api,
-                                            &self.service,
+                                            key.name,
+                                            self.name,
+                                            self.api,
+                                            self.service,
                                             request_id,
                                             data_value
                                         );
@@ -229,10 +229,10 @@ impl RelationshipUrl {
                                                 "{:FL$}Invalid transform {:?} in schema file for key {:?} for relationship {:?} of API {:?} for service {:?}. Skipping transformation.",
                                                 "RelationshipUrl",
                                                 key.transform,
-                                                &key.name,
-                                                &self.name,
-                                                &self.api,
-                                                &self.service
+                                                key.name,
+                                                self.name,
+                                                self.api,
+                                                self.service
                                             );
                                             v.to_string()
                                         }
@@ -247,10 +247,10 @@ impl RelationshipUrl {
                                         trace!(
                                             "{:FL$}Empty value for key {:?} of relationship {:?} of API {:?} for service {:?} (id: {}), skipping relationship",
                                             "RelationshipUrl",
-                                            &key.name,
-                                            &self.name,
-                                            &self.api,
-                                            &self.service,
+                                            key.name,
+                                            self.name,
+                                            self.api,
+                                            self.service,
                                             request_id
                                         );
                                         return String::new();
@@ -286,10 +286,10 @@ impl RelationshipUrl {
                                     debug!(
                                         "{:FL$}Trying to replace invalid key {:?} for relationship {:?} of API {:?} for service {:?} (id: {})",
                                         "RelationshipUrl",
-                                        &key.name,
-                                        &self.name,
-                                        &self.api,
-                                        &self.service,
+                                        key.name,
+                                        self.name,
+                                        self.api,
+                                        self.service,
                                         request_id
                                     );
                                 }
@@ -315,10 +315,10 @@ impl RelationshipUrl {
                                             "{:FL$}Condition {:?} is not met for placeholder key {:?} for relationship {:?} of API {:?} for service {:?} (id: {}) - {:?}",
                                             "RelationshipUrl",
                                             c,
-                                            &key.name,
-                                            &self.name,
-                                            &self.api,
-                                            &self.service,
+                                            key.name,
+                                            self.name,
+                                            self.api,
+                                            self.service,
                                             request_id,
                                             data_value
                                         );
@@ -333,10 +333,10 @@ impl RelationshipUrl {
                                     debug!(
                                         "{:FL$}Could not convert url key {:?} to str for relationship {:?} of API {:?} for service {:?} (id: {})",
                                         "RelationshipUrl",
-                                        &key.name,
-                                        &self.name,
-                                        &self.api,
-                                        &self.service,
+                                        key.name,
+                                        self.name,
+                                        self.api,
+                                        self.service,
                                         request_id
                                     );
                                     return String::new();
@@ -348,10 +348,10 @@ impl RelationshipUrl {
                         debug!(
                             "{:FL$}Trying to replace key {:?} for relationship {:?} of API {:?} for service {:?} while data does not contain it (id: {})",
                             "RelationshipUrl",
-                            &key.name,
-                            &self.name,
-                            &self.api,
-                            &self.service,
+                            key.name,
+                            self.name,
+                            self.api,
+                            self.service,
                             request_id
                         );
                         return String::new();
@@ -383,10 +383,10 @@ impl RelationshipUrl {
                                     debug!(
                                         "{:FL$}Parameter {:?} for relationship {:?} of API {:?} for service {:?} does not meet condition {:?} (id: {})",
                                         "RelationshipUrl",
-                                        &parameter.name,
-                                        &self.name,
-                                        &self.api,
-                                        &self.service,
+                                        parameter.name,
+                                        self.name,
+                                        self.api,
+                                        self.service,
                                         condition,
                                         request_id
                                     );
@@ -406,10 +406,10 @@ impl RelationshipUrl {
                                 "{:FL$}Invalid transform {:?} in schema file for parameter {:?} for relationship {:?} of API {:?} for service {:?} (id: {}). Skipping transformation.",
                                 "RelationshipUrl",
                                 parameter.transform,
-                                &parameter.name,
-                                &self.name,
-                                &self.api,
-                                &self.service,
+                                parameter.name,
+                                self.name,
+                                self.api,
+                                self.service,
                                 request_id
                             );
                             url = url.replace(&parameter.name, &parameter.value);
@@ -420,10 +420,10 @@ impl RelationshipUrl {
                     debug!(
                         "{:FL$}Trying to replace invalid api parameter {:?} for relationship {:?} of API {:?} for service {:?} (id: {})",
                         "RelationshipUrl",
-                        &parameter.name,
-                        &self.name,
-                        &self.api,
-                        &self.service,
+                        parameter.name,
+                        self.name,
+                        self.api,
+                        self.service,
                         request_id
                     );
                 }
@@ -453,10 +453,10 @@ impl RelationshipUrl {
                                     debug!(
                                         "{:FL$}Default parameter {:?} for relationship {:?} of API {:?} for service {:?} does not meet condition {:?} (id: {})",
                                         "RelationshipUrl",
-                                        &parameter.name,
-                                        &self.name,
-                                        &self.api,
-                                        &self.service,
+                                        parameter.name,
+                                        self.name,
+                                        self.api,
+                                        self.service,
                                         condition,
                                         request_id
                                     );
@@ -476,10 +476,10 @@ impl RelationshipUrl {
                                 "{:FL$}Invalid transform {:?} in schema file for default parameter {:?} for relationship {:?} of API {:?} for service {:?} (id: {}). Skipping transformation.",
                                 "RelationshipUrl",
                                 parameter.transform,
-                                &parameter.name,
-                                &self.name,
-                                &self.api,
-                                &self.service,
+                                parameter.name,
+                                self.name,
+                                self.api,
+                                self.service,
                                 request_id
                             );
                             url = url.replace(&parameter.name, &parameter.value);
@@ -490,10 +490,10 @@ impl RelationshipUrl {
                     debug!(
                         "{:FL$}Trying to replace invalid default parameter {:?} for relationship {:?} of API {:?} for service {:?} (id: {})",
                         "RelationshipUrl",
-                        &parameter.name,
-                        &self.name,
-                        &self.api,
-                        &self.service,
+                        parameter.name,
+                        self.name,
+                        self.api,
+                        self.service,
                         request_id
                     );
                 }

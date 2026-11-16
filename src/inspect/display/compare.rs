@@ -176,6 +176,34 @@ fn print_quality_deltas(a: &LogSource, b: &LogSource, out: &mut Vec<String>) {
             Direction::Neutral,
         ),
         DeltaRow::counter(
+            // Batch→single fallback telemetry: transitions and their cost are
+            // attribution (neither direction is inherently bad); only a lost
+            // transition is a regression signal. All four read 0 on archives
+            // predating the fields.
+            "Batch-single fallbacks",
+            batch_single_metric(a, "batch_single_fallbacks"),
+            batch_single_metric(b, "batch_single_fallbacks"),
+            Direction::Neutral,
+        ),
+        DeltaRow::counter(
+            "Forced single dispatches",
+            batch_single_metric(a, "forced_single_dispatches"),
+            batch_single_metric(b, "forced_single_dispatches"),
+            Direction::Neutral,
+        ),
+        DeltaRow::counter(
+            "Fallbacks recovered",
+            batch_single_metric(a, "batch_single_fallback_successes"),
+            batch_single_metric(b, "batch_single_fallback_successes"),
+            Direction::Neutral,
+        ),
+        DeltaRow::counter(
+            "Fallbacks lost",
+            batch_single_metric(a, "batch_single_fallback_lost"),
+            batch_single_metric(b, "batch_single_fallback_lost"),
+            Direction::IncreaseIsBad,
+        ),
+        DeltaRow::counter(
             "Authentication errors",
             metadata_u64(a, "auth_errors"),
             metadata_u64(b, "auth_errors"),
@@ -555,6 +583,16 @@ fn network_count(src: &LogSource) -> u64 {
                 .sum()
         })
         .unwrap_or_else(|| stats_sum(src, "network_errors"))
+}
+
+/// Batch→single fallback metric (same name in `metadata.json` and per-API in
+/// `stats.apis[]`): prefer the exact metadata run total, summing the per-API
+/// counters for archives missing the metadata field; 0 when absent everywhere.
+fn batch_single_metric(src: &LogSource, field: &str) -> u64 {
+    src.metadata
+        .as_ref()
+        .and_then(|m| m.get(field).and_then(|v| v.as_u64()))
+        .unwrap_or_else(|| stats_sum(src, field))
 }
 
 fn stats_sum(src: &LogSource, field: &str) -> u64 {

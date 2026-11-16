@@ -208,7 +208,7 @@ impl ClientCredentialsAuth {
             other => {
                 error!(
                     "{:FL$}Unknown applicationCredentials type {:?} for service {:?}",
-                    "ClientCredentialsAuth", other, &service
+                    "ClientCredentialsAuth", other, service
                 );
                 Err(Error::ClientCredentialsFlowCreation(format!(
                     "Unknown applicationCredentials type '{other}'. Expected: password, certificate, certificateFile, or managedIdentity."

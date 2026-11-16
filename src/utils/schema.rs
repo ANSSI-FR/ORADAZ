@@ -188,10 +188,7 @@ impl Schema {
 
             match fs::read_to_string(&schema_file) {
                 Err(err) => {
-                    error!(
-                        "{:FL$}Cannot open schema file {:?}.",
-                        "Schema", &schema_file
-                    );
+                    error!("{:FL$}Cannot open schema file {:?}.", "Schema", schema_file);
                     debug!("{:FL$}IO error reading schema file: {:?}", "Schema", err);
                     return Err(Error::IOError(err));
                 }
